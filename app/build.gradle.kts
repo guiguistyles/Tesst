@@ -22,6 +22,18 @@ android {
         }
     }
 
+    // Clé de signature « debug » fixe, versionnée avec le projet : chaque APK compilé
+    // (sur votre PC ou par GitHub Actions) peut ainsi s'installer PAR-DESSUS le précédent.
+    // Ne l'utilisez pas pour publier sur le Play Store.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("jarvis-debug.keystore")
+            storePassword = "android"
+            keyAlias = "jarvis"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             // Pas d'obfuscation : JNA (utilisé par Vosk) s'appuie sur la réflexion
