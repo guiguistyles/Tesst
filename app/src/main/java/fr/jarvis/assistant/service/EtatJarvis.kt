@@ -58,6 +58,8 @@ data class InfosAssistant(
     val etatVoix: String = "Synthèse vocale non initialisée",
     /** La synthèse vocale est utilisable. */
     val voixOk: Boolean = false,
+    /** Voix françaises installées sur le téléphone (nom technique du moteur TTS). */
+    val voixDisponibles: List<String> = emptyList(),
 )
 
 /**
@@ -107,6 +109,7 @@ object EtatJarvis {
     fun majTranscription(texte: String) = _infos.update { it.copy(derniereTranscription = texte, partielle = "") }
     fun majReponse(texte: String) = _infos.update { it.copy(derniereReponse = texte) }
     fun majVoix(message: String, ok: Boolean) = _infos.update { it.copy(etatVoix = message, voixOk = ok) }
+    fun majVoixDisponibles(noms: List<String>) = _infos.update { it.copy(voixDisponibles = noms) }
     fun majPause(pause: Boolean) = _infos.update { it.copy(enPause = pause, niveauMicro = 0f) }
     fun majServiceActif(actif: Boolean) = _infos.update {
         if (actif) it.copy(serviceActif = true)
@@ -115,6 +118,7 @@ object EtatJarvis {
             derniereReponse = it.derniereReponse,
             etatVoix = it.etatVoix,
             voixOk = it.voixOk,
+            voixDisponibles = it.voixDisponibles,
         )
     }
 }

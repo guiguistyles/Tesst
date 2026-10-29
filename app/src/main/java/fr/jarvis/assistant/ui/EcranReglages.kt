@@ -43,6 +43,7 @@ import fr.jarvis.assistant.service.JarvisService
 import fr.jarvis.assistant.stt.CatalogueModeles
 import fr.jarvis.assistant.stt.GestionModeles
 import fr.jarvis.assistant.stt.Telechargement
+import fr.jarvis.assistant.tts.Synthese
 
 private val GrisTexte = Color(0xFF9FB3C8)
 
@@ -60,6 +61,9 @@ fun EcranReglages(onRetour: () -> Unit) {
     var sensibilite by remember { mutableFloatStateOf(reglages.sensibilite) }
     var modele by remember { mutableStateOf(reglages.modeleId) }
     var boot by remember { mutableStateOf(reglages.demarrageBoot) }
+    var voix by remember { mutableStateOf(reglages.voixNom) }
+    var hauteur by remember { mutableFloatStateOf(reglages.hauteurVoix) }
+    var debit by remember { mutableFloatStateOf(reglages.debitVoix) }
     var rafraichirModeles by remember { mutableIntStateOf(0) }
 
     Column(
@@ -104,6 +108,44 @@ fun EcranReglages(onRetour: () -> Unit) {
                 fontSize = 13.sp,
                 color = if (infos.voixOk) CouleursJarvis.Ecoute else CouleursJarvis.Reflexion,
             )
+            // Choix de la voix parmi celles installées
+            Text("Voix", modifier = Modifier.padding(top = 8.dp), fontWeight = FontWeight.Bold)
+            (listOf("") + infos.voixDisponibles).forEach { nom ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    RadioButton(
+                        selected = voix == nom,
+                        onClick = { voix = nom; reglages.voixNom = nom },
+                    )
+                    Text(
+                        if (nom.isEmpty()) "Automatique (voix masculine si disponible)" else Synthese.libelleVoix(nom),
+                        fontSize = 13.sp,
+                    )
+                }
+            }
+            if (infos.voixDisponibles.isEmpty()) {
+                Text("La liste apparaît une fois Jarvis démarré.", fontSize = 12.sp, color = GrisTexte)
+            }
+
+            // Réglages façon Jarvis : un peu plus grave, débit posé
+            Text("Hauteur : ${"%.2f".format(hauteur)}  (Jarvis ≈ 0,85)", modifier = Modifier.padding(top = 8.dp))
+            Slider(
+                value = hauteur,
+                onValueChange = { hauteur = it },
+                onValueChangeFinished = { reglages.hauteurVoix = hauteur },
+                valueRange = 0.5f..1.5f,
+            )
+            Text("Débit : ${"%.2f".format(debit)}  (normal = 1,00)")
+            Slider(
+                value = debit,
+                onValueChange = { debit = it },
+                onValueChangeFinished = { reglages.debitVoix = debit },
+                valueRange = 0.6f..1.6f,
+            )
+            Text(
+                "Plus de voix : réglages de synthèse vocale > moteur Google > Français > téléchargez les voix II à IV.",
+                fontSize = 12.sp, color = GrisTexte
+            )
+
             LigneBouton(
                 "Tester la voix",
                 if (infos.serviceActif) "Jarvis prononce une phrase de test." else "Démarrez Jarvis d'abord.",

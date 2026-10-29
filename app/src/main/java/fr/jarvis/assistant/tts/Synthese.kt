@@ -7,6 +7,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import android.util.Log
+import fr.jarvis.assistant.Reglages
 import fr.jarvis.assistant.service.EtatJarvis
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CompletableDeferred
@@ -29,6 +30,7 @@ import kotlin.coroutines.resume
 class Synthese(context: Context) : TextToSpeech.OnInitListener {
 
     private val appContext = context.applicationContext
+    private val reglages = Reglages(appContext)
     private val audio = appContext.getSystemService(AudioManager::class.java)
     private val pret = CompletableDeferred<Boolean>()
     private val enAttente = ConcurrentHashMap<String, CancellableContinuation<Unit>>()
@@ -51,7 +53,7 @@ class Synthese(context: Context) : TextToSpeech.OnInitListener {
             pret.complete(false)
             return
         }
-        choisirVoixInstallee()
+        appliquerReglages()
         // Flux « média » : c'est le volume que l'on règle avec les boutons du téléphone
         tts.setAudioAttributes(
             AudioAttributes.Builder()
@@ -71,23 +73,35 @@ class Synthese(context: Context) : TextToSpeech.OnInitListener {
         pret.complete(true)
     }
 
+    /** Voix françaises réellement installées (une voix « non installée » ne produit aucun son). */
+    private fun voixFrancaises(): List<Voice> =
+        tts.voices
+            ?.filter { it.locale.language == "fr" && estInstallee(it) && !it.isNetworkConnectionRequired }
+            ?.sortedBy { it.name }
+            ?: emptyList()
+
     /**
-     * Garde la voix choisie par le moteur si elle est française et installée ; sinon
-     * prend la meilleure voix française réellement présente sur le téléphone.
-     * (Une voix « non installée » ne produit aucun son, sans message d'erreur.)
+     * Applique les réglages de voix : voix choisie par l'utilisateur, sinon une voix
+     * masculine française (style Jarvis), sinon la meilleure voix française installée.
+     * Puis la hauteur et le débit. Appelé à chaque phrase : les changements sont immédiats.
      */
-    private fun choisirVoixInstallee() {
+    private fun appliquerReglages() {
         try {
-            val actuelle = tts.voice
-            if (actuelle != null && actuelle.locale.language == "fr" && estInstallee(actuelle)) return
-            tts.voices
-                ?.filter { it.locale.language == "fr" && estInstallee(it) && !it.isNetworkConnectionRequired }
-                ?.sortedWith(compareByDescending<Voice> { it.locale.country == "FR" }.thenByDescending { it.quality })
-                ?.firstOrNull()
-                ?.let { tts.voice = it }
+            val voix = voixFrancaises()
+            EtatJarvis.majVoixDisponibles(voix.map { it.name })
+            val actuelle = tts.voice?.takeIf { it.locale.language == "fr" && estInstallee(it) }
+            val choisie = voix.firstOrNull { it.name == reglages.voixNom }
+                ?: voix.firstOrNull { estMasculine(it.name) && it.locale.country == "FR" }
+                ?: voix.firstOrNull { estMasculine(it.name) }
+                ?: actuelle
+                ?: voix.sortedWith(compareByDescending<Voice> { it.locale.country == "FR" }.thenByDescending { it.quality })
+                    .firstOrNull()
+            if (choisie != null && choisie != tts.voice) tts.voice = choisie
         } catch (e: Exception) {
             Log.w(TAG, "Sélection de voix impossible, voix par défaut conservée", e)
         }
+        tts.setPitch(reglages.hauteurVoix)
+        tts.setSpeechRate(reglages.debitVoix)
     }
 
     private fun estInstallee(voix: Voice) =
@@ -121,6 +135,7 @@ class Synthese(context: Context) : TextToSpeech.OnInitListener {
         } else if (!EtatJarvis.infos.value.voixOk) {
             signaler("Voix prête : ${tts.voice?.name ?: "voix française par défaut"}", true)
         }
+        appliquerReglages()
         withTimeoutOrNull(30_000) {
             suspendCancellableCoroutine { suite ->
                 val id = UUID.randomUUID().toString()
@@ -149,5 +164,20 @@ class Synthese(context: Context) : TextToSpeech.OnInitListener {
 
     companion object {
         private const val TAG = "Synthese"
+
+        /**
+         * Le moteur TTS n'indique pas le genre d'une voix : on s'appuie sur les noms connus.
+         * Google : fr-fr-x-frb et fr-fr-x-frd sont masculines. Samsung : « SMTm.. » = masculine.
+         */
+        private val INDICES_MASCULINS = listOf("frb", "frd", "smtm", "male", "homme")
+
+        fun estMasculine(nomVoix: String): Boolean {
+            val nom = nomVoix.lowercase(Locale.ROOT)
+            return INDICES_MASCULINS.any { nom.contains(it) } && !nom.contains("female")
+        }
+
+        /** Libellé affiché dans les réglages. */
+        fun libelleVoix(nomVoix: String): String =
+            nomVoix + if (estMasculine(nomVoix)) " — masculine" else ""
     }
 }
