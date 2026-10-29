@@ -544,7 +544,7 @@ const PASSIVES = {
 // shape : sheep | bird | larva | spider | bug | boar | tree | skull | rock | penguin | jelly
 const MONSTERS = {
   // Astrub
-  bouftou:      { name: 'Bouftou', hp: 10, speed: 60, dmg: 5, xp: 1, r: 14, shape: 'sheep', body: '#f2efe6', detail: '#6b4a2a' },
+  bouftou:      { name: 'Bouftou', hp: 10, speed: 60, dmg: 5, xp: 1, r: 14, shape: 'sheep', body: '#f2efe6', detail: '#6b4a2a', sprite: 'bouftou' },
   tofu:         { name: 'Tofu', hp: 6, speed: 105, dmg: 4, xp: 1, r: 9, shape: 'bird', body: '#ffd23f', detail: '#e07a1f' },
   piou:         { name: 'Piou Rouge', hp: 7, speed: 90, dmg: 4, xp: 1, r: 9, shape: 'bird', body: '#ff5b5b', detail: '#ffcc33' },
   larve_bleue:  { name: 'Larve Bleue', hp: 18, speed: 45, dmg: 6, xp: 2, r: 13, shape: 'larva', body: '#4fa3ff', detail: '#1f5fa8' },

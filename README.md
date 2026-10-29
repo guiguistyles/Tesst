@@ -33,4 +33,17 @@ Ajoutez `?debug` à l'URL pour jouer en mode invincible pendant les tests.
 | `js/game.js` | Moteur : boucle, sorts, monstres, collisions, rendu canvas |
 | `js/ui.js` | Menus, sauvegarde, HUD, liaison avec le moteur |
 
+## Sprites
+
+Le Bouftou et le Crâ utilisent des planches de sprites animées en 8 directions, générées en code par `tools/sprites/` (aucun asset Ankama) :
+
+| Fichier | Rôle |
+|---|---|
+| `tools/sprites/rig.js` | Mini moteur de « poupées » 3D : sphères, membres, nuages de laine, projetés en vue isométrique avec ombrage et contours |
+| `tools/sprites/models.js` | Les modèles et leurs animations (marche du Bouftou, course et attente du Crâ) |
+| `tools/sprites/generate.html` | Aperçu des planches dans le navigateur |
+| `tools/sprites/build.js` | Exporte les PNG dans `assets/sprites/` et écrit `js/sprites.js` (`node tools/sprites/build.js`, nécessite Playwright) |
+
+Un monstre utilise une planche avec `sprite: '<nom>'` dans `js/data.js` ; une classe, via `SPRITE_CLASSES` dans `js/game.js`. Sans planche chargée, le dessin vectoriel sert de repli. Aperçu : `docs/sprites-planches.png` et `docs/sprites-avant-apres.png`.
+
 Pour équilibrer ou ajouter du contenu, modifiez `js/data.js` : un sort se décrit par un `type` (projectile, melee, nova, aura, orbit, strike, summon, trap, glyph, heal, shield), des stats de `base` et 4 améliorations `up`.

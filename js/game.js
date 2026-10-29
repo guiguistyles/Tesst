@@ -10,6 +10,8 @@ const Game = (() => {
   const joy = { id: null, sx: 0, sy: 0, x: 0, y: 0 };
 
   const MAX_ENEMIES = 380;
+  // Classes dessinées avec des planches de sprites (k = échelle d'affichage).
+  const SPRITE_CLASSES = { cra: { run: 'cra_run', idle: 'cra_idle', k: 0.8 } };
   const GOD_MODE = /[?&]debug\b/.test(location.search); // invincibilité pour les tests
   const BOSS_TIMES = [
     { t: 180, kind: 'mini', hp: 1 },
@@ -33,6 +35,7 @@ const Game = (() => {
     canvas = c;
     ctx = c.getContext('2d');
     cb = callbacks;
+    loadSprites();
     resize();
     addEventListener('resize', resize);
     addEventListener('keydown', (e) => {
@@ -57,6 +60,32 @@ const Game = (() => {
     const end = (e) => { if (e.pointerId === joy.id) joy.id = null; };
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
+  }
+
+  // ------------------------------------------------------------ Sprites
+  // Planches générées par tools/sprites (js/sprites.js). Tant qu'une planche n'est pas chargée,
+  // le dessin vectoriel d'origine sert de repli.
+  const sheets = {};
+  function loadSprites() {
+    if (typeof SPRITE_SHEETS === 'undefined') return;
+    for (const [name, m] of Object.entries(SPRITE_SHEETS)) {
+      const img = new Image();
+      img.onload = () => { sheets[name] = { ...m, img }; };
+      img.src = m.src;
+    }
+  }
+
+  // angle : direction regardée (repère écran), time : secondes d'animation, k : échelle d'affichage.
+  function drawSprite(name, x, y, angle, time, k, flash) {
+    const s = sheets[name];
+    if (!s) return false;
+    const row = ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
+    const col = Math.floor(time * s.fps) % s.frames;
+    const w = s.frameW * k, h = s.frameH * k;
+    if (flash) ctx.filter = 'brightness(3) saturate(0)';
+    ctx.drawImage(s.img, col * s.frameW, row * s.frameH, s.frameW, s.frameH, x - w * s.anchorX, y - h * s.anchorY, w, h);
+    if (flash) ctx.filter = 'none';
+    return true;
   }
 
   function resize() {
@@ -224,6 +253,7 @@ const Game = (() => {
       if (Math.abs(mx) > 0.1) p.face = mx > 0 ? 1 : -1;
       p.walk += dt * 10;
     }
+    p.moving = l > 0.05;
     p.hurt = Math.max(0, p.hurt - dt);
     p.inv = Math.max(0, p.inv - dt);
     if (S.stats.regen && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + S.stats.regen * dt);
@@ -1190,6 +1220,13 @@ const Game = (() => {
       ctx.globalAlpha = 0.7; ctx.strokeStyle = '#d0f0ff'; ctx.lineWidth = 2; ctx.stroke();
       ctx.globalAlpha = 1;
     }
+    const hurt = p.hurt > 0;
+    const sprite = SPRITE_CLASSES[S.cls];
+    if (sprite) {
+      const angle = Math.atan2(p.dirY, p.dirX);
+      if (p.moving ? drawSprite(sprite.run, x, y + 1, angle, p.walk / 10, sprite.k, hurt)
+                   : drawSprite(sprite.idle, x, y + 1, angle, S.t, sprite.k, hurt)) return;
+    }
     const by = y - bob;
     // jambes
     ctx.fillStyle = '#3a2a1a';
@@ -1197,7 +1234,6 @@ const Game = (() => {
     ctx.fillRect(x - 6 + lg, y - 8, 5, 8);
     ctx.fillRect(x + 1 - lg, y - 8, 5, 8);
     // corps
-    const hurt = p.hurt > 0;
     ctx.fillStyle = hurt ? '#fff' : cls.color;
     ctx.beginPath();
     ctx.moveTo(x - 12, by - 6); ctx.quadraticCurveTo(x - 13, by - 26, x, by - 28); ctx.quadraticCurveTo(x + 13, by - 26, x + 12, by - 6); ctx.closePath();
@@ -1304,7 +1340,9 @@ const Game = (() => {
     const body = flash ? '#ffffff' : d.body, det = flash ? '#ffffff' : d.detail;
     shadow(x, y, r);
     const cy = y - r + bob;
-    switch (d.shape) {
+    const sprited = d.sprite && !friendly &&
+      drawSprite(d.sprite, x, y + 1, Math.atan2(S.p.y - y, S.p.x - x), t, r * 0.057, flash);
+    if (!sprited) switch (d.shape) {
       case 'sheep': {
         ctx.fillStyle = body;
         ctx.beginPath();

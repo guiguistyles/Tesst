@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Générateur de sprites</title>
+  <style>
+    body { background: #6a9b4a; color: #fff; font: 14px sans-serif; margin: 16px; }
+    canvas { display: block; margin: 8px 0 24px; image-rendering: auto; max-width: 100%; }
+  </style>
+</head>
+<body>
+  <p>Aperçu des planches (lignes = 8 directions, colonnes = images). <code>node tools/sprites/build.js</code> les exporte dans <code>assets/sprites/</code>.</p>
+  <div id="out"></div>
+  <script src="rig.js"></script>
+  <script src="models.js"></script>
+  <script>
+    window.SHEETS = {};
+    for (const [name, spec] of Object.entries(MODELS)) {
+      const cv = Rig.sheet(spec);
+      SHEETS[name] = cv;
+      const h = document.createElement('h3'); h.textContent = `${name} — ${spec.frameW}×${spec.frameH}, ${spec.frames} images`;
+      document.getElementById('out').append(h, cv);
+    }
+  </script>
+</body>
+</html>
