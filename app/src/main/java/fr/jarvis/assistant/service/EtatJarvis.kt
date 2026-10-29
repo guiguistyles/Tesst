@@ -54,6 +54,10 @@ data class InfosAssistant(
     val enPause: Boolean = false,
     /** Le service au premier plan tourne. */
     val serviceActif: Boolean = false,
+    /** Diagnostic de la synthèse vocale (moteur, voix, volume), affiché dans les réglages. */
+    val etatVoix: String = "Synthèse vocale non initialisée",
+    /** La synthèse vocale est utilisable. */
+    val voixOk: Boolean = false,
 )
 
 /**
@@ -102,9 +106,15 @@ object EtatJarvis {
     fun majPartielle(texte: String) = _infos.update { it.copy(partielle = texte) }
     fun majTranscription(texte: String) = _infos.update { it.copy(derniereTranscription = texte, partielle = "") }
     fun majReponse(texte: String) = _infos.update { it.copy(derniereReponse = texte) }
+    fun majVoix(message: String, ok: Boolean) = _infos.update { it.copy(etatVoix = message, voixOk = ok) }
     fun majPause(pause: Boolean) = _infos.update { it.copy(enPause = pause, niveauMicro = 0f) }
     fun majServiceActif(actif: Boolean) = _infos.update {
         if (actif) it.copy(serviceActif = true)
-        else InfosAssistant(derniereTranscription = it.derniereTranscription, derniereReponse = it.derniereReponse)
+        else InfosAssistant(
+            derniereTranscription = it.derniereTranscription,
+            derniereReponse = it.derniereReponse,
+            etatVoix = it.etatVoix,
+            voixOk = it.voixOk,
+        )
     }
 }

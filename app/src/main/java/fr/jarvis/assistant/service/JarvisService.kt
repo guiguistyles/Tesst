@@ -105,6 +105,7 @@ class JarvisService : Service() {
         }
         when (action) {
             ACTION_PAUSE -> basculerPause()
+            ACTION_TESTER_VOIX -> testerVoix()
             ACTION_RECHARGER -> demarrerMoteur(forcer = true)
             ACTION_ECOUTER -> {
                 if (enPause) basculerPause()
@@ -280,20 +281,31 @@ class JarvisService : Service() {
 
     /** ECOUTE -> REFLEXION -> PAROLE -> VEILLE. Le micro reste coupé pendant ce temps. */
     private fun traiter(texte: String) {
-        if (texte.isBlank()) {
-            EtatJarvis.passerA(Etat.VEILLE)
-            return
-        }
-        EtatJarvis.majTranscription(texte)
+        if (texte.isNotBlank()) EtatJarvis.majTranscription(texte)
         EtatJarvis.passerA(Etat.REFLEXION)
         tacheReponse = portee.launch {
             try {
-                val reponse = withContext(Dispatchers.IO) { executeur.executer(texte) }
+                // Même sans rien comprendre, Jarvis répond : l'utilisateur sait que l'écoute est finie
+                val reponse = if (texte.isBlank()) "Je n'ai rien entendu."
+                else withContext(Dispatchers.IO) { executeur.executer(texte) }
                 EtatJarvis.majReponse(reponse)
                 if (EtatJarvis.passerA(Etat.PAROLE)) synthese.parler(reponse)
             } finally {
                 val etat = EtatJarvis.etat
                 if (etat == Etat.PAROLE || etat == Etat.REFLEXION) EtatJarvis.passerA(Etat.VEILLE)
+            }
+        }
+    }
+
+    /** Phrase de test (bouton des réglages). Évite de dire « Jarvis » pour ne pas se réveiller soi-même. */
+    private fun testerVoix() {
+        if (tacheReponse?.isActive == true) return
+        tacheReponse = portee.launch {
+            val depuisVeille = EtatJarvis.etat == Etat.VEILLE && EtatJarvis.passerA(Etat.PAROLE)
+            try {
+                synthese.parler("Bonjour, ma voix fonctionne correctement.")
+            } finally {
+                if (depuisVeille && EtatJarvis.etat == Etat.PAROLE) EtatJarvis.passerA(Etat.VEILLE)
             }
         }
     }
@@ -326,6 +338,7 @@ class JarvisService : Service() {
         const val ACTION_PAUSE = "fr.jarvis.assistant.PAUSE"
         const val ACTION_QUITTER = "fr.jarvis.assistant.QUITTER"
         const val ACTION_RECHARGER = "fr.jarvis.assistant.RECHARGER"
+        const val ACTION_TESTER_VOIX = "fr.jarvis.assistant.TESTER_VOIX"
 
         /** Démarre le service (à appeler depuis une activité visible). */
         fun demarrer(ctx: Context) = demarrerPremierPlan(ctx, ACTION_DEMARRER)

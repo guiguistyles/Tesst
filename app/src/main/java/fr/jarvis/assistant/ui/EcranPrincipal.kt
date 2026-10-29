@@ -95,6 +95,13 @@ fun EcranPrincipal(onReglages: () -> Unit) {
                     fontStyle = FontStyle.Italic, textAlign = TextAlign.Center
                 )
             }
+            // Problème de voix : on le signale ici, le détail est dans les réglages
+            if (infos.serviceActif && !infos.voixOk && infos.etatVoix.isNotBlank()) {
+                Text(
+                    "🔇 " + infos.etatVoix, color = CouleursJarvis.Reflexion, fontSize = 13.sp,
+                    textAlign = TextAlign.Center, modifier = Modifier.padding(bottom = 6.dp)
+                )
+            }
             if (infos.derniereReponse.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
                 Text(infos.derniereReponse, color = Color(0xFF9FB3C8), fontSize = 14.sp, textAlign = TextAlign.Center)

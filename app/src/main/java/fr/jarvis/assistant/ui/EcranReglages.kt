@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import fr.jarvis.assistant.Reglages
 import fr.jarvis.assistant.commandes.Commandes
+import fr.jarvis.assistant.service.EtatJarvis
 import fr.jarvis.assistant.service.JarvisService
 import fr.jarvis.assistant.stt.CatalogueModeles
 import fr.jarvis.assistant.stt.GestionModeles
@@ -53,6 +54,7 @@ fun EcranReglages(onRetour: () -> Unit) {
     val gestion = remember { GestionModeles(ctx) }
     val reprise = rememberCompteurReprise()
     val telechargement by GestionModeles.telechargement.collectAsStateWithLifecycle()
+    val infos by EtatJarvis.infos.collectAsStateWithLifecycle()
 
     var motReveil by remember { mutableStateOf(reglages.motReveilActif) }
     var sensibilite by remember { mutableFloatStateOf(reglages.sensibilite) }
@@ -93,6 +95,25 @@ fun EcranReglages(onRetour: () -> Unit) {
                     "immédiate (plus réactive, plus de faux positifs).",
                 fontSize = 12.sp, color = GrisTexte
             )
+        }
+
+        // --- Voix (synthèse vocale)
+        Section("Voix de Jarvis") {
+            Text(
+                infos.etatVoix,
+                fontSize = 13.sp,
+                color = if (infos.voixOk) CouleursJarvis.Ecoute else CouleursJarvis.Reflexion,
+            )
+            LigneBouton(
+                "Tester la voix",
+                if (infos.serviceActif) "Jarvis prononce une phrase de test." else "Démarrez Jarvis d'abord.",
+                "Tester"
+            ) { JarvisService.envoyer(ctx, JarvisService.ACTION_TESTER_VOIX) }
+            LigneBouton(
+                "Réglages de synthèse vocale",
+                "Moteur conseillé : Google. Langue : Français (France). Téléchargez la voix pour l'usage hors ligne.",
+                "Ouvrir"
+            ) { Autorisations.ouvrir(ctx, Autorisations.intentSyntheseVocale()) }
         }
 
         // --- Modèle de reconnaissance

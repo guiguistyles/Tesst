@@ -51,6 +51,9 @@ object Autorisations {
     /** Écran « Applications par défaut » (contient « Assistant numérique »). */
     fun intentAssistant() = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
 
+    /** Réglages Android de synthèse vocale (moteur, langue, téléchargement des voix). */
+    fun intentSyntheseVocale() = Intent("com.android.settings.TTS_SETTINGS")
+
     /** Fiche de l'application (si une permission a été refusée définitivement). */
     fun intentDetailsAppli(ctx: Context) =
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}"))
