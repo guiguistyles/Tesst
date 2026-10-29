@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Service de reconnaissance requis par la déclaration d'assistant -->
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="fr.jarvis.assistant.ui.MainActivity" />

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Premier plan de l'icône adaptative : anneaux cyan et noyau lumineux -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF00AAFF"
+        android:strokeWidth="3"
+        android:pathData="M54,26A28,28 0,1 1,54 82A28,28 0,1 1,54 26Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF00FFE1"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M54,32A22,22 0,0 1,76 54" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF00FFE1"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M54,76A22,22 0,0 1,32 54" />
+    <path
+        android:fillColor="#FF00AAFF"
+        android:pathData="M54,42A12,12 0,1 1,54 66A12,12 0,1 1,54 42Z" />
+    <path
+        android:fillColor="#FFE6FBFF"
+        android:pathData="M54,48A6,6 0,1 1,54 60A6,6 0,1 1,54 48Z" />
+</vector>

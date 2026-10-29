@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Déclaration de Jarvis comme assistant numérique (Paramètres > Applications par défaut) -->
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:recognitionService="fr.jarvis.assistant.service.JarvisRecognitionService"
+    android:sessionService="fr.jarvis.assistant.service.JarvisSessionService"
+    android:settingsActivity="fr.jarvis.assistant.ui.MainActivity"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true" />
