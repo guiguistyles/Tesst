@@ -5,7 +5,7 @@ Relevé du 29 octobre 2026, version **v1.21.74** du site. Deux sources :
 1. **En jeu** : navigation dans le site avec un navigateur automatisé (Chromium sans affichage), en invité, sans créer de compte, puis une courte partie avec l'Iop à Astrub. Le moteur tournait à environ 6 images par seconde dans cet environnement, donc la partie s'arrête à la vague 2.
 2. **Dans le code** : le site charge un fichier de données (`data-*.js`) et un moteur (`boot-*.js`). J'ai importé ces modules dans le navigateur et exporté leurs tables (classes, sorts, monstres, zones, boutique…) en JSON. Les chiffres ci-dessous en viennent.
 
-Les images du jeu sont servies par `assets.zaaprush.online`, que la politique réseau de cet environnement bloque. Certaines icônes des menus manquent donc sur les captures. Les sprites en jeu, eux, se sont affichés.
+Les images et les sons du jeu sont servis par `assets.zaaprush.online`. Ce domaine était bloqué au moment des captures, d'où les icônes manquantes dans les menus. Il a été autorisé ensuite : voir « Assets » plus bas.
 
 ## Ce qu'on voit en jouant
 
@@ -54,6 +54,17 @@ Sur l'accueil : joueurs en ligne (~125), événements à durée limitée (Haloui
 ### Graphismes
 
 ZaapRush utilise les **sprites de Dofus Rétro**. Les données y font référence par identifiants Ankama (`retroId`, cartes et cellules Rétro), et les fichiers sont servis par `assets.zaaprush.online`. ZaapSurvie dessine tout en code, sans asset Ankama, comme indiqué dans le README.
+
+### Assets
+
+Le fichier `assets/dofus/manifest.json` (5 Mo) répertorie environ 19 800 fichiers :
+- 6 992 sprites (18 335 fichiers en tout, PNG et WebP) ;
+- des atlas, cartes et décors du Hameau ;
+- 189 sons MP3.
+
+Les sprites sont des planches animées en **8 directions**, à 24 images/s, en trois qualités (`lo`, normale, `hi`). Le Bouftou, par exemple, a 18 images par direction, le Bouftou Royal 30. Pour l'Iop, il y a des planches séparées pour l'attente, la course, le lancer de sort et l'attaque, déclinées selon l'équipement porté. Les sorts, les objets et les panoplies ont aussi leurs icônes.
+
+Ce sont les graphismes de Dofus Rétro, propriété d'Ankama. On peut les étudier pour la mise en scène (taille, ancrage, cadence), mais pas les copier dans ZaapSurvie, qui reste dessiné en code.
 
 ## Ce qui serait le plus utile à reprendre dans ZaapSurvie
 
