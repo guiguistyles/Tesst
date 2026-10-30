@@ -52,19 +52,19 @@ const CLASSES = {
   },
   sacrieur: {
     name: 'Sacrieur', color: '#a8202a', accent: '#2b2b2b', hat: 'tattoo',
-    hp: 150, speed: 160, cost: 800,
+    hp: 150, speed: 160, cost: 0,
     desc: 'Berserker. Plus il souffre, plus il frappe fort.',
     spells: ['pied_sacrieur', 'assaut', 'absorption', 'attirance', 'epee_volante', 'punition', 'dissolution', 'folie_sanguinaire'],
   },
   enutrof: {
     name: 'Enutrof', color: '#9a7a3a', accent: '#d9d9d9', hat: 'beard',
-    hp: 115, speed: 150, cost: 1500,
+    hp: 115, speed: 150, cost: 0,
     desc: 'Chasseur de trésors. Chaque victime rapporte des kamas.',
     spells: ['lancer_pieces', 'pelle_animee', 'pelle_jugement', 'maladresse_masse', 'lancer_pelle', 'pelle_fantomatique', 'remblai', 'force_age'],
   },
   roublard: {
     name: 'Roublard', color: '#c27b2a', accent: '#3a2a1a', hat: 'bandana',
-    hp: 105, speed: 175, cost: 2500,
+    hp: 105, speed: 175, cost: 0,
     desc: 'Artificier. Bombes et tromblon pour tout faire sauter.',
     spells: ['tromblon', 'bombe_explosive', 'pulsar', 'kaboom', 'dagues_boomerang', 'arquebuse', 'roublabot', 'botte'],
   },
