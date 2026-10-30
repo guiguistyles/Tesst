@@ -13,6 +13,7 @@ const Save = {
     try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { /* stockage indisponible */ }
     this.data = Object.assign({ kamas: 0, unlocked: [], cleared: [], dofus: [], upgrades: {}, best: {} }, d || {});
     for (const id in CLASSES) if (!CLASSES[id].cost && !this.data.unlocked.includes(id)) this.data.unlocked.push(id);
+    this.data.dofus = this.data.dofus.filter((id) => DOFUS[id]); // Dofus retirés du jeu
   },
   store() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); } catch (e) { /* ignoré */ }

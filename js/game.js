@@ -127,14 +127,9 @@ const Game = (() => {
       switch (id) {
         case 'cawotte': st.regen += 1; break;
         case 'emeraude': st.hp *= 1.15; break;
-        case 'kaliptus': st.pickup *= 1.3; st.xp *= 1.1; break;
-        case 'dokoko': st.kamas *= 1.2; break;
         case 'pourpre': st.dmg *= 1.12; break;
-        case 'ocre': st.cd *= 0.92; break;
         case 'turquoise': st.crit += 0.07; break;
-        case 'ivoire': st.armor += 0.1; break;
         case 'ebene': st.speed *= 1.08; st.dmg *= 1.08; break;
-        case 'vulbis': st.dmg *= 1.06; st.hp *= 1.06; st.speed *= 1.06; st.area *= 1.06; st.xp *= 1.06; break;
       }
     }
     return st;

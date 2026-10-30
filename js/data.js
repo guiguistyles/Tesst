@@ -657,46 +657,41 @@ const ZONES = [
     id: 'astrub', name: 'Astrub', sub: 'Cité d’Astrub',
     ground: '#6a9b45', ground2: '#5f8f3e', deco: ['#4b7a30', '#e8d070', '#ff9ab0'], decoType: 'grass',
     monsters: ['bouftou', 'tofu', 'piou', 'larve_bleue'], mini: 'tofu_royal', boss: 'bouftou_royal',
-    hpMul: 1, dmgMul: 1, kamas: 1, dofus: ['cawotte', 'emeraude'],
+    hpMul: 1, dmgMul: 1, kamas: 1, dofus: ['cawotte'],
   },
   {
     id: 'amakna', name: 'Amakna', sub: 'Champs et forêts d’Amakna',
     ground: '#8aa548', ground2: '#7d9840', deco: ['#c8a040', '#4a7a2a', '#e8e090'], decoType: 'field',
     monsters: ['arakne', 'sanglier', 'moskito', 'prespic'], mini: 'black_wabbit', boss: 'dragon_cochon',
-    hpMul: 1.8, dmgMul: 1.3, kamas: 1.5, dofus: ['kaliptus', 'dokoko'],
+    hpMul: 1.8, dmgMul: 1.3, kamas: 1.5, dofus: ['emeraude'],
   },
   {
     id: 'abraknydes', name: 'Forêt des Abraknydes', sub: 'Forêt maléfique',
     ground: '#3f5a32', ground2: '#36502b', deco: ['#2a3f22', '#5a4a3a', '#7a9a50'], decoType: 'forest',
     monsters: ['chafer', 'abraknyde', 'fantome', 'chafer_archer'], mini: 'abrak_ancestral', boss: 'chene_mou',
-    hpMul: 3, dmgMul: 1.7, kamas: 2.2, dofus: ['pourpre', 'ocre'],
+    hpMul: 3, dmgMul: 1.7, kamas: 2.2, dofus: ['turquoise'],
   },
   {
     id: 'craqueleurs', name: 'Montagne des Craqueleurs', sub: 'Plaines de Cania',
     ground: '#9a8a6a', ground2: '#8d7d5f', deco: ['#6a6a6a', '#b0a080', '#5a5040'], decoType: 'rock',
     monsters: ['gelee', 'bwork', 'craqueleur', 'bwork_mage'], mini: 'craq_roc', boss: 'craq_legend',
-    hpMul: 5, dmgMul: 2.2, kamas: 3, dofus: ['turquoise', 'ivoire'],
+    hpMul: 5, dmgMul: 2.2, kamas: 3, dofus: ['pourpre'],
   },
   {
     id: 'frigost', name: 'Frigost', sub: 'Île de Frigost',
     ground: '#dfe9f2', ground2: '#d2dfeb', deco: ['#a8c4dc', '#2f4a3a', '#ffffff'], decoType: 'snow',
     monsters: ['mansot', 'boufmouth', 'sapik', 'fecorce'], mini: 'mansot_royal', boss: 'obsidiantre',
-    hpMul: 8, dmgMul: 2.8, kamas: 4, dofus: ['ebene', 'vulbis'],
+    hpMul: 8, dmgMul: 2.8, kamas: 4, dofus: ['ebene'],
   },
 ];
 
-// ---------------------------------------------------------------- Dofus (bonus permanents)
+// ---------------------------------------------------------------- Dofus (bonus permanents, un par zone)
 const DOFUS = {
   cawotte:   { name: 'Dofus Cawotte',   color: '#ff8c1a', desc: '+1 PV régénéré/s' },
   emeraude:  { name: 'Dofus Émeraude',  color: '#2ecc71', desc: '+15% PV max' },
-  kaliptus:  { name: 'Dofus Kaliptus',  color: '#7fbf3f', desc: '+30% ramassage, +10% XP' },
-  dokoko:    { name: 'Dofus Dokoko',    color: '#c8a070', desc: '+20% kamas' },
   pourpre:   { name: 'Dofus Pourpre',   color: '#a2286a', desc: '+12% dégâts' },
-  ocre:      { name: 'Dofus Ocre',      color: '#d4a017', desc: '-8% temps de recharge' },
   turquoise: { name: 'Dofus Turquoise', color: '#1fc4c4', desc: '+7% coups critiques' },
-  ivoire:    { name: 'Dofus Ivoire',    color: '#f4f0e0', desc: '-10% dégâts subis' },
   ebene:     { name: 'Dofus Ébène',     color: '#2a2a3a', desc: '+8% vitesse, +8% dégâts' },
-  vulbis:    { name: 'Dofus Vulbis',    color: '#b8e0ff', desc: '+6% à tout' },
 };
 
 // ---------------------------------------------------------------- Équipements (valables pour la partie)
