@@ -147,15 +147,82 @@ const Game = (() => {
     st.area *= 1 + 0.1 * (P.intelligence || 0);
     st.xp *= 1 + 0.12 * (P.sagesse || 0);
     st.crit += 0.05 * (P.chance || 0);
-    st.pickup *= 1 + 0.3 * (P.prospection || 0);
+    st.drop = 1 + 0.3 * (P.prospection || 0);
     st.cd *= Math.pow(0.93, P.pa || 0);
-    st.armor = 1 - (1 - st.armor) * Math.pow(0.94, P.resistance || 0);
     st.regen += 0.5 * (P.soin || 0);
+    for (const b of equipBonuses()) {
+      for (const k in b) {
+        if (k === 'crit' || k === 'regen') st[k] += b[k];
+        else if (k === 'cd') st.cd *= 1 - b[k];
+        else st[k] *= 1 + b[k];
+      }
+    }
     S.stats = st;
     const newMax = Math.round(CLASSES[S.cls].hp * st.hp);
     if (S.p.maxHp) S.p.hp += Math.max(0, newMax - S.p.maxHp);
     S.p.maxHp = newMax;
     S.p.hp = Math.min(S.p.hp, newMax);
+  }
+
+  // ------------------------------------------------------------ Équipements (pour la partie)
+  // Objets lâchés par chaque monstre : communs d'un côté, rares de l'autre.
+  const DROPS = {};
+  for (const [id, it] of Object.entries(ITEMS)) {
+    for (const m of it.from) {
+      DROPS[m] = DROPS[m] || { common: [], rare: [] };
+      DROPS[m][it.rare ? 'rare' : 'common'].push(id);
+    }
+  }
+  const DROP_CHANCE = 0.012, RARE_CHANCE = 0.0008;
+
+  // Bonus des objets portés, puis des panoplies (cumulés par palier atteint).
+  function equipBonuses() {
+    const out = [], count = {};
+    for (const id of Object.values(S.items)) {
+      const it = ITEMS[id];
+      out.push(it.bonus);
+      if (it.set) count[it.set] = (count[it.set] || 0) + 1;
+    }
+    for (const [set, n] of Object.entries(count)) {
+      for (const [need, b] of Object.entries(SETS[set].bonus)) if (n >= +need) out.push(b);
+    }
+    return out;
+  }
+
+  const itemScore = (id) => Object.entries(ITEMS[id].bonus)
+    .reduce((t, [k, v]) => t + v * (k === 'crit' ? 2 : k === 'regen' ? 0.2 : 1), ITEMS[id].rare ? 0.05 : 0);
+
+  // Objet ramassé : équipé s'il vaut mieux que celui de l'emplacement, sinon revendu en kamas.
+  function equipItem(id) {
+    const it = ITEMS[id], cur = S.items[it.slot];
+    if (cur && (cur === id || itemScore(cur) > itemScore(id))) {
+      const k = Math.ceil(15 * S.zone.kamas);
+      S.kamas += k;
+      addText(S.p.x, S.p.y - 40, it.name + ' : +' + k + ' K', '#ffd84a', true);
+      return;
+    }
+    S.items[it.slot] = id;
+    recomputeStats();
+    let sub = bonusText(it.bonus);
+    if (it.set) {
+      const n = Object.values(S.items).filter((o) => ITEMS[o].set === it.set).length;
+      if (SETS[it.set].bonus[n]) sub += ' · ' + SETS[it.set].name + ' (' + n + ') : ' + bonusText(SETS[it.set].bonus[n]);
+    }
+    cb.onBanner(it.name, sub);
+  }
+
+  function dropItems(e) {
+    const pool = DROPS[e.id], z = S.zone;
+    let id = null;
+    if (e.kind === 'mini') {
+      // le boss intermédiaire lâche toujours un objet rare de sa zone
+      const rares = z.monsters.flatMap((m) => (DROPS[m] ? DROPS[m].rare : []));
+      if (rares.length) id = pick(rares);
+    } else if (pool && !e.boss) {
+      if (pool.rare.length && Math.random() < RARE_CHANCE * S.stats.drop) id = pick(pool.rare);
+      else if (pool.common.length && Math.random() < DROP_CHANCE * S.stats.drop) id = pick(pool.common);
+    }
+    if (id) S.gems.push({ kind: 'item', id, x: e.x, y: e.y, v: 0 });
   }
 
   function spellStats(sp) {
@@ -185,7 +252,7 @@ const Game = (() => {
            revive: save.upgrades.resurrection ? 1 : 0 },
       meta: metaStats(save), stats: null, passives: {}, spells: [],
       enemies: [], projs: [], eprojs: [], gems: [], fx: [], texts: [], traps: [], glyphs: [], strikes: [],
-      buffs: [], rerolls: 2, bans: 1, banned: new Set(),
+      buffs: [], items: {}, rerolls: 2, bans: 1, banned: new Set(),
       spawnAcc: 0, nextWave: 60, bossIdx: 0, boss: null, pending: 0, choosing: false,
       found: [], over: false, endTimer: -1, victory: false, grid: new Map(),
     };
@@ -221,7 +288,7 @@ const Game = (() => {
   function hudData() {
     return {
       hp: S.p.hp, maxHp: S.p.maxHp, shield: S.p.shield, xp: S.xp, xpNext: S.xpNext, level: S.level,
-      t: S.t, kills: S.kills, kamas: Math.floor(S.kamas), spells: S.spells, passives: S.passives,
+      t: S.t, kills: S.kills, kamas: Math.floor(S.kamas), spells: S.spells, passives: S.passives, items: S.items,
       boss: S.boss && !S.boss.dead ? { name: S.boss.def.name, hp: S.boss.hp, maxHp: S.boss.maxHp } : null,
     };
   }
@@ -427,6 +494,7 @@ const Game = (() => {
     S.kills++;
     const z = S.zone;
     gainXp(e.x, e.y, e.xp);
+    dropItems(e);
     if (e.gold || Math.random() < 0.07) {
       S.gems.push({ kind: 'kamas', x: e.x + rand(-6, 6), y: e.y + rand(-6, 6), v: Math.ceil(rand(1, 4) * z.kamas) });
     }
@@ -793,7 +861,7 @@ const Game = (() => {
     const p = S.p, pr = S.stats.pickup;
     for (const g of S.gems) {
       const dd = Math.sqrt(d2(g.x, g.y, p.x, p.y));
-      if (!g.mag && g.kind === 'kamas' && dd < pr) g.mag = true;
+      if (!g.mag && (g.kind === 'kamas' || g.kind === 'item') && dd < pr) g.mag = true;
       if (!g.mag && dd < p.r + 16) g.mag = true;
       if (g.mag) {
         g.sp = (g.sp || 150) + 900 * dt;
@@ -809,6 +877,7 @@ const Game = (() => {
     const p = S.p;
     switch (g.kind) {
       case 'kamas': S.kamas += g.v * S.stats.kamas; break;
+      case 'item': equipItem(g.id); break;
       case 'heal': {
         const h = p.maxHp * 0.3; p.hp = Math.min(p.maxHp, p.hp + h);
         addText(p.x, p.y - 30, '+' + Math.round(h), '#7dff9a', true);
@@ -1242,6 +1311,17 @@ const Game = (() => {
     const bob = Math.sin(S.t * 4 + g.x * 0.1) * 2;
     const x = g.x, y = g.y + bob;
     switch (g.kind) {
+      case 'item': {
+        // petit parchemin d'équipement, doré pour un objet rare
+        const it = ITEMS[g.id], rare = it.rare;
+        ctx.fillStyle = rare ? 'rgba(255,200,60,.35)' : 'rgba(120,200,255,.3)';
+        ctx.beginPath(); ctx.arc(x, y - 6, 15 + Math.sin(S.t * 5) * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = rare ? '#ffd84a' : '#d8ecff'; ctx.strokeStyle = rare ? '#8a5a10' : '#2a4a7a'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(x - 10, y - 16, 20, 20, 5); ctx.fill(); ctx.stroke();
+        ctx.font = '13px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(SLOTS[it.slot].icon, x, y - 5);
+        break;
+      }
       case 'kamas':
         ctx.fillStyle = '#c8962a';
         ctx.beginPath(); ctx.ellipse(x, y, 7, 6, 0, 0, Math.PI * 2); ctx.fill();

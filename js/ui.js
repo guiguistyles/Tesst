@@ -196,14 +196,14 @@ function onHud(h) {
     $('#boss-fill').style.width = (100 * Math.max(0, h.boss.hp) / h.boss.maxHp) + '%';
   } else bb.classList.add('hidden');
 
-  const key = h.spells.map((s) => s.id + s.lvl).join() + JSON.stringify(h.passives);
+  const key = h.spells.map((s) => s.id + s.lvl).join() + JSON.stringify(h.passives) + JSON.stringify(h.items);
   if (key !== lastSpellsKey) {
     lastSpellsKey = key;
-    $('#hud-spells').innerHTML = buildSlots(h.spells, h.passives);
+    $('#hud-spells').innerHTML = buildSlots(h.spells, h.passives, h.items);
   }
 }
 
-function buildSlots(spells, passives) {
+function buildSlots(spells, passives, items = {}) {
   let html = '';
   for (const s of spells) {
     const d = SPELLS[s.id];
@@ -212,6 +212,10 @@ function buildSlots(spells, passives) {
   for (const id in passives) {
     const d = PASSIVES[id];
     html += `<div class="slot passive" style="border-color:${d.color}" title="${d.name}">${d.icon}<i>${passives[id]}</i></div>`;
+  }
+  for (const slot in items) {
+    const it = ITEMS[items[slot]];
+    html += `<div class="slot item${it.rare ? ' rare' : ''}" title="${it.name} : ${bonusText(it.bonus)}">${SLOTS[slot].icon}</div>`;
   }
   return html;
 }

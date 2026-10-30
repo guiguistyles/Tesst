@@ -606,9 +606,8 @@ const PASSIVES = {
   intelligence: { name: 'Intelligence', icon: '✦', color: '#ff8a3d', desc: '+10% taille des zones', max: 5 },
   sagesse:      { name: 'Sagesse',      icon: '✎', color: '#b48cff', desc: '+12% expérience', max: 5 },
   chance:       { name: 'Chance',       icon: '☘', color: '#58b8ff', desc: '+5% coups critiques', max: 5 },
-  prospection:  { name: 'Prospection',  icon: '◎', color: '#ffd84a', desc: '+30% rayon de ramassage', max: 5 },
+  prospection:  { name: 'Prospection',  icon: '◎', color: '#ffd84a', desc: '+30% de chances d’obtenir des équipements', max: 5 },
   pa:           { name: 'Points d’Action', icon: '★', color: '#4fc3f7', desc: '-7% temps de recharge', max: 5 },
-  resistance:   { name: 'Résistance',   icon: '⛨', color: '#a0a0b0', desc: '-6% dégâts subis', max: 5 },
   soin:         { name: 'Soins',        icon: '✚', color: '#7dff9a', desc: '+0,5 PV régénérés/s', max: 5 },
 };
 
@@ -699,6 +698,78 @@ const DOFUS = {
   ebene:     { name: 'Dofus Ébène',     color: '#2a2a3a', desc: '+8% vitesse, +8% dégâts' },
   vulbis:    { name: 'Dofus Vulbis',    color: '#b8e0ff', desc: '+6% à tout' },
 };
+
+// ---------------------------------------------------------------- Équipements (valables pour la partie)
+// Lâchés par les monstres listés dans `from` (la Prospection augmente les chances).
+// Les objets `rare` tombent à coup sûr sur le boss intermédiaire de leur zone.
+// Bonus : hp, dmg, speed, xp, area, kamas (en +%), cd (en -% de recharge), crit (en +points), regen (PV/s).
+const SLOTS = {
+  coiffe: { name: 'Coiffe', icon: '⛑' }, cape: { name: 'Cape', icon: '🧣' }, amulette: { name: 'Amulette', icon: '📿' },
+  anneau: { name: 'Anneau', icon: '💍' }, ceinture: { name: 'Ceinture', icon: '🎗' }, bottes: { name: 'Bottes', icon: '👢' },
+  arme: { name: 'Arme', icon: '🗡' },
+};
+
+const ITEMS = {
+  // Astrub — Panoplie du Bouftou
+  bouftou_coiffe:    { name: 'Coiffe du Bouftou', slot: 'coiffe', set: 'bouftou', from: ['bouftou'], bonus: { hp: 0.10 } },
+  bouftou_cape:      { name: 'Cape du Bouftou', slot: 'cape', set: 'bouftou', from: ['bouftou'], bonus: { dmg: 0.06 } },
+  boufbottes:        { name: 'Boufbottes', slot: 'bottes', set: 'bouftou', from: ['bouftou'], bonus: { speed: 0.06 } },
+  bouftou_amulette:  { name: 'Amulette du Bouftou', slot: 'amulette', set: 'bouftou', from: ['bouftou'], bonus: { xp: 0.10 } },
+  bouftou_ceinture:  { name: 'Ceinture du Bouftou', slot: 'ceinture', set: 'bouftou', from: ['bouftou'], bonus: { regen: 0.3 } },
+  bouftou_anneau:    { name: 'Anneau du Bouftou', slot: 'anneau', set: 'bouftou', from: ['bouftou'], bonus: { crit: 0.03 } },
+  bouftou_marteau:   { name: 'Marteau du Bouftou', slot: 'arme', set: 'bouftou', from: ['bouftou'], bonus: { dmg: 0.08 } },
+  // Astrub — autres monstres
+  cape_tofu:         { name: 'Cape du Tofu', slot: 'cape', from: ['tofu'], bonus: { speed: 0.08 } },
+  pantoufles_tofu:   { name: 'Pantoufles du Tofu', slot: 'bottes', from: ['tofu'], bonus: { speed: 0.05, crit: 0.02 } },
+  coiffe_piou:       { name: 'Coiffe de Piou', slot: 'coiffe', from: ['piou'], bonus: { crit: 0.04 } },
+  anneau_larve:      { name: 'Anneau de Larve', slot: 'anneau', from: ['larve_bleue'], bonus: { cd: 0.04 } },
+  // Astrub — Panoplie du Bouftou Royal (rare)
+  royal_coiffe:      { name: 'Coiffe du Bouftou Royal', slot: 'coiffe', set: 'royal', rare: true, from: ['bouftou'], bonus: { hp: 0.18 } },
+  royal_cape:        { name: 'Cape du Bouftou Royal', slot: 'cape', set: 'royal', rare: true, from: ['bouftou'], bonus: { dmg: 0.10 } },
+  royal_bottes:      { name: 'Boufbottes Royales', slot: 'bottes', set: 'royal', rare: true, from: ['bouftou'], bonus: { speed: 0.10 } },
+  royal_amulette:    { name: 'Amulette du Bouftou Royal', slot: 'amulette', set: 'royal', rare: true, from: ['bouftou'], bonus: { xp: 0.15, dmg: 0.04 } },
+  royal_anneau:      { name: 'Anneau du Bouftou Royal', slot: 'anneau', set: 'royal', rare: true, from: ['bouftou'], bonus: { crit: 0.05 } },
+  royal_ceinture:    { name: 'Ceinture du Bouftou Royal', slot: 'ceinture', set: 'royal', rare: true, from: ['bouftou'], bonus: { regen: 0.6 } },
+  royal_epee:        { name: 'Épée du Bouftou Royal', slot: 'arme', set: 'royal', rare: true, from: ['bouftou'], bonus: { dmg: 0.15 } },
+  // Amakna
+  coiffe_sanglier:   { name: 'Coiffe du Sanglier', slot: 'coiffe', from: ['sanglier'], bonus: { hp: 0.10, dmg: 0.03 } },
+  anneau_arakne:     { name: 'Anneau d’Arakne', slot: 'anneau', from: ['arakne'], bonus: { crit: 0.04 } },
+  bottes_moskito:    { name: 'Bottes de Moskito', slot: 'bottes', from: ['moskito'], bonus: { speed: 0.08 } },
+  cape_prespic:      { name: 'Cape du Prespic', slot: 'cape', from: ['prespic'], bonus: { dmg: 0.07 } },
+  cape_black_wabbit: { name: 'Cape du Black Wabbit', slot: 'cape', rare: true, from: ['arakne', 'sanglier'], bonus: { dmg: 0.12, crit: 0.03 } },
+  // Forêt des Abraknydes
+  baton_abraknyde:   { name: 'Bâton d’Abraknyde', slot: 'arme', from: ['abraknyde'], bonus: { dmg: 0.10 } },
+  casque_chafer:     { name: 'Casque du Chafer', slot: 'coiffe', from: ['chafer'], bonus: { hp: 0.12 } },
+  amulette_fantome:  { name: 'Amulette du Fantôme', slot: 'amulette', from: ['fantome'], bonus: { xp: 0.12, cd: 0.03 } },
+  arc_chafer:        { name: 'Arc du Chafer Archer', slot: 'arme', from: ['chafer_archer'], bonus: { dmg: 0.08, crit: 0.03 } },
+  ceinture_ancestrale: { name: 'Ceinture Ancestrale', slot: 'ceinture', rare: true, from: ['abraknyde'], bonus: { regen: 0.8, hp: 0.08 } },
+  // Montagne des Craqueleurs
+  bottes_craqueleur: { name: 'Bottes du Craqueleur', slot: 'bottes', from: ['craqueleur'], bonus: { hp: 0.12 } },
+  ceinture_bwork:    { name: 'Ceinture du Bwork', slot: 'ceinture', from: ['bwork'], bonus: { dmg: 0.06, hp: 0.06 } },
+  anneau_gelee:      { name: 'Anneau de Gelée', slot: 'anneau', from: ['gelee'], bonus: { regen: 0.5 } },
+  amulette_bwork_mage: { name: 'Amulette du Bwork Mage', slot: 'amulette', from: ['bwork_mage'], bonus: { area: 0.10 } },
+  coiffe_craq_legend:{ name: 'Coiffe du Craqueleur Légendaire', slot: 'coiffe', rare: true, from: ['craqueleur'], bonus: { hp: 0.20 } },
+  // Frigost
+  cape_mansot:       { name: 'Cape du Mansot', slot: 'cape', from: ['mansot'], bonus: { speed: 0.08, crit: 0.02 } },
+  amulette_boufmouth:{ name: 'Amulette du Boufmouth', slot: 'amulette', from: ['boufmouth'], bonus: { hp: 0.12, xp: 0.08 } },
+  anneau_sapik:      { name: 'Anneau du Sapik', slot: 'anneau', from: ['sapik'], bonus: { crit: 0.05 } },
+  bottes_fecorce:    { name: 'Bottes de Fécorce', slot: 'bottes', from: ['fecorce'], bonus: { speed: 0.10 } },
+  coiffe_mansot_royal: { name: 'Coiffe du Mansot Royal', slot: 'coiffe', rare: true, from: ['mansot'], bonus: { dmg: 0.12, hp: 0.12 } },
+};
+
+// Bonus de panoplie : débloqués à partir du nombre de pièces indiqué (bonus cumulés).
+const SETS = {
+  bouftou: { name: 'Panoplie du Bouftou', bonus: { 3: { hp: 0.10 }, 5: { dmg: 0.10 }, 7: { crit: 0.05 } } },
+  royal: { name: 'Panoplie du Bouftou Royal', bonus: { 3: { dmg: 0.10 }, 5: { hp: 0.15 }, 7: { crit: 0.07, area: 0.10 } } },
+};
+
+// Texte lisible d'un ensemble de bonus d'équipement.
+const BONUS_TEXT = {
+  hp: (v) => `+${Math.round(v * 100)}% PV`, dmg: (v) => `+${Math.round(v * 100)}% dégâts`, speed: (v) => `+${Math.round(v * 100)}% vitesse`,
+  xp: (v) => `+${Math.round(v * 100)}% XP`, area: (v) => `+${Math.round(v * 100)}% zones`, kamas: (v) => `+${Math.round(v * 100)}% kamas`,
+  cd: (v) => `-${Math.round(v * 100)}% recharge`, crit: (v) => `+${Math.round(v * 100)}% critique`, regen: (v) => `+${v} PV/s`,
+};
+function bonusText(b) { return Object.entries(b).map(([k, v]) => BONUS_TEXT[k](v)).join(', '); }
 
 // ---------------------------------------------------------------- Boutique (améliorations permanentes)
 const SHOP = {

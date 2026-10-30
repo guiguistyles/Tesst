@@ -18,7 +18,8 @@ Ajoutez `?debug` à l'URL pour jouer en mode invincible pendant les tests.
 - **10 classes** : Iop, Crâ, Féca, Eniripsa, Sram, Xélor, Osamodas, plus Sacrieur, Enutrof et Roublard à débloquer avec des kamas. Chaque classe a **8 sorts** tirés de son kit Dofus 2 (Pression, Bond, Colère de Iop…), améliorables jusqu'au niveau 5. Le premier est connu d'entrée, les autres arrivent par les cartes de niveau.
 - **Cartes de niveau** façon ZaapRush : à chaque niveau, 3 cartes de natures différentes (améliorer un sort, nouveau sort, caractéristique), une carte conseillée, *Relancer* (×2) et *Bannir* (×1) par partie. Raccourcis 1/2/3, R et B.
 - **XP directe** : chaque monstre tué donne son expérience tout de suite, sans rien à ramasser.
-- **10 caractéristiques** proposées par les cartes : Vitalité, Force, Agilité, Intelligence, Sagesse, Chance, Prospection, PA, Résistance, Soins.
+- **9 caractéristiques** proposées par les cartes : Vitalité, Force, Agilité, Intelligence, Sagesse, Chance, Prospection (+30% de chances d'équipement), PA, Soins.
+- **Équipements pour la partie** : les monstres lâchent des objets (coiffe, cape, amulette, anneau, ceinture, bottes, arme), comme la panoplie du Bouftou sur les Bouftous. L'objet s'équipe tout seul s'il vaut mieux que celui porté, sinon il est revendu en kamas. Les panoplies donnent un bonus à 3, 5 et 7 pièces. Le boss intermédiaire lâche toujours un objet rare (panoplie du Bouftou Royal à Astrub). Les objets sont définis dans `ITEMS` et `SETS` (`js/data.js`).
 - **5 zaaps / zones** à débloquer l'une après l'autre : Astrub, Amakna, Forêt des Abraknydes, Montagne des Craqueleurs, Frigost. Chacune a ses monstres, deux boss intermédiaires (3:00 et 6:00) et un gardien (8:00).
 - **10 Dofus** à récolter sur les gardiens. Chacun donne un bonus permanent.
 - **Boutique** d'améliorations permanentes payées en kamas, et Résurrection.
