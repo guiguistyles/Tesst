@@ -163,6 +163,7 @@ function startGame() {
   ['#ov-end', '#ov-pause', '#ov-levelup'].forEach((s) => $(s).classList.add('hidden'));
   $('#hud').classList.remove('hidden');
   inGame = true;
+  unlockedMsg = '';
   Game.start(selectedClass, selectedZone, Save.data);
 }
 
@@ -186,7 +187,8 @@ function onHud(h) {
   $('#hp-txt').textContent = Math.ceil(Math.max(0, h.hp)) + ' / ' + h.maxHp;
   $('#xp-fill').style.width = (100 * h.xp / h.xpNext) + '%';
   $('#lvl').textContent = 'Niv. ' + h.level;
-  $('#timer').textContent = fmtTime(h.t);
+  $('#timer').textContent = 'Vague ' + h.wave;
+  $('#timer').title = fmtTime(h.t);
   $('#kills').textContent = h.kills;
   $('#hud-kamas').textContent = h.kamas;
   const bb = $('#boss-bar');
@@ -295,33 +297,48 @@ function togglePause() {
   Game.setPaused(willPause);
 }
 
+// Premier kill du boss final (vague 40) : le zaap suivant s'ouvre pour de bon, sauvegardé tout de suite.
+let unlockedMsg = '';
+function onZoneCleared(zoneIdx) {
+  const d = Save.data;
+  if (!d.cleared.includes(zoneIdx)) {
+    d.cleared.push(zoneIdx);
+    if (ZONES[zoneIdx + 1]) unlockedMsg = 'Nouveau zaap activé : ' + ZONES[zoneIdx + 1].name;
+  }
+  d.best[selectedClass] = Math.max(d.best[selectedClass] || 0, zoneIdx + 1);
+  Save.store();
+}
+
+// Un Dofus ramassé est gardé même si la partie est abandonnée ensuite.
+function onDofus(id) {
+  if (!Save.data.dofus.includes(id)) Save.data.dofus.push(id);
+  Save.store();
+}
+
 function onEnd(r) {
   inGame = false;
   const z = ZONES[r.zoneIdx];
   const d = Save.data;
   d.kamas += r.kamas;
   for (const id of r.found) if (!d.dofus.includes(id)) d.dofus.push(id);
-  let unlockedMsg = '';
-  if (r.victory && !d.cleared.includes(r.zoneIdx)) {
-    d.cleared.push(r.zoneIdx);
-    if (ZONES[r.zoneIdx + 1]) unlockedMsg = 'Nouveau zaap activé : ' + ZONES[r.zoneIdx + 1].name;
-  }
-  if (r.victory) d.best[r.cls] = Math.max(d.best[r.cls] || 0, r.zoneIdx + 1);
   Save.store();
+  const msg = unlockedMsg;
+  unlockedMsg = '';
 
-  $('#end-title').textContent = r.victory ? 'Victoire !' : 'Vous êtes mort…';
+  $('#end-title').textContent = r.victory ? 'Zone vaincue !' : 'Vous êtes mort…';
   const loot = r.found.map((id) => `<div class="dofus-egg" style="background:${DOFUS[id].color};--glow:${DOFUS[id].color}" title="${DOFUS[id].name}"></div><b>${DOFUS[id].name}</b>`).join('');
   $('#end-stats').innerHTML = `
     ${loot ? `<div class="loot">${loot}</div>` : ''}
     <div class="stats">
       <span>Zone</span><span>${z.name}</span>
       <span>Classe</span><span>${CLASSES[r.cls].name}</span>
-      <span>Temps survécu</span><span>${fmtTime(r.t)}</span>
+      <span>Vague atteinte</span><span>${r.wave} (${fmtTime(r.t)})</span>
+      <span>Boss final vaincu</span><span>${r.bossKills ? '×' + r.bossKills : '—'}</span>
       <span>Niveau atteint</span><span>${r.level}</span>
       <span>Monstres vaincus</span><span>${r.kills}</span>
       <span>Kamas gagnés</span><span><b class="k">K</b> ${r.kamas}</span>
     </div>
-    ${unlockedMsg ? `<p class="hint" style="color:var(--gold)">${unlockedMsg}</p>` : ''}`;
+    ${msg ? `<p class="hint" style="color:var(--gold)">${msg}</p>` : ''}`;
   $('#ov-levelup').classList.add('hidden');
   $('#ov-pause').classList.add('hidden');
   $('#ov-end').classList.remove('hidden');
@@ -331,7 +348,7 @@ function onEnd(r) {
 function boot() {
   Save.load();
   document.title = GAME_TITLE;
-  Game.init($('#game'), { onHud, onLevelUp, onBanner, onEnd, onPauseKey: togglePause });
+  Game.init($('#game'), { onHud, onLevelUp, onBanner, onEnd, onZoneCleared, onDofus, onProgress: () => Save.store(), onPauseKey: togglePause });
 
   $$('[data-go]').forEach((b) => b.addEventListener('click', () => show(b.dataset.go)));
   $('#btn-pause').addEventListener('click', togglePause);

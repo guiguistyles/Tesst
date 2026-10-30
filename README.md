@@ -11,7 +11,7 @@ Aucune dépendance ni compilation : ouvrez `index.html` dans un navigateur, ou s
 python3 -m http.server 8000   # puis http://localhost:8000
 ```
 
-Ajoutez `?debug` à l'URL pour jouer en mode invincible pendant les tests.
+Ajoutez `?debug` à l'URL pour jouer en mode invincible pendant les tests, et `&wave=39` pour commencer directement à une vague donnée (par exemple juste avant le boss final).
 
 ## Contenu
 
@@ -20,8 +20,8 @@ Ajoutez `?debug` à l'URL pour jouer en mode invincible pendant les tests.
 - **XP directe** : chaque monstre tué donne son expérience tout de suite, sans rien à ramasser.
 - **9 caractéristiques** proposées par les cartes : Vitalité, Force, Agilité, Intelligence, Sagesse, Chance, Prospection (+30% de chances d'équipement), PA, Soins.
 - **Équipements pour la partie** : les monstres lâchent des objets (coiffe, cape, amulette, anneau, ceinture, bottes, arme), comme la panoplie du Bouftou sur les Bouftous. L'objet s'équipe tout seul s'il vaut mieux que celui porté, sinon il est revendu en kamas. Les panoplies donnent un bonus à 3, 5 et 7 pièces. Le boss intermédiaire lâche toujours un objet rare (panoplie du Bouftou Royal à Astrub). Les objets sont définis dans `ITEMS` et `SETS` (`js/data.js`).
-- **5 zaaps / zones** à débloquer l'une après l'autre : Astrub, Amakna, Forêt des Abraknydes, Montagne des Craqueleurs, Frigost. Chacune a ses monstres, deux boss intermédiaires (3:00 et 6:00) et un gardien (8:00).
-- **10 Dofus** à récolter sur les gardiens. Chacun donne un bonus permanent.
+- **5 zaaps / zones** : Astrub, Amakna, Forêt des Abraknydes, Montagne des Craqueleurs, Frigost. Comme dans ZaapRush, la partie avance par **vagues de 22 s** : boss intermédiaires aux vagues 14 et 27, **boss final à la vague 40**, qui revient ensuite toutes les 15 vagues (+15 % de PV à chaque retour). La partie continue jusqu'à la mort. Le premier kill du boss final ouvre pour de bon le zaap suivant.
+- **10 Dofus**, drops légendaires : chaque boss final battu tente le Dofus de sa zone avec **1 % de chance + 0,5 % par échec précédent** (compteur par zone, sauvegardé, remis à zéro quand le Dofus tombe). La Prospection ne change pas cette chance. Chaque Dofus donne un bonus permanent.
 - **Boutique** d'améliorations permanentes payées en kamas, et Résurrection.
 - PC (ZQSD / WASD / flèches, Échap pour la pause) et mobile (joystick tactile).
 - Sauvegarde automatique dans le navigateur (`localStorage`).

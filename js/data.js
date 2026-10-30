@@ -701,7 +701,7 @@ const DOFUS = {
 
 // ---------------------------------------------------------------- Équipements (valables pour la partie)
 // Lâchés par les monstres listés dans `from` (la Prospection augmente les chances).
-// Les objets `rare` tombent à coup sûr sur le boss intermédiaire de leur zone.
+// Les objets `rare` tombent à coup sûr sur le boss final de leur zone (et très rarement sur ses monstres).
 // Bonus : hp, dmg, speed, xp, area, kamas (en +%), cd (en -% de recharge), crit (en +points), regen (PV/s).
 const SLOTS = {
   coiffe: { name: 'Coiffe', icon: '⛑' }, cape: { name: 'Cape', icon: '🧣' }, amulette: { name: 'Amulette', icon: '📿' },

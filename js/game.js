@@ -17,11 +17,13 @@ const Game = (() => {
   // Sorts qui déclenchent l'animation d'attaque du personnage.
   const ATTACK_TYPES = new Set(['projectile', 'melee', 'nova', 'strike', 'trap', 'glyph', 'dash']);
   const GOD_MODE = /[?&]debug\b/.test(location.search); // invincibilité pour les tests
-  const BOSS_TIMES = [
-    { t: 180, kind: 'mini', hp: 1 },
-    { t: 360, kind: 'mini', hp: 1.8 },
-    { t: 480, kind: 'boss', hp: 1 },
-  ];
+  // ?debug&wave=N : commence la partie à la vague N (tests du boss final)
+  const START_WAVE = GOD_MODE ? Math.max(1, +(location.search.match(/[?&]wave=(\d+)/) || [])[1] || 1) : 1;
+  // Rythme façon ZaapRush : une vague toutes les 22 s, boss intermédiaires aux vagues 14 et 27,
+  // boss final à la vague 40 puis toutes les 15 vagues (+15 % de PV à chaque retour).
+  const WAVE_LEN = 22, FINAL_WAVE = 40, BOSS_RETURN = 15, BOSS_HP_STEP = 0.15;
+  const MINI_WAVES = [{ wave: 14, hp: 1 }, { wave: 27, hp: 1.8 }];
+  const DOFUS_CHANCE = [0.01, 0.005]; // 1 % + 0,5 % par boss final battu sans le Dofus
 
   const rand = (a, b) => a + Math.random() * (b - a);
   const pick = (arr) => arr[(Math.random() * arr.length) | 0];
@@ -208,14 +210,22 @@ const Game = (() => {
       const n = Object.values(S.items).filter((o) => ITEMS[o].set === it.set).length;
       if (SETS[it.set].bonus[n]) sub += ' · ' + SETS[it.set].name + ' (' + n + ') : ' + bonusText(SETS[it.set].bonus[n]);
     }
-    cb.onBanner(it.name, sub);
+    banner(it.name, sub);
+  }
+
+  // Bandeau d'annonce. Un bandeau important (boss vaincu, zaap, Dofus) reste 3 s à l'écran :
+  // pendant ce temps, les annonces ordinaires passent en texte flottant.
+  function banner(title, sub, important) {
+    if (!important && S.t < (S.bannerLock || 0)) { addText(S.p.x, S.p.y - 50, title, '#ffe7a0', true); return; }
+    if (important) S.bannerLock = S.t + 3;
+    cb.onBanner(title, sub);
   }
 
   function dropItems(e) {
     const pool = DROPS[e.id], z = S.zone;
     let id = null;
-    if (e.kind === 'mini') {
-      // le boss intermédiaire lâche toujours un objet rare de sa zone
+    if (e.kind === 'boss') {
+      // le boss final lâche toujours une pièce rare de sa zone
       const rares = z.monsters.flatMap((m) => (DROPS[m] ? DROPS[m].rare : []));
       if (rares.length) id = pick(rares);
     } else if (pool && !e.boss) {
@@ -253,9 +263,13 @@ const Game = (() => {
       meta: metaStats(save), stats: null, passives: {}, spells: [],
       enemies: [], projs: [], eprojs: [], gems: [], fx: [], texts: [], traps: [], glyphs: [], strikes: [],
       buffs: [], items: {}, rerolls: 2, bans: 1, banned: new Set(),
-      spawnAcc: 0, nextWave: 60, bossIdx: 0, boss: null, pending: 0, choosing: false,
+      spawnAcc: 0, nextHorde: 60, wave: 1, miniIdx: 0, nextFinal: FINAL_WAVE, bossKills: 0, boss: null, pending: 0, choosing: false,
       found: [], over: false, endTimer: -1, victory: false, grid: new Map(),
     };
+    if (START_WAVE > 1) {
+      S.t = (START_WAVE - 1) * WAVE_LEN; S.wave = START_WAVE; S.nextHorde = S.t + 60;
+      S.miniIdx = MINI_WAVES.filter((m) => m.wave < START_WAVE).length;
+    }
     recomputeStats();
     preloadSprites(S.zone, clsId);
     S.p.hp = S.p.maxHp;
@@ -288,7 +302,7 @@ const Game = (() => {
   function hudData() {
     return {
       hp: S.p.hp, maxHp: S.p.maxHp, shield: S.p.shield, xp: S.xp, xpNext: S.xpNext, level: S.level,
-      t: S.t, kills: S.kills, kamas: Math.floor(S.kamas), spells: S.spells, passives: S.passives, items: S.items,
+      t: S.t, wave: S.wave, kills: S.kills, kamas: Math.floor(S.kamas), spells: S.spells, passives: S.passives, items: S.items,
       boss: S.boss && !S.boss.dead ? { name: S.boss.def.name, hp: S.boss.hp, maxHp: S.boss.maxHp } : null,
     };
   }
@@ -413,7 +427,7 @@ const Game = (() => {
 
   function spawnEnemy(id, x, y, hpMul = 1) {
     const def = MONSTERS[id], z = S.zone;
-    const scale = def.boss ? 1 : 1 + S.t / 200;
+    const scale = def.boss ? 1 : 1 + S.t / 300;
     if (x === undefined) {
       const a = rand(0, Math.PI * 2), R = viewRadius();
       x = S.p.x + Math.cos(a) * R; y = S.p.y + Math.sin(a) * R;
@@ -421,7 +435,7 @@ const Game = (() => {
     const hp = def.hp * z.hpMul * scale * hpMul;
     const e = {
       id, def, x, y, r: def.r, hp, maxHp: hp, speed: def.speed * rand(0.9, 1.1),
-      dmg: def.dmg * z.dmgMul * (1 + S.t / 400), xp: def.xp, boss: def.boss || 0,
+      dmg: def.dmg * z.dmgMul * (1 + S.t / 550), xp: def.xp, boss: def.boss || 0,
       kvx: 0, kvy: 0, slow: 0, slowT: 0, poison: 0, poisonT: 0, poisonAcc: 0, atk: 0, flash: 0,
       seed: Math.random() * 10, shot: rand(1, 2), hitT: {}, ab: 3, charge: 0, cx: 0, cy: 0,
     };
@@ -430,33 +444,65 @@ const Game = (() => {
   }
 
   function spawn(dt) {
-    if (S.over || S.victory) return;
+    if (S.over) return;
     const z = S.zone, t = S.t;
+    const wave = 1 + Math.floor(t / WAVE_LEN);
+    if (wave !== S.wave) S.wave = wave;
     const avail = z.monsters.slice(0, Math.min(z.monsters.length, 1 + Math.floor(t / 40)));
-    const rate = 0.9 + t / 28;
+    // le boss final arrive presque seul : les apparitions ralentissent tant qu'il est en vie
+    const finalAlive = S.boss && !S.boss.dead && S.boss.kind === 'boss';
+    const rate = (0.9 + t / 45) * (finalAlive ? 0.3 : 1);
     S.spawnAcc += rate * dt;
     while (S.spawnAcc >= 1) {
       S.spawnAcc -= 1;
       if (S.enemies.length < MAX_ENEMIES) spawnEnemy(pick(avail));
     }
-    if (t >= S.nextWave) {
-      S.nextWave += 60;
-      const id = pick(avail), n = Math.floor(14 + t / 18), R = viewRadius() - 20;
+    if (t >= S.nextHorde && !finalAlive) {
+      S.nextHorde += 60;
+      const id = pick(avail), n = Math.floor(14 + t / 25), R = viewRadius() - 20;
       for (let i = 0; i < n && S.enemies.length < MAX_ENEMIES + 40; i++) {
         const a = (i / n) * Math.PI * 2;
         spawnEnemy(id, S.p.x + Math.cos(a) * R, S.p.y + Math.sin(a) * R);
       }
       cb.onBanner('Une horde approche !', '');
     }
-    const b = BOSS_TIMES[S.bossIdx];
-    if (b && t >= b.t) {
-      S.bossIdx++;
-      const id = b.kind === 'boss' ? z.boss : z.mini;
-      const e = spawnEnemy(id, undefined, undefined, b.hp);
-      e.kind = b.kind;
-      S.boss = e;
-      cb.onBanner(MONSTERS[id].name, b.kind === 'boss' ? 'Le gardien de la zone apparaît !' : 'Un boss apparaît !');
+    const mini = MINI_WAVES[S.miniIdx];
+    if (mini && wave >= mini.wave && !(S.boss && !S.boss.dead)) {
+      S.miniIdx++;
+      spawnBoss(z.mini, 'mini', mini.hp, 'Un boss apparaît !');
     }
+    if (wave >= S.nextFinal && !(S.boss && !S.boss.dead)) {
+      S.nextFinal += BOSS_RETURN;
+      const hp = 1.6 * (1 + BOSS_HP_STEP * S.bossKills);
+      spawnBoss(z.boss, 'boss', hp, S.bossKills ? `Il revient, plus fort (vague ${wave})` : `Le boss final de la zone (vague ${wave}) !`);
+    }
+  }
+
+  function spawnBoss(id, kind, hp, sub) {
+    const e = spawnEnemy(id, undefined, undefined, hp);
+    e.kind = kind;
+    S.boss = e;
+    cb.onBanner(MONSTERS[id].name, sub);
+  }
+
+  // Tirage du Dofus de zone sur le boss final : 1 % + 0,5 % par échec précédent (compteur par zone,
+  // sauvegardé, remis à zéro quand le Dofus tombe). La Prospection n'y change rien.
+  function rollDofus(e) {
+    const z = S.zone, save = S.save;
+    const owned = save.dofus.concat(S.found);
+    const free = z.dofus.filter((d) => !owned.includes(d));
+    if (!free.length) return;
+    save.dofusPity = save.dofusPity || {};
+    const misses = save.dofusPity[z.id] || 0, [base, step] = z.dofusChance || DOFUS_CHANCE;
+    const chance = base + step * misses;
+    if (Math.random() < chance) {
+      save.dofusPity[z.id] = 0;
+      S.gems.push({ kind: 'dofus', id: pick(free), x: e.x, y: e.y, v: 0, mag: true });
+    } else {
+      save.dofusPity[z.id] = misses + 1;
+      addText(e.x, e.y - 60, `Pas de Dofus (prochaine chance : ${((base + step * (misses + 1)) * 100).toFixed(1)} %)`, '#c8b8ff', true);
+    }
+    cb.onProgress();
   }
 
   // ------------------------------------------------------------ Dégâts infligés
@@ -509,15 +555,16 @@ const Game = (() => {
       }
       if (S.boss === e) S.boss = null;
       if (e.kind === 'boss') {
-        const owned = S.save.dofus.concat(S.found);
-        const free = z.dofus.filter((d) => !owned.includes(d));
-        if (free.length) S.gems.push({ kind: 'dofus', id: pick(free), x: e.x, y: e.y, v: 0 });
-        else S.gems.push({ kind: 'kamas', x: e.x, y: e.y, v: Math.ceil(250 * z.kamas) });
-        S.victory = true;
-        S.endTimer = 3.5;
-        for (const g of S.gems) g.mag = true;
-        for (const o of S.enemies) if (!o.dead && o !== e) { o.dead = true; gainXp(o.x, o.y, o.xp); }
-        cb.onBanner('Victoire !', e.def.name + ' est vaincu');
+        // la partie continue : le boss reviendra toutes les 15 vagues
+        S.bossKills++;
+        S.gems.push({ kind: 'kamas', x: e.x, y: e.y, v: Math.ceil(100 * z.kamas) });
+        rollDofus(e);
+        if (!S.victory) {
+          S.victory = true;
+          cb.onZoneCleared(S.zoneIdx);
+          const next = ZONES[S.zoneIdx + 1];
+          banner(e.def.name + ' est vaincu !', next ? 'Zaap débloqué : ' + next.name : 'Toutes les zones sont terminées', true);
+        } else banner(e.def.name + ' est vaincu !', 'Il reviendra à la vague ' + S.nextFinal, true);
       } else {
         S.gems.push({ kind: 'chest', x: e.x, y: e.y, v: 0 });
       }
@@ -891,7 +938,8 @@ const Game = (() => {
         break;
       case 'dofus':
         S.found.push(g.id);
-        cb.onBanner(DOFUS[g.id].name + ' !', DOFUS[g.id].desc);
+        cb.onDofus(g.id);
+        banner(DOFUS[g.id].name + ' !', DOFUS[g.id].desc, true);
         break;
     }
   }
@@ -976,7 +1024,7 @@ const Game = (() => {
 
   function finish() {
     const res = {
-      victory: S.victory, t: S.t, kills: S.kills, level: S.level,
+      victory: S.victory, t: S.t, wave: S.wave, bossKills: S.bossKills, kills: S.kills, level: S.level,
       kamas: Math.floor(S.kamas), found: S.found.slice(), zoneIdx: S.zoneIdx, cls: S.cls,
     };
     cancelAnimationFrame(raf);
