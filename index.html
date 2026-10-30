@@ -13,15 +13,19 @@
 
   <!-- ===== Menu principal ===== -->
   <section id="screen-menu" class="screen active">
+    <canvas class="scene" id="menu-scene" aria-hidden="true"></canvas>
     <div class="topbar"><span class="kamas-pill"><b class="k">K</b> <span data-kamas>0</span></span></div>
     <div class="menu-box">
       <h1 class="logo">Zaap<span>Survie</span> <em>2.0</em></h1>
-      <p class="tagline">Survie dans le Monde des Douze</p>
+      <p class="tagline"><span>Survie dans le Monde des Douze</span></p>
+      <div class="menu-progress" id="menu-progress"></div>
       <div class="menu-buttons">
-        <button class="btn primary big" data-go="class">Jouer</button>
-        <button class="btn" data-go="shop">Boutique</button>
-        <button class="btn" data-go="dofus">Mes Dofus</button>
-        <button class="btn" data-go="help">Comment jouer</button>
+        <button class="btn primary big play" data-go="class">Jouer</button>
+        <div class="menu-tiles">
+          <button class="btn tile" data-go="shop"><svg viewBox="0 0 24 24"><path d="M6 8h12l-1 12H7z M9 8a3 3 0 0 1 6 0"/></svg>Boutique</button>
+          <button class="btn tile" data-go="dofus"><svg viewBox="0 0 24 24"><path d="M12 3c4 0 6.5 5.5 6.5 10a6.5 6.5 0 0 1-13 0C5.5 8.5 8 3 12 3z"/></svg>Dofus</button>
+          <button class="btn tile" data-go="help"><svg viewBox="0 0 24 24"><path d="M4 5h7a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4z M20 5h-7a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h7z"/></svg>Aide</button>
+        </div>
       </div>
       <p class="disclaimer">Jeu de fan non officiel, sans lien avec Ankama. DOFUS est une marque d’Ankama.</p>
     </div>
@@ -34,7 +38,26 @@
       <h2>Choisis ta classe</h2>
       <span class="kamas-pill"><b class="k">K</b> <span data-kamas>0</span></span>
     </div>
-    <div id="class-grid" class="grid"></div>
+    <div class="class-layout">
+      <div id="class-grid" class="class-roster"></div>
+      <div class="class-detail" id="class-detail">
+        <div class="class-stage">
+          <canvas id="class-preview"></canvas>
+          <button class="stage-turn left" id="turn-left" aria-label="Tourner à gauche">⟲</button>
+          <button class="stage-turn right" id="turn-right" aria-label="Tourner à droite">⟳</button>
+          <span class="stage-hint">Glisser pour tourner</span>
+        </div>
+        <div class="class-info">
+          <span class="class-role" id="cd-role"></span>
+          <h3 id="cd-name"></h3>
+          <p id="cd-desc"></p>
+          <div class="class-stats" id="cd-stats"></div>
+          <div class="spell-grid" id="cd-spells"></div>
+          <div class="spell-info" id="cd-spell-info"></div>
+          <button class="btn primary big" id="btn-pick">Choisir le zaap →</button>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- ===== Choix du zaap ===== -->
@@ -79,9 +102,9 @@
     <div class="help">
       <p><b>Déplacement</b> : ZQSD, WASD ou flèches. Sur mobile, posez le doigt n’importe où et glissez.</p>
       <p><b>Attaque</b> : vos sorts se lancent tout seuls. Concentrez-vous sur l’esquive !</p>
-      <p><b>Expérience</b> : ramassez les cristaux lâchés par les monstres pour monter de niveau et choisir un nouveau sort ou une caractéristique.</p>
-      <p><b>Boss</b> : un boss apparaît à 3:00 et 6:00 et lâche un coffre. Le gardien de la zone arrive à 8:00 : battez-le pour gagner la partie, débloquer le zaap suivant et obtenir un Dofus.</p>
-      <p><b>Kamas</b> : dépensez-les à la boutique ou pour débloquer de nouvelles classes.</p>
+      <p><b>Expérience</b> : chaque monstre tué vous donne de l’expérience. À chaque niveau, choisissez une carte : nouveau sort, rang supplémentaire, caractéristique ou éveil (rang 5).</p>
+      <p><b>Vagues</b> : une nouvelle vague arrive toutes les 22 s. Des boss surgissent aux vagues 14 et 27, le gardien du monde à la vague 40. Battez-le pour ouvrir le monde suivant et tenter d’obtenir son Dofus.</p>
+      <p><b>Kamas</b> : dépensez-les à la boutique pour des améliorations permanentes.</p>
       <p><b>Pause</b> : Échap ou P.</p>
     </div>
   </section>
