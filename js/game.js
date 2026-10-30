@@ -244,15 +244,18 @@ const Game = (() => {
       if (u.m) for (const k in u.m) s[k] = (s[k] || 0) * u.m[k];
       if (u.a) for (const k in u.a) s[k] = (s[k] || 0) + u.a[k];
     };
-    // rangs 2 à 5, puis l'Éveil (rang 6), puis les rangs 7 à 10
-    for (let i = 0; i < Math.min(sp.lvl, AWAKEN_RANK) - 1; i++) apply(def.up[i]);
+    // un rang par carte « Améliorer » choisie, puis les valeurs de la branche d'Éveil
+    for (const k in sp.picks) {
+      const st = RANK_STEPS[k], n = sp.picks[k];
+      if (st.m) s[k] = (s[k] || 0) * Math.pow(st.m, n);
+      if (st.a) s[k] = (s[k] || 0) + st.a * n;
+    }
     if (sp.branch) apply(branchesOf(def).find((b) => b.key === sp.branch));
-    for (let i = 0; i < sp.lvl - AWAKEN_RANK - 1; i++) apply(upAfter(def)[i]);
     return s;
   }
 
   function addSpell(id) {
-    const sp = { id, lvl: 1, timer: 0.3, angle: 0, minions: [] };
+    const sp = { id, lvl: 1, picks: {}, timer: 0.3, angle: 0, minions: [] };
     sp.s = spellStats(sp);
     S.spells.push(sp);
   }
@@ -372,6 +375,8 @@ const Game = (() => {
       p.shield -= a; d -= a;
     }
     if (d <= 0) return;
+    let lost = 0;
+    for (const g of S.glyphs) if (g.stack && lost < 3) { g.life = 0; lost++; }
     p.hp -= d;
     p.hurt = 0.15;
     if (p.hp <= 0) {
@@ -416,17 +421,17 @@ const Game = (() => {
       }
     }
   }
-  // Centre d'un groupe d'ennemis à portée : l'ennemi qui a le plus de voisins dans un rayon r.
-  function crowdSpot(x, y, range, r) {
-    const cands = nearest(x, y, range, 14);
-    if (!cands.length) return null;
-    let best = cands[0], bestN = -1;
-    for (const c of cands) {
-      let n = 0;
-      for (const o of cands) if (d2(c.x, c.y, o.x, o.y) <= r * r) n++;
-      if (n > bestN) { bestN = n; best = c; }
+  // Centres de n groupes d'ennemis à portée : les ennemis qui ont le plus de voisins dans un rayon r,
+  // en évitant de poser deux zones l'une sur l'autre.
+  function crowdSpots(x, y, range, r, n) {
+    const cands = nearest(x, y, range, 20);
+    const scored = cands.map((c) => ({ c, k: cands.filter((o) => d2(c.x, c.y, o.x, o.y) <= r * r).length })).sort((a, b) => b.k - a.k);
+    const out = [];
+    for (const { c } of scored) {
+      if (out.length >= n) break;
+      if (out.every((o) => d2(o.x, o.y, c.x, c.y) > r * r)) out.push({ x: c.x, y: c.y });
     }
-    return { x: best.x, y: best.y };
+    return out;
   }
 
   function nearest(x, y, range, n) {
@@ -536,7 +541,7 @@ const Game = (() => {
     if (e.dead) return;
     let d = base * S.stats.dmg * (1 + buffPow('pow'));
     if (o.rage) d *= 1 + (1 - S.p.hp / S.p.maxHp) * 1.5;
-    const crit = Math.random() < S.stats.crit + (o.crit || 0);
+    const crit = Math.random() < S.stats.crit + (o.crit || 0) + (S.p.shieldCrit && S.p.shield > 0 ? 0.4 : 0);
     if (crit) d *= S.stats.critDmg;
     d *= rand(0.9, 1.1);
     e.hp -= d;
@@ -546,7 +551,14 @@ const Game = (() => {
     if (o.poison) { e.poison = Math.max(e.poison, o.poison * S.stats.dmg); e.poisonT = Math.max(e.poisonT, o.poisonDur); }
     if (o.slow) { e.slow = Math.max(e.slow, o.slow); e.slowT = 0.7; }
     if (o.gold) e.gold = true;
-    if (e.hp <= 0) kill(e);
+    if (e.hp <= 0) {
+      kill(e);
+      if (o.glyph && o.glyph.fx === 'imprint') {
+        const marks = S.glyphs.filter((g) => g.imprint);
+        if (marks.length >= 20) marks[0].life = 0;
+        S.glyphs.push({ imprint: true, x: e.x, y: e.y, r: o.glyph.r * 0.45, dmg: o.glyph.dmg * 0.6, tick: o.glyph.tick, tt: 0, life: 30, max: 30, color: o.glyph.color });
+      }
+    }
   }
 
   function aoe(x, y, r, dmg, o, color) {
@@ -654,7 +666,7 @@ const Game = (() => {
             x: p.x, y: p.y - 6, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed,
             life: s.range / s.speed + 0.1, size: s.size, dmg: s.dmg, pierce: Math.round(s.pierce || 0),
             explode: s.explode ? s.explode * area : 0, knock: s.knock || 0, poison: s.poison || 0,
-            poisonDur: s.poisonDur || 0, slow: s.slow || 0, crit: s.crit || 0, gold: s.gold, color: def.color, hit: new Set(),
+            poisonDur: s.poisonDur || 0, slow: s.slow || 0, crit: s.crit || 0, fx: sp.fx, gold: s.gold, color: def.color, hit: new Set(),
           });
         }
         return true;
@@ -689,7 +701,7 @@ const Game = (() => {
         for (let i = 0; i < n; i++) {
           // la première frappe vise le boss s’il est à portée
           const e = i === 0 && S.boss && cands.includes(S.boss) ? S.boss : pick(cands);
-          S.strikes.push({ x: e.x, y: e.y, r: s.radius * area, dmg: s.dmg, rage: s.rage, t: s.delay, life: s.delay, color: def.color });
+          S.strikes.push({ x: e.x, y: e.y, r: s.radius * area, dmg: s.dmg, rage: s.rage, fx: sp.fx, t: s.delay, life: s.delay, color: def.color });
         }
         return true;
       }
@@ -705,11 +717,22 @@ const Game = (() => {
         return true;
       }
       case 'glyph': {
-        // posé dans la zone autour du personnage, là où les ennemis sont les plus groupés
-        const r = s.radius * area, at = crowdSpot(p.x, p.y, s.range || 260, r);
-        if (!at) return false;
-        S.glyphs.push({ x: at.x, y: at.y, r, dmg: s.dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
-        S.fx.push({ type: 'ring', x: at.x, y: at.y, r, t: 0, life: 0.35, color: def.color });
+        // posés dans la zone autour du personnage, sur les groupes d'ennemis les plus denses
+        const r = s.radius * area, spots = crowdSpots(p.x, p.y, s.range || 260, r, Math.round(s.count || 1));
+        if (!spots.length) return false;
+        const stack = sp.fx === 'stack';
+        for (const at of spots) {
+          const mine = S.glyphs.filter((g) => g.src === sp && g.stack);
+          if (stack && mine.length >= 14) {
+            // Accumulation pleine : chaque lancer renforce tous les glyphes
+            sp.stackBonus = (sp.stackBonus || 0) + 1;
+            addText(p.x, p.y - 44, 'Glyphes +' + sp.stackBonus, def.color);
+            break;
+          }
+          S.glyphs.push({ src: sp, stack, fx: sp.fx, x: at.x, y: at.y, r, dmg: s.dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
+          S.fx.push({ type: 'ring', x: at.x, y: at.y, r, t: 0, life: 0.35, color: def.color });
+        }
+        if (sp.fx === 'follow') S.glyphs.push({ src: sp, follow: true, x: p.x, y: p.y, r: r * 0.6, dmg: s.dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
         return true;
       }
       case 'heal': {
@@ -722,7 +745,9 @@ const Game = (() => {
       }
       case 'shield':
         p.shield = Math.max(p.shield, s.shield);
+        p.shieldCrit = sp.fx === 'shieldCrit';
         S.fx.push({ type: 'ring', x: p.x, y: p.y, r: 34, t: 0, life: 0.4, color: def.color });
+        if (sp.fx === 'shieldNova') aoe(p.x, p.y, 120 * area, s.shield * 0.8, { knock: 120 }, def.color); // Sursaut
         return true;
       case 'buff': {
         // ne se lance qu'en combat
@@ -899,13 +924,37 @@ const Game = (() => {
 
   function explodeProj(pr) {
     pr.life = 0;
-    aoe(pr.x, pr.y, pr.explode, pr.dmg, { knock: 20, gold: pr.gold }, pr.color);
+    // Aspiration : l'explosion attire vers son centre au lieu de repousser
+    aoe(pr.x, pr.y, pr.explode, pr.dmg, { knock: pr.fx === 'pull' ? -70 : 20, gold: pr.gold }, pr.color);
+    if (pr.fx === 'split' && !pr.child) {
+      // Ricochet : 3 petites bulles partent vers de nouvelles cibles
+      for (const t of nearest(pr.x, pr.y, 300, 4).slice(1, 4)) {
+        const a = Math.atan2(t.y - pr.y, t.x - pr.x), sp = 340;
+        S.projs.push({ ...pr, child: true, x: pr.x, y: pr.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1,
+          size: pr.size * 0.6, dmg: pr.dmg * 0.5, explode: pr.explode * 0.6, hit: new Set() });
+      }
+    }
   }
 
   function updateZones(dt) {
     for (const g of S.glyphs) {
-      g.life -= dt; g.tt -= dt;
-      if (g.tt <= 0) { g.tt = g.tick; query(g.x, g.y, g.r, (e) => hitEnemy(e, g.dmg, {})); }
+      if (!g.stack) g.life -= dt; // Accumulation : les glyphes restent
+      g.tt -= dt;
+      if (g.follow) { g.x = S.p.x; g.y = S.p.y; }
+      // Accumulation pleine : +8 % de dommages et +2 % de taille par lancer (taille +40 % au plus)
+      const bonus = g.stack ? g.src.stackBonus || 0 : 0;
+      const r = g.r * Math.min(1.4, 1 + 0.02 * bonus), dmg = g.dmg * (1 + 0.08 * bonus);
+      g.drawR = r;
+      if (g.tt <= 0) {
+        g.tt = g.tick;
+        query(g.x, g.y, r, (e) => {
+          // Foyer : moitié intérieure du glyphe à dommages doublés
+          const core = g.fx === 'core' && d2(e.x, e.y, g.x, g.y) < (r / 2) * (r / 2);
+          hitEnemy(e, core ? dmg * 2 : dmg, { glyph: g });
+        });
+      }
+      // Détonation : le glyphe explose à la fin de sa durée
+      if (g.fx === 'burst' && g.life <= 0 && !g.burst) { g.burst = true; aoe(g.x, g.y, r, dmg * 4, { knock: 40 }, g.color); }
     }
     S.glyphs = S.glyphs.filter((g) => g.life > 0);
 
@@ -922,7 +971,16 @@ const Game = (() => {
 
     for (const s of S.strikes) {
       s.t -= dt;
-      if (s.t <= 0) { aoe(s.x, s.y, s.r, s.dmg, { knock: 30, rage: s.rage }, s.color); s.done = true; }
+      if (s.t <= 0) {
+        aoe(s.x, s.y, s.r, s.dmg, { knock: 30, rage: s.rage }, s.color); s.done = true;
+        if (s.fx === 'chain') {
+          // Chaîne : la foudre rebondit sur 3 ennemis proches
+          for (const t of nearest(s.x, s.y, 220, 4).slice(0, 3)) {
+            hitEnemy(t, s.dmg * 0.5, { rage: s.rage });
+            S.fx.push({ type: 'trail', x: s.x, y: s.y + 14, x2: t.x, y2: t.y + 14, t: 0, life: 0.25, color: s.color });
+          }
+        }
+      }
     }
     S.strikes = S.strikes.filter((s) => !s.done);
   }
@@ -984,8 +1042,10 @@ const Game = (() => {
       const base = { kind: 'spell', id, name: def.name, icon: def.icon, color: def.color, type: TYPE_LABEL[def.type], max: MAX_RANK };
       if (!own) news.push({ ...base, lvl: 1, tag: 'Nouveau sort', desc: def.desc });
       else if (own.lvl === AWAKEN_RANK) ups.push({ ...base, kind: 'awaken', lvl: AWAKEN_RANK + 1, tag: 'Éveil', desc: 'Choix définitif entre 3 branches : ' + branchesOf(def).map((b) => b.name).join(', ') + '.' });
-      else if (own.lvl < AWAKEN_RANK) ups.push({ ...base, lvl: own.lvl + 1, tag: 'Améliorer', desc: def.up[own.lvl - 1].d });
-      else if (own.lvl < MAX_RANK) ups.push({ ...base, lvl: own.lvl + 1, tag: 'Améliorer', desc: upAfter(def)[own.lvl - AWAKEN_RANK - 1].d });
+      else if (own.lvl < MAX_RANK) {
+        const lines = rankLines(def).filter((k) => (own.picks[k] || 0) < RANK_STEPS[k].max);
+        if (lines.length) { const line = pick(lines); ups.push({ ...base, line, lvl: own.lvl + 1, tag: 'Améliorer', desc: 'Rang : ' + RANK_STEPS[line].text }); }
+      }
     }
     const nPass = Object.keys(S.passives).length;
     for (const id in PASSIVES) {
@@ -1046,11 +1106,16 @@ const Game = (() => {
     if (c.kind === 'branch') {
       const own = S.spells.find((s) => s.id === c.id);
       own.branch = c.branch; own.lvl = AWAKEN_RANK + 1; own.s = spellStats(own);
+      own.fx = (branchesOf(SPELLS[c.id]).find((b) => b.key === c.branch) || {}).fx || null;
       banner(SPELLS[c.id].name + ' s’éveille', c.name + ' : ' + c.desc, true);
     } else if (c.kind === 'spell') {
       const own = S.spells.find((s) => s.id === c.id);
       // au rang 5, un sort ne monte plus que par son Éveil ; rang 10 au plus
-      if (own && own.lvl !== AWAKEN_RANK && own.lvl < MAX_RANK) { own.lvl++; own.s = spellStats(own); } else if (!own) addSpell(c.id);
+      if (own && own.lvl !== AWAKEN_RANK && own.lvl < MAX_RANK) {
+        const line = c.line || rankLines(SPELLS[c.id]).find((k) => (own.picks[k] || 0) < RANK_STEPS[k].max);
+        if (line) own.picks[line] = (own.picks[line] || 0) + 1;
+        own.lvl++; own.s = spellStats(own);
+      } else if (!own) addSpell(c.id);
     } else if (c.kind === 'passive') {
       S.passives[c.id] = (S.passives[c.id] || 0) + 1;
       recomputeStats();
@@ -1107,11 +1172,12 @@ const Game = (() => {
       const a = Math.min(1, g.life / 0.4);
       ctx.globalAlpha = 0.25 * a;
       ctx.fillStyle = g.color;
-      isoEllipse(g.x, g.y, g.r); ctx.fill();
+      const gr = g.drawR || g.r; // taille renforcée par l'Accumulation
+      isoEllipse(g.x, g.y, gr); ctx.fill();
       ctx.globalAlpha = 0.8 * a;
       ctx.strokeStyle = g.color; ctx.lineWidth = 3;
-      isoEllipse(g.x, g.y, g.r); ctx.stroke();
-      isoEllipse(g.x, g.y, g.r * 0.6); ctx.stroke();
+      isoEllipse(g.x, g.y, gr); ctx.stroke();
+      isoEllipse(g.x, g.y, gr * 0.6); ctx.stroke();
       ctx.globalAlpha = 1;
     }
     for (const sp of S.spells) {

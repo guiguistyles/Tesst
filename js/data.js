@@ -74,26 +74,36 @@ const CLASSES = {
 // type : projectile | melee | nova | aura | orbit | strike | summon | trap | glyph | heal | shield | buff | dash
 // up : 4 améliorations (niveaux 2 à 5). m = multiplie, a = ajoute.
 // Chaque classe a 8 sorts : le premier est connu d'entrée, les autres arrivent par les cartes de niveau.
-// Progressions types, pour les sorts qui n'ont pas de progression propre.
-const UP = {
-  projectile: [{ d: '+1 projectile', a: { count: 1 } }, { d: '+30% dégâts', m: { dmg: 1.3 } }, { d: '-20% recharge', m: { cd: 0.8 } }, { d: '+1 projectile, +30% dégâts', a: { count: 1 }, m: { dmg: 1.3 } }],
-  nova: [{ d: '+30% dégâts', m: { dmg: 1.3 } }, { d: '+20% zone', m: { radius: 1.2 } }, { d: '-25% recharge', m: { cd: 0.75 } }, { d: '+60% dégâts', m: { dmg: 1.6 } }],
-  strike: [{ d: '+1 cible', a: { count: 1 } }, { d: '+40% dégâts', m: { dmg: 1.4 } }, { d: '+30% zone', m: { radius: 1.3 } }, { d: '+2 cibles', a: { count: 2 } }],
-  trap: [{ d: '+2 pièges max', a: { count: 2 } }, { d: '+40% dégâts', m: { dmg: 1.4 } }, { d: '-25% recharge', m: { cd: 0.75 } }, { d: '+30% zone, +30% dégâts', m: { radius: 1.3, dmg: 1.3 } }],
-  glyph: [{ d: '+30% zone', m: { radius: 1.3 } }, { d: '+40% dégâts', m: { dmg: 1.4 } }, { d: '+50% durée', m: { duration: 1.5 } }, { d: '-30% recharge', m: { cd: 0.7 } }],
-  aura: [{ d: '+25% zone', m: { radius: 1.25 } }, { d: '+100% dégâts', m: { dmg: 2 } }, { d: 'Ralentit davantage', a: { slow: 0.15 } }, { d: '+25% zone, +50% dégâts', m: { radius: 1.25, dmg: 1.5 } }],
-  summon: [{ d: '+40% dégâts', m: { dmg: 1.4 } }, { d: '+1 invocation', a: { count: 1 } }, { d: '+30% vitesse', m: { speed: 1.3 } }, { d: '+1 invocation, +30% dégâts', a: { count: 1 }, m: { dmg: 1.3 } }],
-  orbit: [{ d: '+1 lame', a: { count: 1 } }, { d: '+40% dégâts', m: { dmg: 1.4 } }, { d: '+20% rayon, +25% vitesse', m: { radius: 1.2, speed: 1.25 } }, { d: '+2 lames', a: { count: 2 } }],
-  heal: [{ d: '+4 soins', a: { heal: 4 } }, { d: '-20% recharge', m: { cd: 0.8 } }, { d: '+6 soins', a: { heal: 6 } }, { d: 'Soins doublés', m: { heal: 2 } }],
-  shield: [{ d: '+15 bouclier', a: { shield: 15 } }, { d: '-20% recharge', m: { cd: 0.8 } }, { d: '+20 bouclier', a: { shield: 20 } }, { d: 'Bouclier doublé', m: { shield: 2 } }],
-  buff: [{ d: '+2 s de durée', a: { dur: 2 } }, { d: '+15% de bonus', a: { pow: 0.15 } }, { d: '-25% recharge', m: { cd: 0.75 } }, { d: '+3 s, +15% de bonus', a: { dur: 3, pow: 0.15 } }],
-  dash: [{ d: '+40% dégâts', m: { dmg: 1.4 } }, { d: '+30% zone', m: { radius: 1.3 } }, { d: '-25% recharge', m: { cd: 0.75 } }, { d: '+60% dégâts', m: { dmg: 1.6 } }],
-  melee: [{ d: '+30% dégâts', m: { dmg: 1.3 } }, { d: '+25% portée', m: { range: 1.25 } }, { d: 'Frappe aussi derrière vous', a: { double: 1 } }, { d: '+50% dégâts', m: { dmg: 1.5 } }],
+// Rangs (comme dans ZaapRush) : chaque carte « Améliorer » monte d'un rang l'un des bonus du sort
+// (ses `ranks`, ou ceux déduits de ses statistiques), chacun plafonné. Un sort monte jusqu'au rang 10.
+// Au rang 5, la seule carte proposée pour ce sort est son Éveil : un choix définitif entre ses branches.
+// Une branche modifie des valeurs (m / a) et peut activer un effet spécial (`fx`, géré par le moteur).
+const RANK_STEPS = {
+  dmg:      { m: 1.12, max: 9, text: 'Dommages +12 %' },
+  cd:       { m: 0.93, max: 6, text: 'Recharge −7 %' },
+  count:    { a: 1, max: 4, text: 'Nombre +1' },
+  radius:   { m: 1.1, max: 6, text: 'Zone +10 %' },
+  duration: { m: 1.15, max: 6, text: 'Durée +15 %' },
+  pierce:   { a: 1, max: 4, text: 'Transperce +1' },
+  range:    { m: 1.1, max: 5, text: 'Portée +10 %' },
+  speed:    { m: 1.1, max: 5, text: 'Vitesse +10 %' },
+  heal:     { m: 1.15, max: 9, text: 'Soins +15 %' },
+  shield:   { m: 1.15, max: 9, text: 'Bouclier +15 %' },
+  pow:      { a: 0.05, max: 6, text: 'Bonus +5 %' },
+  dur:      { a: 0.6, max: 6, text: 'Durée +0,6 s' },
+  slow:     { a: 0.05, max: 4, text: 'Ralentissement +5 %' },
 };
+// Bonus améliorables d'un sort : ceux qu'il déclare, sinon ceux de ses statistiques de base.
+function rankLines(def) {
+  if (def.ranks) return def.ranks;
+  const b = def.base, keys = ['dmg', 'heal', 'shield', 'pow', 'cd', 'count', 'radius', 'duration', 'dur', 'pierce'];
+  const out = keys.filter((k) => b[k] !== undefined && !(k === 'count' && def.type === 'trap'));
+  if (def.type === 'melee') out.push('range');
+  if (def.type === 'summon' || def.type === 'orbit') out.push('speed');
+  return out;
+}
 
-// Éveil (comme dans ZaapRush) : un sort monte jusqu'au rang 10. Au rang 5, la seule carte proposée
-// pour ce sort est son Éveil, un choix définitif entre 3 branches ; les rangs 7 à 10 viennent ensuite.
-// Branches par type de sort (un sort peut définir les siennes avec `branches`).
+// Branches par type de sort, pour les sorts qui n'ont pas encore d'Éveil propre.
 const BRANCHES = {
   projectile: [
     { key: 'salve', name: 'Salve', desc: '+2 projectiles.', a: { count: 2 } },
@@ -162,14 +172,6 @@ const BRANCHES = {
   ],
 };
 
-// Rangs 7 à 10, après l'Éveil.
-const UP_AFTER = {
-  damage: [{ d: '+15% dégâts', m: { dmg: 1.15 } }, { d: '-10% recharge', m: { cd: 0.9 } }, { d: '+15% dégâts', m: { dmg: 1.15 } }, { d: '+20% dégâts', m: { dmg: 1.2 } }],
-  heal: [{ d: '+20% soins', m: { heal: 1.2 } }, { d: '-10% recharge', m: { cd: 0.9 } }, { d: '+20% soins', m: { heal: 1.2 } }, { d: '-15% recharge', m: { cd: 0.85 } }],
-  shield: [{ d: '+20% bouclier', m: { shield: 1.2 } }, { d: '-10% recharge', m: { cd: 0.9 } }, { d: '+20% bouclier', m: { shield: 1.2 } }, { d: '-15% recharge', m: { cd: 0.85 } }],
-  buff: [{ d: '+1 s de durée', a: { dur: 1 } }, { d: '+10% de bonus', a: { pow: 0.1 } }, { d: '-10% recharge', m: { cd: 0.9 } }, { d: '+1 s, +10% de bonus', a: { dur: 1, pow: 0.1 } }],
-};
-const upAfter = (def) => UP_AFTER[def.type] || UP_AFTER.damage;
 const branchesOf = (def) => def.branches || BRANCHES[def.type];
 const AWAKEN_RANK = 5, MAX_RANK = 10;
 
@@ -179,505 +181,293 @@ const SPELLS = {
     name: 'Pression', icon: 'Pr', color: '#ffb347', type: 'melee',
     desc: 'Frappe en arc devant vous.',
     base: { dmg: 15, cd: 1.0, range: 75, arc: 2.0, knock: 25 },
-    up: [
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '+25% portée', m: { range: 1.25 } },
-      { d: 'Frappe aussi derrière vous', a: { double: 1 } },
-      { d: '+50% dégâts, -20% recharge', m: { dmg: 1.5, cd: 0.8 } },
-    ],
   },
   epee_celeste: {
     name: 'Épée Céleste', icon: 'EC', color: '#ffe680', type: 'nova',
     desc: 'Onde de choc autour de vous.',
     base: { dmg: 18, cd: 3.0, radius: 95, knock: 30 },
-    up: [
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+25% zone', m: { radius: 1.25 } },
-      { d: '-25% recharge', m: { cd: 0.75 } },
-      { d: '+60% dégâts', m: { dmg: 1.6 } },
-    ],
   },
   colere_iop: {
     name: 'Colère de Iop', icon: 'Co', color: '#ff5533', type: 'strike',
     desc: 'Une épée géante s’abat sur un ennemi.',
     base: { dmg: 90, cd: 6.0, radius: 75, count: 1, range: 420, delay: 0.7 },
-    up: [
-      { d: '+1 frappe', a: { count: 1 } },
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '-20% recharge', m: { cd: 0.8 } },
-      { d: '+2 frappes', a: { count: 2 } },
-    ],
   },
   epee_jugement: {
     name: 'Épée du Jugement', icon: 'EJ', color: '#c9d6ff', type: 'orbit',
     desc: 'Des épées tournoient autour de vous.',
     base: { dmg: 10, count: 2, radius: 85, speed: 3.2, size: 12 },
-    up: [
-      { d: '+1 épée', a: { count: 1 } },
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '+20% rayon, +25% vitesse', m: { radius: 1.2, speed: 1.25 } },
-      { d: '+2 épées', a: { count: 2 } },
-    ],
   },
   // Crâ
   fleche_magique: {
     name: 'Flèche Magique', icon: 'FM', color: '#8fd3ff', type: 'projectile',
     desc: 'Tire une flèche sur l’ennemi le plus proche.',
     base: { dmg: 12, cd: 0.75, count: 1, pierce: 0, speed: 560, range: 520, size: 5 },
-    up: [
-      { d: '+1 flèche', a: { count: 1 } },
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+1 flèche', a: { count: 1 } },
-      { d: 'Transperce 2 ennemis', a: { pierce: 2 } },
-    ],
   },
   fleche_explosive: {
     name: 'Flèche Explosive', icon: 'FE', color: '#ff7a2f', type: 'projectile',
     desc: 'Flèche qui explose à l’impact.',
     base: { dmg: 16, cd: 2.2, count: 1, pierce: 0, speed: 400, range: 480, size: 7, explode: 60 },
-    up: [
-      { d: '+30% zone d’explosion', m: { explode: 1.3 } },
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '-20% recharge', m: { cd: 0.8 } },
-      { d: '+1 flèche', a: { count: 1 } },
-    ],
   },
   fleche_recul: {
     name: 'Flèche de Recul', icon: 'FR', color: '#d6f5a0', type: 'projectile',
     desc: 'Flèche perforante qui repousse.',
     base: { dmg: 10, cd: 1.8, count: 1, pierce: 5, speed: 640, range: 520, size: 6, knock: 110 },
-    up: [
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+1 flèche', a: { count: 1 } },
-      { d: 'Transperce +5', a: { pierce: 5 } },
-      { d: '+50% dégâts', m: { dmg: 1.5 } },
-    ],
   },
   fleche_dispersion: {
     name: 'Flèche de Dispersion', icon: 'FD', color: '#b6e3ff', type: 'strike',
     desc: 'Des flèches tombent sur plusieurs ennemis.',
     base: { dmg: 28, cd: 3.5, radius: 45, count: 4, range: 380, delay: 0.45 },
-    up: [
-      { d: '+2 cibles', a: { count: 2 } },
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+30% zone', m: { radius: 1.3 } },
-      { d: '+3 cibles, -15% recharge', a: { count: 3 }, m: { cd: 0.85 } },
-    ],
   },
   // Féca
   bulle: {
     name: 'Bulle', icon: 'Bu', color: '#7fc8ff', type: 'projectile',
     desc: 'Une bulle qui éclate sur l’ennemi.',
     base: { dmg: 13, cd: 0.95, count: 1, pierce: 0, speed: 330, range: 450, size: 8, explode: 40 },
-    up: [
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+1 bulle', a: { count: 1 } },
-      { d: '+40% explosion', m: { explode: 1.4 } },
-      { d: '+1 bulle, +30% dégâts', a: { count: 1 }, m: { dmg: 1.3 } },
-    ],
+    ranks: ['dmg', 'cd', 'count', 'radius'], branches: [
+    { key: 'grossebulle', name: 'Grosse bulle', m: { size: 2.5, explode: 2.5 }, desc: 'La bulle et son explosion sont 2,5 fois plus grandes.' },
+    { key: 'ricochet', name: 'Ricochet', fx: 'split', desc: 'En éclatant, la bulle libère 3 petites bulles vers de nouvelles cibles.' },
+    { key: 'aspiration', name: 'Aspiration', fx: 'pull', desc: 'L’explosion aspire les ennemis proches vers son centre.' },
+  ],
   },
   glyphe_enflamme: {
     name: 'Glyphe Enflammé', icon: 'GE', color: '#ff8a3d', type: 'glyph',
     desc: 'Pose un glyphe brûlant sous vos pieds.',
     base: { dmg: 7, cd: 4.0, radius: 85, duration: 3.5, tick: 0.4 },
-    up: [
-      { d: '+30% zone', m: { radius: 1.3 } },
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '+50% durée', m: { duration: 1.5 } },
-      { d: '-30% recharge', m: { cd: 0.7 } },
-    ],
+    ranks: ['cd', 'dmg', 'duration', 'radius'], branches: [
+    { key: 'embrasement', name: 'Embrasement', m: { radius: 1.5 }, desc: 'Le glyphe couvre une zone 1,5 fois plus large.' },
+    { key: 'escorte', name: 'Escorte', fx: 'follow', desc: 'Chaque lancer crée aussi un petit glyphe qui suit le Féca dans ses déplacements.' },
+    { key: 'foyer', name: 'Foyer', fx: 'core', desc: 'Au centre du glyphe (la moitié intérieure), les dommages sont doublés.' },
+  ],
   },
   armure_terrestre: {
     name: 'Armure Terrestre', icon: 'AT', color: '#c49a5a', type: 'shield',
     desc: 'Un bouclier absorbe les dégâts.',
     base: { shield: 25, cd: 9.0 },
-    up: [
-      { d: '+15 bouclier', a: { shield: 15 } },
-      { d: '-20% recharge', m: { cd: 0.8 } },
-      { d: '+20 bouclier', a: { shield: 20 } },
-      { d: 'Bouclier doublé', m: { shield: 2 } },
-    ],
+    ranks: ['shield', 'cd'], branches: [
+    { key: 'rempart', name: 'Rempart', m: { shield: 2 }, desc: 'Le bouclier est deux fois plus solide.' },
+    { key: 'sursaut', name: 'Sursaut', fx: 'shieldNova', desc: 'Lancer l’armure repousse et blesse les ennemis autour du Féca.' },
+    { key: 'gardecritique', name: 'Garde critique', fx: 'shieldCrit', desc: 'Tant que le bouclier tient, +40 % de chance de coup critique.' },
+  ],
   },
   glyphe_immobilisation: {
     name: 'Glyphe d’Immobilisation', icon: 'GI', color: '#e8e2ff', type: 'aura',
     desc: 'Zone permanente qui ralentit et blesse.',
     base: { dmg: 3, tick: 0.5, radius: 95, slow: 0.3 },
-    up: [
-      { d: '+25% zone', m: { radius: 1.25 } },
-      { d: '+100% dégâts', m: { dmg: 2 } },
-      { d: 'Ralentit davantage', a: { slow: 0.15 } },
-      { d: '+25% zone, +50% dégâts', m: { radius: 1.25, dmg: 1.5 } },
-    ],
+    ranks: ['radius', 'dmg', 'slow'], branches: [
+    { key: 'gel', name: 'Gel', a: { slow: 0.35 }, desc: 'Ralentit 35 % de plus.' },
+    { key: 'etendue', name: 'Étendue', m: { radius: 1.6 }, desc: 'Zone 1,6 fois plus large.' },
+    { key: 'morsure', name: 'Morsure', m: { dmg: 2.5 }, desc: 'Dommages multipliés par 2,5.' },
+  ],
   },
   // Eniripsa
   mot_blessant: {
     name: 'Mot Blessant', icon: 'MB', color: '#ff9ad5', type: 'projectile',
     desc: 'Un mot qui fait mal.',
     base: { dmg: 12, cd: 0.85, count: 1, pierce: 1, speed: 480, range: 500, size: 6 },
-    up: [
-      { d: '+1 projectile', a: { count: 1 } },
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: 'Transperce +2', a: { pierce: 2 } },
-      { d: '+1 projectile, +30% dégâts', a: { count: 1 }, m: { dmg: 1.3 } },
-    ],
   },
   mot_soignant: {
     name: 'Mot Soignant', icon: 'MS', color: '#9cffb0', type: 'heal',
     desc: 'Rend régulièrement des points de vie.',
     base: { heal: 6, cd: 5.0 },
-    up: [
-      { d: '+4 soins', a: { heal: 4 } },
-      { d: '-20% recharge', m: { cd: 0.8 } },
-      { d: '+6 soins', a: { heal: 6 } },
-      { d: 'Soins doublés', m: { heal: 2 } },
-    ],
   },
   mot_interdit: {
     name: 'Mot Interdit', icon: 'MI', color: '#ff5fa2', type: 'nova',
     desc: 'Explosion de magie autour de vous.',
     base: { dmg: 22, cd: 3.2, radius: 110, knock: 20 },
-    up: [
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+20% zone', m: { radius: 1.2 } },
-      { d: '-25% recharge', m: { cd: 0.75 } },
-      { d: '+60% dégâts', m: { dmg: 1.6 } },
-    ],
   },
   mot_frayeur: {
     name: 'Mot de Frayeur', icon: 'MF', color: '#e0c3ff', type: 'nova',
     desc: 'Repousse violemment les ennemis.',
     base: { dmg: 8, cd: 5.0, radius: 140, knock: 160 },
-    up: [
-      { d: '+25% zone', m: { radius: 1.25 } },
-      { d: '-20% recharge', m: { cd: 0.8 } },
-      { d: '+100% dégâts', m: { dmg: 2 } },
-      { d: 'Recul +50%', m: { knock: 1.5 } },
-    ],
   },
   // Sram
   piege_sournois: {
     name: 'Piège Sournois', icon: 'PS', color: '#b07cff', type: 'trap',
     desc: 'Pose des pièges qui explosent au contact.',
     base: { dmg: 32, cd: 1.4, count: 3, radius: 60, life: 15 },
-    up: [
-      { d: '+2 pièges max', a: { count: 2 } },
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '-25% recharge', m: { cd: 0.75 } },
-      { d: '+30% zone, +30% dégâts', m: { radius: 1.3, dmg: 1.3 } },
-    ],
   },
   coup_sournois: {
     name: 'Coup Sournois', icon: 'CS', color: '#d0b0ff', type: 'melee',
     desc: 'Coup rapide avec de fortes chances de critique.',
     base: { dmg: 14, cd: 0.7, range: 60, arc: 1.5, knock: 10, crit: 0.25 },
-    up: [
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+15% critique', a: { crit: 0.15 } },
-      { d: '-20% recharge', m: { cd: 0.8 } },
-      { d: 'Frappe aussi derrière vous', a: { double: 1 } },
-    ],
   },
   poison_insidieux: {
     name: 'Poison Insidieux', icon: 'PI', color: '#7dff6a', type: 'projectile',
     desc: 'Dague empoisonnée : dégâts sur la durée.',
     base: { dmg: 4, cd: 1.3, count: 2, pierce: 0, speed: 500, range: 480, size: 5, poison: 8, poisonDur: 3 },
-    up: [
-      { d: '+1 dague', a: { count: 1 } },
-      { d: 'Poison +50%', m: { poison: 1.5 } },
-      { d: 'Poison dure +2s', a: { poisonDur: 2 } },
-      { d: '+2 dagues', a: { count: 2 } },
-    ],
   },
   double: {
     name: 'Double', icon: 'Do', color: '#8a6bb8', type: 'summon',
     desc: 'Invoque votre double qui attaque les ennemis.',
     base: { dmg: 12, count: 1, speed: 230, size: 12 },
-    up: [
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '+1 double', a: { count: 1 } },
-      { d: '+30% vitesse', m: { speed: 1.3 } },
-      { d: '+1 double, +30% dégâts', a: { count: 1 }, m: { dmg: 1.3 } },
-    ],
   },
   // Xélor
   aiguille: {
     name: 'Aiguille', icon: 'Ai', color: '#ffd84a', type: 'projectile',
     desc: 'Lance des aiguilles rapides.',
     base: { dmg: 11, cd: 0.65, count: 1, pierce: 0, speed: 620, range: 520, size: 4 },
-    up: [
-      { d: '+1 aiguille', a: { count: 1 } },
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '-20% recharge', m: { cd: 0.8 } },
-      { d: '+2 aiguilles', a: { count: 2 } },
-    ],
   },
   ralentissement: {
     name: 'Ralentissement', icon: 'Ra', color: '#9ab8ff', type: 'aura',
     desc: 'Les ennemis proches sont ralentis.',
     base: { dmg: 2, tick: 0.5, radius: 115, slow: 0.45 },
-    up: [
-      { d: '+25% zone', m: { radius: 1.25 } },
-      { d: 'Ralentit davantage', a: { slow: 0.15 } },
-      { d: '+150% dégâts', m: { dmg: 2.5 } },
-      { d: '+25% zone', m: { radius: 1.25 } },
-    ],
   },
   poussiere_temporelle: {
     name: 'Poussière Temporelle', icon: 'PT', color: '#f0e0a0', type: 'nova',
     desc: 'Onde temporelle autour de vous.',
     base: { dmg: 20, cd: 2.8, radius: 100, knock: 15 },
-    up: [
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+20% zone', m: { radius: 1.2 } },
-      { d: '-25% recharge', m: { cd: 0.75 } },
-      { d: '+60% dégâts', m: { dmg: 1.6 } },
-    ],
   },
   frappe_xelor: {
     name: 'Frappe de Xélor', icon: 'FX', color: '#ffe066', type: 'strike',
     desc: 'L’aiguille du cadran frappe des ennemis.',
     base: { dmg: 40, cd: 3.0, radius: 50, count: 2, range: 380, delay: 0.5 },
-    up: [
-      { d: '+1 cible', a: { count: 1 } },
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '+2 cibles', a: { count: 2 } },
-      { d: '-25% recharge', m: { cd: 0.75 } },
-    ],
   },
   // Osamodas
   fouet: {
     name: 'Fouet', icon: 'Fo', color: '#f6d38a', type: 'melee',
     desc: 'Coup de fouet à longue portée.',
     base: { dmg: 13, cd: 1.0, range: 95, arc: 1.2, knock: 30 },
-    up: [
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+25% portée', m: { range: 1.25 } },
-      { d: 'Frappe aussi derrière vous', a: { double: 1 } },
-      { d: '+50% dégâts', m: { dmg: 1.5 } },
-    ],
   },
   invoc_bouftou: {
     name: 'Invocation de Bouftou', icon: 'IB', color: '#f2efe6', type: 'summon', look: 'sheep',
     desc: 'Un bouftou fidèle charge vos ennemis.',
     base: { dmg: 12, count: 1, speed: 190, size: 13 },
-    up: [
-      { d: '+1 bouftou', a: { count: 1 } },
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '+1 bouftou', a: { count: 1 } },
-      { d: '+50% dégâts', m: { dmg: 1.5 } },
-    ],
   },
   invoc_tofu: {
     name: 'Invocation de Tofu', icon: 'IT', color: '#ffd23f', type: 'summon', look: 'bird',
     desc: 'Des tofus rapides harcèlent vos ennemis.',
     base: { dmg: 6, count: 2, speed: 280, size: 9 },
-    up: [
-      { d: '+1 tofu', a: { count: 1 } },
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '+2 tofus', a: { count: 2 } },
-      { d: '+50% dégâts', m: { dmg: 1.5 } },
-    ],
   },
   corbeau_noir: {
     name: 'Corbeau Noir', icon: 'CN', color: '#5a5a7a', type: 'projectile',
     desc: 'Un corbeau fond sur les ennemis.',
     base: { dmg: 15, cd: 1.5, count: 1, pierce: 2, speed: 450, range: 500, size: 7 },
-    up: [
-      { d: '+1 corbeau', a: { count: 1 } },
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: 'Transperce +3', a: { pierce: 3 } },
-      { d: '+1 corbeau', a: { count: 1 } },
-    ],
   },
   // Sacrieur
   pied_sacrieur: {
     name: 'Pied du Sacrieur', icon: 'PS', color: '#ff3b3b', type: 'melee',
     desc: 'Plus vous êtes blessé, plus il fait mal.',
     base: { dmg: 16, cd: 0.9, range: 70, arc: 2.4, knock: 20, rage: 1 },
-    up: [
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+20% portée', m: { range: 1.2 } },
-      { d: 'Frappe aussi derrière vous', a: { double: 1 } },
-      { d: '+50% dégâts', m: { dmg: 1.5 } },
-    ],
   },
   assaut: {
     name: 'Assaut', icon: 'As', color: '#ff7070', type: 'nova',
     desc: 'Déchaîne votre sang autour de vous.',
     base: { dmg: 16, cd: 2.4, radius: 85, knock: 25, rage: 1 },
-    up: [
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+25% zone', m: { radius: 1.25 } },
-      { d: '-20% recharge', m: { cd: 0.8 } },
-      { d: '+50% dégâts', m: { dmg: 1.5 } },
-    ],
   },
   absorption: {
     name: 'Absorption', icon: 'Ab', color: '#ff9a9a', type: 'heal',
     desc: 'Récupère de la vie périodiquement.',
     base: { heal: 5, cd: 4.0 },
-    up: [
-      { d: '+4 soins', a: { heal: 4 } },
-      { d: '-20% recharge', m: { cd: 0.8 } },
-      { d: '+6 soins', a: { heal: 6 } },
-      { d: 'Soins doublés', m: { heal: 2 } },
-    ],
   },
   attirance: {
     name: 'Attirance', icon: 'At', color: '#c04050', type: 'nova',
     desc: 'Attire les ennemis lointains vers vous.',
     base: { dmg: 8, cd: 4.5, radius: 230, knock: -90 },
-    up: [
-      { d: '+20% zone', m: { radius: 1.2 } },
-      { d: '+100% dégâts', m: { dmg: 2 } },
-      { d: '-20% recharge', m: { cd: 0.8 } },
-      { d: '+100% dégâts', m: { dmg: 2 } },
-    ],
   },
   // Enutrof
   lancer_pieces: {
     name: 'Lancer de Pièces', icon: 'LP', color: '#ffd700', type: 'projectile',
     desc: 'Les ennemis tués lâchent toujours des kamas.',
     base: { dmg: 12, cd: 0.8, count: 1, pierce: 0, speed: 500, range: 500, size: 6, gold: 1 },
-    up: [
-      { d: '+1 pièce', a: { count: 1 } },
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+1 pièce', a: { count: 1 } },
-      { d: 'Transperce +2', a: { pierce: 2 } },
-    ],
   },
   pelle_animee: {
     name: 'Pelle Animée', icon: 'PA', color: '#b08a50', type: 'summon', look: 'shovel',
     desc: 'Une pelle vivante combat à vos côtés.',
     base: { dmg: 14, count: 1, speed: 200, size: 11 },
-    up: [
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '+1 pelle', a: { count: 1 } },
-      { d: '+30% vitesse', m: { speed: 1.3 } },
-      { d: '+1 pelle', a: { count: 1 } },
-    ],
   },
   pelle_jugement: {
     name: 'Pelle du Jugement', icon: 'PJ', color: '#e0b060', type: 'nova',
     desc: 'Coup de pelle circulaire.',
     base: { dmg: 20, cd: 2.8, radius: 90, knock: 30 },
-    up: [
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+25% zone', m: { radius: 1.25 } },
-      { d: '-25% recharge', m: { cd: 0.75 } },
-      { d: '+50% dégâts', m: { dmg: 1.5 } },
-    ],
   },
   maladresse_masse: {
     name: 'Maladresse de Masse', icon: 'MM', color: '#a0ff70', type: 'aura',
     desc: 'Aura qui ronge et ralentit les ennemis.',
     base: { dmg: 4, tick: 0.5, radius: 90, slow: 0.2 },
-    up: [
-      { d: '+25% zone', m: { radius: 1.25 } },
-      { d: '+100% dégâts', m: { dmg: 2 } },
-      { d: 'Ralentit davantage', a: { slow: 0.15 } },
-      { d: '+50% dégâts', m: { dmg: 1.5 } },
-    ],
   },
   // Roublard
   bombe_explosive: {
     name: 'Bombe Explosive', icon: 'BE', color: '#ff6a2a', type: 'trap',
     desc: 'Pose des bombes qui explosent à retardement.',
     base: { dmg: 30, cd: 1.6, count: 3, radius: 75, life: 2.2, fuse: 1 },
-    up: [
-      { d: '+30% zone', m: { radius: 1.3 } },
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '+2 bombes max, -20% recharge', a: { count: 2 }, m: { cd: 0.8 } },
-      { d: '+50% dégâts', m: { dmg: 1.5 } },
-    ],
   },
   tromblon: {
     name: 'Tromblon', icon: 'Tr', color: '#ffcc80', type: 'projectile',
     desc: 'Tir en éventail à courte portée.',
     base: { dmg: 9, cd: 1.1, count: 3, pierce: 0, speed: 520, range: 320, size: 4, spread: 0.55 },
-    up: [
-      { d: '+2 plombs', a: { count: 2 } },
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: 'Transperce 1', a: { pierce: 1 } },
-      { d: '+2 plombs, +30% dégâts', a: { count: 2 }, m: { dmg: 1.3 } },
-    ],
   },
   pulsar: {
     name: 'Pulsar', icon: 'Pu', color: '#ffa040', type: 'nova',
     desc: 'Explosion autour de vous.',
     base: { dmg: 20, cd: 3.0, radius: 100, knock: 40 },
-    up: [
-      { d: '+30% dégâts', m: { dmg: 1.3 } },
-      { d: '+20% zone', m: { radius: 1.2 } },
-      { d: '-25% recharge', m: { cd: 0.75 } },
-      { d: '+60% dégâts', m: { dmg: 1.6 } },
-    ],
   },
   kaboom: {
     name: 'Kaboom', icon: 'Kb', color: '#ff3d00', type: 'strike',
     desc: 'Des explosions frappent les ennemis.',
     base: { dmg: 45, cd: 4.0, radius: 70, count: 2, range: 400, delay: 0.6 },
-    up: [
-      { d: '+1 explosion', a: { count: 1 } },
-      { d: '+40% dégâts', m: { dmg: 1.4 } },
-      { d: '+30% zone', m: { radius: 1.3 } },
-      { d: '+2 explosions', a: { count: 2 } },
-    ],
   },
 
   // ------------------------------------------------ Sorts ajoutés (8 par classe)
   // buff : pow = bonus de dégâts, spd = bonus de vitesse, dur = durée (s).
   // dash : bond vers le groupe d'ennemis le plus proche, dégâts en zone à l'arrivée.
   // Iop
-  bond: { name: 'Bond', icon: 'Bo', color: '#ffa94d', type: 'dash', desc: 'Bondit au milieu des ennemis et les écrase.', base: { dmg: 26, cd: 5, radius: 80, range: 260, knock: 40 }, up: UP.dash },
-  puissance: { name: 'Puissance', icon: 'Pu', color: '#ff6b3d', type: 'buff', desc: 'Gonfle vos dégâts pendant quelques secondes.', base: { pow: 0.35, dur: 4, cd: 12 }, up: UP.buff },
-  intimidation: { name: 'Intimidation', icon: 'In', color: '#ffd0a0', type: 'nova', desc: 'Un cri qui repousse les ennemis proches.', base: { dmg: 10, cd: 4, radius: 90, knock: 140 }, up: UP.nova },
-  tempete_puissance: { name: 'Tempête de Puissance', icon: 'TP', color: '#ffe14d', type: 'strike', desc: 'Des éclairs frappent les ennemis autour de vous.', base: { dmg: 30, cd: 2.6, radius: 40, count: 3, range: 320, delay: 0.25 }, up: UP.strike },
+  bond: { name: 'Bond', icon: 'Bo', color: '#ffa94d', type: 'dash', desc: 'Bondit au milieu des ennemis et les écrase.', base: { dmg: 26, cd: 5, radius: 80, range: 260, knock: 40 } },
+  puissance: { name: 'Puissance', icon: 'Pu', color: '#ff6b3d', type: 'buff', desc: 'Gonfle vos dégâts pendant quelques secondes.', base: { pow: 0.35, dur: 4, cd: 12 } },
+  intimidation: { name: 'Intimidation', icon: 'In', color: '#ffd0a0', type: 'nova', desc: 'Un cri qui repousse les ennemis proches.', base: { dmg: 10, cd: 4, radius: 90, knock: 140 } },
+  tempete_puissance: { name: 'Tempête de Puissance', icon: 'TP', color: '#ffe14d', type: 'strike', desc: 'Des éclairs frappent les ennemis autour de vous.', base: { dmg: 30, cd: 2.6, radius: 40, count: 3, range: 320, delay: 0.25 } },
   // Crâ
-  fleche_glacee: { name: 'Flèche Glacée', icon: 'FG', color: '#a8e6ff', type: 'projectile', desc: 'Flèche qui ralentit sa cible.', base: { dmg: 11, cd: 1.4, count: 1, pierce: 1, speed: 520, range: 520, size: 6, slow: 0.5 }, up: UP.projectile },
-  fleche_empoisonnee: { name: 'Flèche Empoisonnée', icon: 'FP', color: '#8dff6a', type: 'projectile', desc: 'Empoisonne : dégâts sur la durée.', base: { dmg: 5, cd: 1.6, count: 1, pierce: 0, speed: 520, range: 520, size: 5, poison: 10, poisonDur: 3 }, up: UP.projectile },
-  tir_puissant: { name: 'Tir Puissant', icon: 'TP', color: '#ffb84d', type: 'buff', desc: 'Concentration : +dégâts pendant quelques secondes.', base: { pow: 0.4, dur: 4, cd: 13 }, up: UP.buff },
-  fleche_harcelante: { name: 'Flèche Harcelante', icon: 'FH', color: '#d9f7ff', type: 'projectile', desc: 'Petites flèches tirées en rafale.', base: { dmg: 6, cd: 0.45, count: 1, pierce: 0, speed: 700, range: 480, size: 3 }, up: UP.projectile },
+  fleche_glacee: { name: 'Flèche Glacée', icon: 'FG', color: '#a8e6ff', type: 'projectile', desc: 'Flèche qui ralentit sa cible.', base: { dmg: 11, cd: 1.4, count: 1, pierce: 1, speed: 520, range: 520, size: 6, slow: 0.5 } },
+  fleche_empoisonnee: { name: 'Flèche Empoisonnée', icon: 'FP', color: '#8dff6a', type: 'projectile', desc: 'Empoisonne : dégâts sur la durée.', base: { dmg: 5, cd: 1.6, count: 1, pierce: 0, speed: 520, range: 520, size: 5, poison: 10, poisonDur: 3 } },
+  tir_puissant: { name: 'Tir Puissant', icon: 'TP', color: '#ffb84d', type: 'buff', desc: 'Concentration : +dégâts pendant quelques secondes.', base: { pow: 0.4, dur: 4, cd: 13 } },
+  fleche_harcelante: { name: 'Flèche Harcelante', icon: 'FH', color: '#d9f7ff', type: 'projectile', desc: 'Petites flèches tirées en rafale.', base: { dmg: 6, cd: 0.45, count: 1, pierce: 0, speed: 700, range: 480, size: 3 } },
   // Féca
-  attaque_naturelle: { name: 'Attaque Naturelle', icon: 'AN', color: '#9ef01a', type: 'projectile', desc: 'Volée de pétales qui explosent à l’impact.', base: { dmg: 11, cd: 1.1, count: 2, pierce: 0, speed: 420, range: 460, size: 6, explode: 32 }, up: UP.projectile },
-  flamiche: { name: 'Flamiche', icon: 'Fl', color: '#ff7b2f', type: 'projectile', desc: 'Petite flamme rapide.', base: { dmg: 9, cd: 0.6, count: 1, pierce: 0, speed: 600, range: 460, size: 4 }, up: UP.projectile },
-  glyphe_agressif: { name: 'Glyphe Agressif', icon: 'GA', color: '#ff4f6d', type: 'glyph', desc: 'Glyphe court mais très douloureux.', base: { dmg: 14, cd: 6, radius: 70, duration: 2.5, tick: 0.35 }, up: UP.glyph },
-  foudroiement: { name: 'Foudroiement', icon: 'Fo', color: '#c7b8ff', type: 'strike', desc: 'La foudre tombe sur un groupe d’ennemis.', base: { dmg: 55, cd: 5, radius: 70, count: 1, range: 400, delay: 0.5 }, up: UP.strike },
+  attaque_naturelle: { name: 'Attaque Naturelle', icon: 'AN', color: '#9ef01a', type: 'projectile', desc: 'Volée de pétales qui explosent à l’impact.', base: { dmg: 11, cd: 1.1, count: 2, pierce: 0, speed: 420, range: 460, size: 6, explode: 32 } },
+  flamiche: { name: 'Flamiche', icon: 'Fl', color: '#ff7b2f', type: 'projectile', desc: 'Petite flamme rapide.', base: { dmg: 9, cd: 0.6, count: 1, pierce: 0, speed: 600, range: 460, size: 4 } },
+  glyphe_agressif: { name: 'Glyphe Agressif', icon: 'GA', color: '#ff4f6d', type: 'glyph', desc: 'Glyphe court mais très douloureux.', base: { dmg: 14, cd: 6, radius: 70, duration: 2.5, tick: 0.35 } , ranks: ['cd', 'dmg', 'duration', 'count'], branches: [
+    { key: 'accumulation', name: 'Accumulation', fx: 'stack', desc: 'Les glyphes ne s’effacent plus : chaque lancer en ajoute, jusqu’à 14. Ensuite, chaque lancer renforce tous vos glyphes (+8 % de dommages, +2 % de taille, taille +40 % au plus). Chaque coup reçu efface les 3 plus anciens.' },
+    { key: 'empreinte', name: 'Empreinte', fx: 'imprint', desc: 'Un ennemi tué sur le glyphe laisse sa propre petite marque brûlante pendant 30 s (20 à la fois au plus).' },
+    { key: 'detonation', name: 'Détonation', fx: 'burst', desc: 'À la fin de sa durée, le glyphe explose et inflige 4 fois ses dommages dans sa zone.' },
+  ] },
+  foudroiement: { name: 'Foudroiement', icon: 'Fo', color: '#c7b8ff', type: 'strike', desc: 'La foudre tombe sur un groupe d’ennemis.', base: { dmg: 55, cd: 5, radius: 70, count: 1, range: 400, delay: 0.5 } , ranks: ['dmg', 'cd', 'count', 'radius'], branches: [
+    { key: 'chaine', name: 'Chaîne', fx: 'chain', desc: 'Chaque foudre rebondit sur 3 ennemis proches (50 % des dommages).' },
+    { key: 'orage', name: 'Orage', a: { count: 3 }, desc: '+3 foudres par lancer.' },
+    { key: 'surcharge', name: 'Surcharge', m: { radius: 1.8, dmg: 1.3 }, desc: 'Zone 1,8 fois plus large, dommages +30 %.' },
+  ] },
   // Eniripsa
-  mot_stimulant: { name: 'Mot Stimulant', icon: 'St', color: '#ffc4ec', type: 'buff', desc: '+dégâts et +vitesse pendant quelques secondes.', base: { pow: 0.25, spd: 0.15, dur: 4, cd: 12 }, up: UP.buff },
-  mot_prevention: { name: 'Mot de Prévention', icon: 'Pv', color: '#d6f5ff', type: 'shield', desc: 'Un bouclier préventif.', base: { shield: 20, cd: 8 }, up: UP.shield },
-  mot_epine: { name: 'Mot d’Épine', icon: 'Ep', color: '#b6ff9a', type: 'aura', desc: 'Les ennemis proches se piquent à vos épines.', base: { dmg: 4, tick: 0.5, radius: 80, slow: 0 }, up: UP.aura },
-  mot_amitie: { name: 'Mot d’Amitié', icon: 'Am', color: '#ffd6f0', type: 'summon', look: 'jelly', desc: 'Un petit compagnon fidèle attaque vos ennemis.', base: { dmg: 9, count: 1, speed: 220, size: 10 }, up: UP.summon },
+  mot_stimulant: { name: 'Mot Stimulant', icon: 'St', color: '#ffc4ec', type: 'buff', desc: '+dégâts et +vitesse pendant quelques secondes.', base: { pow: 0.25, spd: 0.15, dur: 4, cd: 12 } },
+  mot_prevention: { name: 'Mot de Prévention', icon: 'Pv', color: '#d6f5ff', type: 'shield', desc: 'Un bouclier préventif.', base: { shield: 20, cd: 8 } },
+  mot_epine: { name: 'Mot d’Épine', icon: 'Ep', color: '#b6ff9a', type: 'aura', desc: 'Les ennemis proches se piquent à vos épines.', base: { dmg: 4, tick: 0.5, radius: 80, slow: 0 } },
+  mot_amitie: { name: 'Mot d’Amitié', icon: 'Am', color: '#ffd6f0', type: 'summon', look: 'jelly', desc: 'Un petit compagnon fidèle attaque vos ennemis.', base: { dmg: 9, count: 1, speed: 220, size: 10 } },
   // Sram
-  piege_masse: { name: 'Piège de Masse', icon: 'PM', color: '#c08bff', type: 'trap', desc: 'Grand piège qui explose sur une large zone.', base: { dmg: 26, cd: 2.4, count: 2, radius: 95, life: 15 }, up: UP.trap },
-  piege_empoisonne: { name: 'Piège Empoisonné', icon: 'PE', color: '#86ff5a', type: 'glyph', desc: 'Une flaque de poison sous vos pieds.', base: { dmg: 6, cd: 4.5, radius: 75, duration: 4, tick: 0.4 }, up: UP.glyph },
-  attaque_mortelle: { name: 'Attaque Mortelle', icon: 'AM', color: '#e05cff', type: 'strike', desc: 'Frappe dévastatrice sur un ennemi.', base: { dmg: 120, cd: 6, radius: 35, count: 1, range: 360, delay: 0.3 }, up: UP.strike },
-  peur: { name: 'Peur', icon: 'Pe', color: '#9a7ac8', type: 'nova', desc: 'Fait fuir les ennemis proches.', base: { dmg: 6, cd: 5, radius: 120, knock: 170 }, up: UP.nova },
+  piege_masse: { name: 'Piège de Masse', icon: 'PM', color: '#c08bff', type: 'trap', desc: 'Grand piège qui explose sur une large zone.', base: { dmg: 26, cd: 2.4, count: 2, radius: 95, life: 15 } },
+  piege_empoisonne: { name: 'Piège Empoisonné', icon: 'PE', color: '#86ff5a', type: 'glyph', desc: 'Une flaque de poison sous vos pieds.', base: { dmg: 6, cd: 4.5, radius: 75, duration: 4, tick: 0.4 } },
+  attaque_mortelle: { name: 'Attaque Mortelle', icon: 'AM', color: '#e05cff', type: 'strike', desc: 'Frappe dévastatrice sur un ennemi.', base: { dmg: 120, cd: 6, radius: 35, count: 1, range: 360, delay: 0.3 } },
+  peur: { name: 'Peur', icon: 'Pe', color: '#9a7ac8', type: 'nova', desc: 'Fait fuir les ennemis proches.', base: { dmg: 6, cd: 5, radius: 120, knock: 170 } },
   // Xélor
-  sablier_xelor: { name: 'Sablier de Xélor', icon: 'SX', color: '#ffe9a0', type: 'projectile', desc: 'Sablier qui ralentit et blesse.', base: { dmg: 16, cd: 1.8, count: 1, pierce: 1, speed: 380, range: 480, size: 8, slow: 0.4 }, up: UP.projectile },
-  rayon_obscur: { name: 'Rayon Obscur', icon: 'RO', color: '#7b6cff', type: 'projectile', desc: 'Rayon qui transperce tout sur son passage.', base: { dmg: 20, cd: 2.4, count: 1, pierce: 8, speed: 900, range: 560, size: 6 }, up: UP.projectile },
-  cadran_xelor: { name: 'Cadran de Xélor', icon: 'CX', color: '#ffd84a', type: 'glyph', desc: 'Un cadran au sol fait tourner le temps contre vos ennemis.', base: { dmg: 8, cd: 6, radius: 95, duration: 4, tick: 0.5 }, up: UP.glyph },
-  fuite: { name: 'Fuite', icon: 'Fu', color: '#c9e4ff', type: 'buff', desc: 'Accélère vos déplacements un court instant.', base: { pow: 0, spd: 0.35, dur: 3, cd: 9 }, up: [{ d: '+2 s de durée', a: { dur: 2 } }, { d: '+15% vitesse', a: { spd: 0.15 } }, { d: '-25% recharge', m: { cd: 0.75 } }, { d: '+20% dégâts pendant la fuite', a: { pow: 0.2 } }] },
+  sablier_xelor: { name: 'Sablier de Xélor', icon: 'SX', color: '#ffe9a0', type: 'projectile', desc: 'Sablier qui ralentit et blesse.', base: { dmg: 16, cd: 1.8, count: 1, pierce: 1, speed: 380, range: 480, size: 8, slow: 0.4 } },
+  rayon_obscur: { name: 'Rayon Obscur', icon: 'RO', color: '#7b6cff', type: 'projectile', desc: 'Rayon qui transperce tout sur son passage.', base: { dmg: 20, cd: 2.4, count: 1, pierce: 8, speed: 900, range: 560, size: 6 } },
+  cadran_xelor: { name: 'Cadran de Xélor', icon: 'CX', color: '#ffd84a', type: 'glyph', desc: 'Un cadran au sol fait tourner le temps contre vos ennemis.', base: { dmg: 8, cd: 6, radius: 95, duration: 4, tick: 0.5 } },
+  fuite: { name: 'Fuite', icon: 'Fu', color: '#c9e4ff', type: 'buff', desc: 'Accélère vos déplacements un court instant.', base: { pow: 0, spd: 0.35, dur: 3, cd: 9 } },
   // Osamodas
-  invoc_sanglier: { name: 'Invocation de Sanglier', icon: 'IS', color: '#7a5236', type: 'summon', look: 'boar', desc: 'Un sanglier robuste fonce dans la mêlée.', base: { dmg: 18, count: 1, speed: 170, size: 14 }, up: UP.summon },
-  invoc_craqueleur: { name: 'Invocation de Craqueleur', icon: 'IC', color: '#8a8a8a', type: 'summon', look: 'rock', desc: 'Un craqueleur lent mais qui frappe fort.', base: { dmg: 30, count: 1, speed: 120, size: 16 }, up: UP.summon },
-  cri_ours: { name: 'Cri de l’Ours', icon: 'CO', color: '#c89a6a', type: 'nova', desc: 'Rugissement qui repousse et blesse.', base: { dmg: 16, cd: 4, radius: 105, knock: 90 }, up: UP.nova },
-  soin_animal: { name: 'Soin Animal', icon: 'SA', color: '#9cffb0', type: 'heal', desc: 'Soigne régulièrement.', base: { heal: 6, cd: 5 }, up: UP.heal },
+  invoc_sanglier: { name: 'Invocation de Sanglier', icon: 'IS', color: '#7a5236', type: 'summon', look: 'boar', desc: 'Un sanglier robuste fonce dans la mêlée.', base: { dmg: 18, count: 1, speed: 170, size: 14 } },
+  invoc_craqueleur: { name: 'Invocation de Craqueleur', icon: 'IC', color: '#8a8a8a', type: 'summon', look: 'rock', desc: 'Un craqueleur lent mais qui frappe fort.', base: { dmg: 30, count: 1, speed: 120, size: 16 } },
+  cri_ours: { name: 'Cri de l’Ours', icon: 'CO', color: '#c89a6a', type: 'nova', desc: 'Rugissement qui repousse et blesse.', base: { dmg: 16, cd: 4, radius: 105, knock: 90 } },
+  soin_animal: { name: 'Soin Animal', icon: 'SA', color: '#9cffb0', type: 'heal', desc: 'Soigne régulièrement.', base: { heal: 6, cd: 5 } },
   // Sacrieur
-  epee_volante: { name: 'Épée Volante', icon: 'EV', color: '#ff8080', type: 'orbit', desc: 'Des épées de sang tournent autour de vous.', base: { dmg: 12, count: 2, radius: 75, speed: 3.6, size: 11 }, up: UP.orbit },
-  punition: { name: 'Punition', icon: 'Pn', color: '#b3001b', type: 'strike', desc: 'Frappe énorme, plus forte quand vous êtes blessé.', base: { dmg: 70, cd: 5, radius: 60, count: 1, range: 300, delay: 0.4, rage: 1 }, up: UP.strike },
-  dissolution: { name: 'Dissolution', icon: 'Di', color: '#ff5a5a', type: 'aura', desc: 'Votre sang ronge les ennemis proches.', base: { dmg: 5, tick: 0.5, radius: 75, slow: 0.1, rage: 1 }, up: UP.aura },
-  folie_sanguinaire: { name: 'Folie Sanguinaire', icon: 'FS', color: '#ff2a2a', type: 'buff', desc: 'Rage : +dégâts et +vitesse.', base: { pow: 0.3, spd: 0.1, dur: 5, cd: 14 }, up: UP.buff },
+  epee_volante: { name: 'Épée Volante', icon: 'EV', color: '#ff8080', type: 'orbit', desc: 'Des épées de sang tournent autour de vous.', base: { dmg: 12, count: 2, radius: 75, speed: 3.6, size: 11 } },
+  punition: { name: 'Punition', icon: 'Pn', color: '#b3001b', type: 'strike', desc: 'Frappe énorme, plus forte quand vous êtes blessé.', base: { dmg: 70, cd: 5, radius: 60, count: 1, range: 300, delay: 0.4, rage: 1 } },
+  dissolution: { name: 'Dissolution', icon: 'Di', color: '#ff5a5a', type: 'aura', desc: 'Votre sang ronge les ennemis proches.', base: { dmg: 5, tick: 0.5, radius: 75, slow: 0.1, rage: 1 } },
+  folie_sanguinaire: { name: 'Folie Sanguinaire', icon: 'FS', color: '#ff2a2a', type: 'buff', desc: 'Rage : +dégâts et +vitesse.', base: { pow: 0.3, spd: 0.1, dur: 5, cd: 14 } },
   // Enutrof
-  lancer_pelle: { name: 'Lancer de Pelle', icon: 'Pl', color: '#c8a060', type: 'projectile', desc: 'Pelle lancée qui traverse les ennemis.', base: { dmg: 18, cd: 1.6, count: 1, pierce: 4, speed: 420, range: 460, size: 8, knock: 40 }, up: UP.projectile },
-  pelle_fantomatique: { name: 'Pelle Fantomatique', icon: 'PF', color: '#cfe7ff', type: 'orbit', desc: 'Des pelles spectrales tournent autour de vous.', base: { dmg: 11, count: 2, radius: 80, speed: 2.8, size: 12 }, up: UP.orbit },
-  remblai: { name: 'Remblai', icon: 'Re', color: '#a8865a', type: 'nova', desc: 'Soulève la terre tout autour.', base: { dmg: 22, cd: 3.4, radius: 95, knock: 50 }, up: UP.nova },
-  force_age: { name: 'Force de l’Âge', icon: 'FA', color: '#e6d39a', type: 'buff', desc: 'L’expérience parle : +dégâts temporaires.', base: { pow: 0.35, dur: 5, cd: 14 }, up: UP.buff },
+  lancer_pelle: { name: 'Lancer de Pelle', icon: 'Pl', color: '#c8a060', type: 'projectile', desc: 'Pelle lancée qui traverse les ennemis.', base: { dmg: 18, cd: 1.6, count: 1, pierce: 4, speed: 420, range: 460, size: 8, knock: 40 } },
+  pelle_fantomatique: { name: 'Pelle Fantomatique', icon: 'PF', color: '#cfe7ff', type: 'orbit', desc: 'Des pelles spectrales tournent autour de vous.', base: { dmg: 11, count: 2, radius: 80, speed: 2.8, size: 12 } },
+  remblai: { name: 'Remblai', icon: 'Re', color: '#a8865a', type: 'nova', desc: 'Soulève la terre tout autour.', base: { dmg: 22, cd: 3.4, radius: 95, knock: 50 } },
+  force_age: { name: 'Force de l’Âge', icon: 'FA', color: '#e6d39a', type: 'buff', desc: 'L’expérience parle : +dégâts temporaires.', base: { pow: 0.35, dur: 5, cd: 14 } },
   // Roublard
-  dagues_boomerang: { name: 'Dagues Boomerang', icon: 'DB', color: '#ffd9a0', type: 'projectile', desc: 'Dagues qui transpercent plusieurs ennemis.', base: { dmg: 10, cd: 1.3, count: 2, pierce: 3, speed: 520, range: 420, size: 5 }, up: UP.projectile },
-  arquebuse: { name: 'Arquebuse', icon: 'Aq', color: '#ffb366', type: 'projectile', desc: 'Tir lourd à longue portée.', base: { dmg: 42, cd: 2.6, count: 1, pierce: 2, speed: 820, range: 620, size: 6, knock: 60 }, up: UP.projectile },
-  roublabot: { name: 'Roublabot', icon: 'Rb', color: '#9aa4b0', type: 'summon', look: 'rock', desc: 'Un petit robot qui cogne pour vous.', base: { dmg: 16, count: 1, speed: 180, size: 13 }, up: UP.summon },
-  botte: { name: 'Botte', icon: 'Bt', color: '#d9a066', type: 'melee', desc: 'Coup de pied qui repousse loin.', base: { dmg: 16, cd: 1.6, range: 70, arc: 1.6, knock: 120 }, up: UP.melee },
+  dagues_boomerang: { name: 'Dagues Boomerang', icon: 'DB', color: '#ffd9a0', type: 'projectile', desc: 'Dagues qui transpercent plusieurs ennemis.', base: { dmg: 10, cd: 1.3, count: 2, pierce: 3, speed: 520, range: 420, size: 5 } },
+  arquebuse: { name: 'Arquebuse', icon: 'Aq', color: '#ffb366', type: 'projectile', desc: 'Tir lourd à longue portée.', base: { dmg: 42, cd: 2.6, count: 1, pierce: 2, speed: 820, range: 620, size: 6, knock: 60 } },
+  roublabot: { name: 'Roublabot', icon: 'Rb', color: '#9aa4b0', type: 'summon', look: 'rock', desc: 'Un petit robot qui cogne pour vous.', base: { dmg: 16, count: 1, speed: 180, size: 13 } },
+  botte: { name: 'Botte', icon: 'Bt', color: '#d9a066', type: 'melee', desc: 'Coup de pied qui repousse loin.', base: { dmg: 16, cd: 1.6, range: 70, arc: 1.6, knock: 120 } },
 };
 
 // ---------------------------------------------------------------- Caractéristiques (passifs de partie)
