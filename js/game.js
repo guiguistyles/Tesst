@@ -416,6 +416,19 @@ const Game = (() => {
       }
     }
   }
+  // Centre d'un groupe d'ennemis à portée : l'ennemi qui a le plus de voisins dans un rayon r.
+  function crowdSpot(x, y, range, r) {
+    const cands = nearest(x, y, range, 14);
+    if (!cands.length) return null;
+    let best = cands[0], bestN = -1;
+    for (const c of cands) {
+      let n = 0;
+      for (const o of cands) if (d2(c.x, c.y, o.x, o.y) <= r * r) n++;
+      if (n > bestN) { bestN = n; best = c; }
+    }
+    return { x: best.x, y: best.y };
+  }
+
   function nearest(x, y, range, n) {
     const out = [];
     const r2 = range * range;
@@ -691,9 +704,14 @@ const Game = (() => {
         S.traps.push({ src: sp, x, y, r: s.radius * area, dmg: s.dmg, life: s.life, arm: 0.3, fuse: s.fuse, color: def.color });
         return true;
       }
-      case 'glyph':
-        S.glyphs.push({ x: p.x, y: p.y, r: s.radius * area, dmg: s.dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
+      case 'glyph': {
+        // posé dans la zone autour du personnage, là où les ennemis sont les plus groupés
+        const r = s.radius * area, at = crowdSpot(p.x, p.y, s.range || 260, r);
+        if (!at) return false;
+        S.glyphs.push({ x: at.x, y: at.y, r, dmg: s.dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
+        S.fx.push({ type: 'ring', x: at.x, y: at.y, r, t: 0, life: 0.35, color: def.color });
         return true;
+      }
       case 'heal': {
         const h = Math.min(s.heal, p.maxHp - p.hp);
         if (h <= 0) return false;
