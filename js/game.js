@@ -115,7 +115,8 @@ const Game = (() => {
 
   // ------------------------------------------------------------ Statistiques
   function metaStats(save) {
-    const st = { dmg: 1, cd: 1, area: 1, crit: 0.05, xp: 1, pickup: 85, regen: 0, armor: 0, speed: 1, kamas: 1, hp: 1 };
+    const st = { dmg: 1, cd: 1, area: 1, crit: 0.05, critDmg: 2, xp: 1, pickup: 85, regen: 0, armor: 0, speed: 1, kamas: 1, hp: 1,
+      drop: 1, card4: 0, dodge: 0, spellDmg: 1 };
     const u = save.upgrades;
     st.hp *= 1 + 0.06 * (u.vitalite || 0);
     st.dmg *= 1 + 0.05 * (u.force || 0);
@@ -123,13 +124,18 @@ const Game = (() => {
     st.xp *= 1 + 0.06 * (u.sagesse || 0);
     st.kamas *= 1 + 0.1 * (u.prospection || 0);
     st.cd *= 1 - 0.03 * (u.pa || 0);
+    // Dofus : effets repris de ZaapRush, adaptés aux statistiques du jeu
     for (const id of save.dofus) {
       switch (id) {
-        case 'cawotte': st.regen += 1; break;
-        case 'emeraude': st.hp *= 1.15; break;
-        case 'pourpre': st.dmg *= 1.12; break;
-        case 'turquoise': st.crit += 0.07; break;
-        case 'ebene': st.speed *= 1.08; st.dmg *= 1.08; break;
+        case 'dofawa': st.hp *= 1.12; break;
+        case 'cawotte': st.xp *= 1.2; break;
+        case 'turquoise': st.critDmg += 0.5; break;
+        case 'emeraude': st.hp *= 1.35; break;
+        case 'kaliptus': st.drop *= 1.5; break;
+        case 'pourpre': st.dmg *= 1.25; break;
+        case 'vulbis': st.card4 += 0.2; st.dodge += 0.05; break;
+        case 'ebene': st.spellDmg *= 1.25; break;
+        case 'ivoire': st.area *= 1.2; break;
       }
     }
     return st;
@@ -144,7 +150,7 @@ const Game = (() => {
     st.area *= 1 + 0.1 * (P.intelligence || 0);
     st.xp *= 1 + 0.12 * (P.sagesse || 0);
     st.crit += 0.05 * (P.chance || 0);
-    st.drop = 1 + 0.3 * (P.prospection || 0);
+    st.drop *= 1 + 0.3 * (P.prospection || 0);
     st.cd *= Math.pow(0.93, P.pa || 0);
     st.regen += 0.5 * (P.soin || 0);
     for (const b of equipBonuses()) {
@@ -233,6 +239,7 @@ const Game = (() => {
   function spellStats(sp) {
     const def = SPELLS[sp.id];
     const s = Object.assign({}, def.base);
+    if (s.dmg && sp.id !== CLASSES[S.cls].spells[0]) s.dmg *= S.meta.spellDmg; // Dofus Ébène
     for (let i = 0; i < sp.lvl - 1; i++) {
       const u = def.up[i];
       if (u.m) for (const k in u.m) s[k] = (s[k] || 0) * u.m[k];
@@ -355,6 +362,7 @@ const Game = (() => {
   function damagePlayer(d) {
     const p = S.p;
     if (S.over || p.hp <= 0 || GOD_MODE) return;
+    if (S.stats.dodge && Math.random() < S.stats.dodge) { addText(p.x, p.y - 30, 'Esquive', '#b8e0ff'); return; }
     d *= 1 - S.stats.armor;
     if (p.shield > 0) {
       const a = Math.min(p.shield, d);
@@ -513,7 +521,7 @@ const Game = (() => {
     let d = base * S.stats.dmg * (1 + buffPow('pow'));
     if (o.rage) d *= 1 + (1 - S.p.hp / S.p.maxHp) * 1.5;
     const crit = Math.random() < S.stats.crit + (o.crit || 0);
-    if (crit) d *= 2;
+    if (crit) d *= S.stats.critDmg;
     d *= rand(0.9, 1.1);
     e.hp -= d;
     e.flash = 0.08;
@@ -965,13 +973,13 @@ const Game = (() => {
       (l ? ups : stats).push(c);
     }
     const pools = [ups, news, stats].map((a) => a.filter(ok));
-    const out = [];
+    const out = [], n = Math.random() < S.stats.card4 ? 4 : 3; // Dofus Vulbis : parfois 4 cartes
     for (const i of [0, 1, 2].sort(() => Math.random() - 0.5)) {
       const pool = pools[i];
-      if (pool.length && out.length < 3) out.push(pool.splice((Math.random() * pool.length) | 0, 1)[0]);
+      if (pool.length && out.length < n) out.push(pool.splice((Math.random() * pool.length) | 0, 1)[0]);
     }
     const rest = pools.flat();
-    while (out.length < 3 && rest.length) out.push(rest.splice((Math.random() * rest.length) | 0, 1)[0]);
+    while (out.length < n && rest.length) out.push(rest.splice((Math.random() * rest.length) | 0, 1)[0]);
     if (!out.length) {
       out.push({ kind: 'heal', name: 'Pain d’Amakna', icon: '🍞', color: '#e0b060', desc: 'Rend 50% des PV', lvl: 0, tag: 'Bonus' });
       out.push({ kind: 'kamas', name: 'Bourse', icon: 'K', color: '#ffd84a', desc: '+50 kamas', lvl: 0, tag: 'Bonus' });

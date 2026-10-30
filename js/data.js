@@ -612,86 +612,110 @@ const PASSIVES = {
 };
 
 // ---------------------------------------------------------------- Monstres
-// shape : sheep | bird | larva | spider | bug | boar | tree | skull | rock | penguin | jelly
+// shape : sheep | bird | larva | spider | bug | boar | tree | skull | rock | penguin | jelly (dessin de repli)
+// sprite : planche animée (tools/sprites). Les 9 mondes et leurs monstres reprennent ceux de ZaapRush.
 const MONSTERS = {
   // Astrub
   bouftou:      { name: 'Bouftou', hp: 10, speed: 60, dmg: 5, xp: 1, r: 14, shape: 'sheep', body: '#f2efe6', detail: '#6b4a2a', sprite: 'bouftou' },
   tofu:         { name: 'Tofu', hp: 6, speed: 105, dmg: 4, xp: 1, r: 9, shape: 'bird', body: '#ffd23f', detail: '#e07a1f', sprite: 'tofu' },
   piou:         { name: 'Piou Rouge', hp: 7, speed: 90, dmg: 4, xp: 1, r: 9, shape: 'bird', body: '#ff5b5b', detail: '#ffcc33', sprite: 'piou' },
-  larve_bleue:  { name: 'Larve Bleue', hp: 18, speed: 45, dmg: 6, xp: 2, r: 13, shape: 'larva', body: '#4fa3ff', detail: '#1f5fa8', sprite: 'larve_bleue' },
+  boufton_noir: { name: 'Boufton Noir', hp: 14, speed: 70, dmg: 6, xp: 2, r: 12, shape: 'sheep', body: '#4a4a52', detail: '#1a1a1e' },
   tofu_royal:   { name: 'Tofu Royal', hp: 380, speed: 95, dmg: 12, xp: 30, r: 26, shape: 'bird', body: '#ffcc00', detail: '#d06010', boss: 1, sprite: 'tofu_royal' },
   bouftou_royal:{ name: 'Bouftou Royal', hp: 1100, speed: 75, dmg: 18, xp: 80, r: 36, shape: 'sheep', body: '#fffbe8', detail: '#4a2f1a', boss: 2, sprite: 'bouftou_royal' },
-  // Amakna
-  sanglier:     { name: 'Sanglier', hp: 22, speed: 70, dmg: 8, xp: 2, r: 15, shape: 'boar', body: '#7a5236', detail: '#f0e6d0' },
-  arakne:       { name: 'Arakne', hp: 12, speed: 100, dmg: 6, xp: 1, r: 11, shape: 'spider', body: '#3a3a3a', detail: '#d33' },
-  moskito:      { name: 'Moskito', hp: 9, speed: 125, dmg: 5, xp: 1, r: 9, shape: 'bug', body: '#8a6a9a', detail: '#e0e0ff' },
-  prespic:      { name: 'Prespic', hp: 28, speed: 55, dmg: 9, xp: 3, r: 14, shape: 'boar', body: '#5a4a3a', detail: '#d8c8a0', ranged: { range: 260, cd: 3, speed: 200, color: '#c8b080' } },
-  black_wabbit: { name: 'Black Wabbit', hp: 900, speed: 100, dmg: 16, xp: 40, r: 26, shape: 'jelly', body: '#2a2a2a', detail: '#ff3030', boss: 1 },
-  dragon_cochon:{ name: 'Dragon Cochon', hp: 3200, speed: 80, dmg: 24, xp: 120, r: 38, shape: 'boar', body: '#e090a0', detail: '#7a2030', boss: 2 },
+  // Île des Wabbits
+  wabbit:       { name: 'Wabbit', hp: 14, speed: 95, dmg: 6, xp: 1, r: 12, shape: 'penguin', body: '#f0e8d8', detail: '#ff8a3d' },
+  larve_bleue:  { name: 'Larve Bleue', hp: 22, speed: 45, dmg: 7, xp: 2, r: 13, shape: 'larva', body: '#4fa3ff', detail: '#1f5fa8', sprite: 'larve_bleue' },
+  moskito:      { name: 'Moskito', hp: 10, speed: 125, dmg: 5, xp: 1, r: 9, shape: 'bug', body: '#8a6a9a', detail: '#e0e0ff' },
+  crabe:        { name: 'Crabe', hp: 24, speed: 60, dmg: 8, xp: 2, r: 13, shape: 'spider', body: '#e0533a', detail: '#ffd0b0' },
+  black_wabbit: { name: 'Black Wabbit', hp: 741, speed: 100, dmg: 16, xp: 40, r: 26, shape: 'jelly', body: '#2a2a2a', detail: '#ff3030', boss: 1 },
+  wa_wabbit:    { name: 'Wa Wabbit', hp: 2150, speed: 80, dmg: 20, xp: 100, r: 36, shape: 'penguin', body: '#e8e0f8', detail: '#8a4ad0', boss: 2 },
   // Forêt des Abraknydes
+  arakne:       { name: 'Arakne', hp: 14, speed: 100, dmg: 6, xp: 1, r: 11, shape: 'spider', body: '#3a3a3a', detail: '#d33' },
+  abrakne:      { name: 'Abrakne', hp: 20, speed: 95, dmg: 8, xp: 2, r: 12, shape: 'spider', body: '#3f5a2f', detail: '#c8e070' },
   abraknyde:    { name: 'Abraknyde', hp: 40, speed: 50, dmg: 11, xp: 3, r: 16, shape: 'tree', body: '#6a4a2a', detail: '#3f7a2f' },
-  chafer:       { name: 'Chafer', hp: 22, speed: 85, dmg: 9, xp: 2, r: 12, shape: 'skull', body: '#e8e4d8', detail: '#222' },
-  chafer_archer:{ name: 'Chafer Archer', hp: 18, speed: 70, dmg: 8, xp: 3, r: 12, shape: 'skull', body: '#d8d0b8', detail: '#552', ranged: { range: 320, cd: 2.4, speed: 260, color: '#e8e0c0' } },
-  fantome:      { name: 'Fantôme Pandore', hp: 16, speed: 115, dmg: 8, xp: 2, r: 11, shape: 'jelly', body: '#c8d8ff', detail: '#334' },
-  abrak_ancestral:{ name: 'Abraknyde Ancestral', hp: 2200, speed: 70, dmg: 22, xp: 60, r: 32, shape: 'tree', body: '#4a321a', detail: '#2f5a1f', boss: 1 },
-  chene_mou:    { name: 'Le Chêne Mou', hp: 6500, speed: 65, dmg: 30, xp: 200, r: 46, shape: 'tree', body: '#5a3a1a', detail: '#7aa040', boss: 2 },
-  // Montagne des Craqueleurs
-  craqueleur:   { name: 'Craqueleur', hp: 70, speed: 45, dmg: 15, xp: 4, r: 18, shape: 'rock', body: '#8a8a8a', detail: '#5a5a5a' },
-  bwork:        { name: 'Bwork', hp: 45, speed: 80, dmg: 13, xp: 3, r: 14, shape: 'boar', body: '#6a8a3a', detail: '#f0e0b0' },
-  gelee:        { name: 'Gelée Bleue', hp: 35, speed: 65, dmg: 10, xp: 2, r: 13, shape: 'jelly', body: '#4f8fff', detail: '#1a3a7a' },
-  bwork_mage:   { name: 'Bwork Mage', hp: 40, speed: 60, dmg: 12, xp: 4, r: 14, shape: 'boar', body: '#5a3a8a', detail: '#ffb0ff', ranged: { range: 300, cd: 2.2, speed: 240, color: '#d070ff' } },
-  craq_roc:     { name: 'Craqueleur des Plaines', hp: 4500, speed: 75, dmg: 28, xp: 90, r: 34, shape: 'rock', body: '#a08a6a', detail: '#6a5a3a', boss: 1 },
-  craq_legend:  { name: 'Craqueleur Légendaire', hp: 12000, speed: 70, dmg: 38, xp: 300, r: 50, shape: 'rock', body: '#6a6a7a', detail: '#ffcc40', boss: 2 },
-  // Frigost
-  mansot:       { name: 'Mansot', hp: 70, speed: 85, dmg: 15, xp: 3, r: 13, shape: 'penguin', body: '#2a3a5a', detail: '#f0f0f0' },
-  boufmouth:    { name: 'Boufmouth', hp: 110, speed: 60, dmg: 18, xp: 4, r: 16, shape: 'sheep', body: '#c8e0ff', detail: '#3a5a8a' },
-  sapik:        { name: 'Sapik', hp: 90, speed: 55, dmg: 17, xp: 4, r: 15, shape: 'tree', body: '#4a3a2a', detail: '#d0f0ff' },
-  fecorce:      { name: 'Fécorce', hp: 60, speed: 75, dmg: 14, xp: 4, r: 13, shape: 'tree', body: '#3a2a1a', detail: '#7ab0d0', ranged: { range: 320, cd: 2, speed: 260, color: '#a0e0ff' } },
-  mansot_royal: { name: 'Mansot Royal', hp: 8000, speed: 90, dmg: 34, xp: 120, r: 34, shape: 'penguin', body: '#1a2a4a', detail: '#ffd84a', boss: 1 },
-  obsidiantre:  { name: 'Obsidiantre', hp: 22000, speed: 75, dmg: 48, xp: 400, r: 52, shape: 'rock', body: '#1a1a2a', detail: '#a040ff', boss: 2 },
+  abraknyde_sombre: { name: 'Abraknyde Sombre', hp: 48, speed: 55, dmg: 12, xp: 3, r: 16, shape: 'tree', body: '#3a2a1a', detail: '#2a4a2a' },
+  abrak_ancestral:{ name: 'Abraknyde Ancestral', hp: 1290, speed: 60, dmg: 22, xp: 60, r: 32, shape: 'tree', body: '#4a321a', detail: '#2f5a1f', boss: 1 },
+  chene_mou:    { name: 'Le Chêne Mou', hp: 3730, speed: 45, dmg: 26, xp: 160, r: 46, shape: 'tree', body: '#5a3a1a', detail: '#7aa040', boss: 2 },
+  // Litneg (plaines de Cania)
+  sanglier:     { name: 'Sanglier des Plaines', hp: 30, speed: 75, dmg: 10, xp: 2, r: 15, shape: 'boar', body: '#7a5236', detail: '#f0e6d0' },
+  mulou:        { name: 'Mulou', hp: 36, speed: 90, dmg: 12, xp: 3, r: 15, shape: 'boar', body: '#7a7a82', detail: '#f0f0f0' },
+  chafer:       { name: 'Chafer', hp: 28, speed: 85, dmg: 10, xp: 2, r: 12, shape: 'skull', body: '#e8e4d8', detail: '#222' },
+  chafer_archer:{ name: 'Chafer Archer', hp: 24, speed: 70, dmg: 9, xp: 3, r: 12, shape: 'skull', body: '#d8d0b8', detail: '#552', ranged: { range: 320, cd: 2.4, speed: 260, color: '#e8e0c0' } },
+  kruorre:      { name: 'Kruorre', hp: 1250, speed: 70, dmg: 26, xp: 80, r: 32, shape: 'rock', body: '#8a2a2a', detail: '#ffb060', boss: 1 },
+  meulou:       { name: 'Meulou', hp: 3620, speed: 85, dmg: 30, xp: 220, r: 40, shape: 'boar', body: '#5a5a66', detail: '#ffffff', boss: 2 },
+  // Montagne des Koalaks
+  koalak_immature:{ name: 'Koalak Immature', hp: 40, speed: 70, dmg: 12, xp: 3, r: 13, shape: 'boar', body: '#a0703a', detail: '#f0d8b0' },
+  warko_violet: { name: 'Warko Violet', hp: 34, speed: 100, dmg: 11, xp: 3, r: 12, shape: 'bug', body: '#8a4ab0', detail: '#ffd84a' },
+  guerrier_koalak:{ name: 'Guerrier Koalak', hp: 60, speed: 65, dmg: 15, xp: 4, r: 15, shape: 'boar', body: '#7a4a2a', detail: '#e0c090', ranged: { range: 280, cd: 2.8, speed: 240, color: '#c08a4a' } },
+  momie_koalak: { name: 'Momie Koalak', hp: 70, speed: 50, dmg: 14, xp: 4, r: 14, shape: 'skull', body: '#e0d6b0', detail: '#5a4a2a' },
+  koulosse:     { name: 'Koulosse', hp: 2150, speed: 55, dmg: 30, xp: 110, r: 38, shape: 'rock', body: '#8a6a4a', detail: '#3a2a1a', boss: 1 },
+  skeunk:       { name: 'Skeunk', hp: 6230, speed: 85, dmg: 34, xp: 280, r: 36, shape: 'jelly', body: '#2f4a2f', detail: '#f0f0f0', boss: 2 },
+  // Labyrinthe du Minotoror
+  minoskito:    { name: 'Minoskito', hp: 40, speed: 130, dmg: 12, xp: 3, r: 10, shape: 'bug', body: '#5a3a2a', detail: '#ffb0a0' },
+  scaratos:     { name: 'Scaratos', hp: 70, speed: 70, dmg: 15, xp: 4, r: 14, shape: 'spider', body: '#2f4a5a', detail: '#9ad0ff' },
+  kramelehon:   { name: 'Kramelehon', hp: 60, speed: 60, dmg: 14, xp: 4, r: 14, shape: 'larva', body: '#5aa05a', detail: '#2a5a2a' },
+  gamino:       { name: 'Gamino', hp: 90, speed: 75, dmg: 17, xp: 5, r: 15, shape: 'boar', body: '#8a5a3a', detail: '#f0e0c0' },
+  minotoror:    { name: 'Minotoror', hp: 2750, speed: 80, dmg: 36, xp: 140, r: 36, shape: 'boar', body: '#6a3a2a', detail: '#e0c8a0', boss: 1 },
+  minotot:      { name: 'Minotot', hp: 7970, speed: 80, dmg: 40, xp: 340, r: 44, shape: 'boar', body: '#4a1a1a', detail: '#ffd84a', boss: 2 },
+  // Sanctuaire des Dragoeufs
+  dragoeuf_dore:{ name: 'Dragoeuf Doré', hp: 80, speed: 85, dmg: 16, xp: 4, r: 12, shape: 'bird', body: '#e8b83a', detail: '#8a5a10' },
+  dragoeuf_saphir:{ name: 'Dragoeuf Saphir', hp: 80, speed: 85, dmg: 16, xp: 4, r: 12, shape: 'bird', body: '#3a7ad0', detail: '#d0e8ff' },
+  dragoeuf_noir:{ name: 'Dragoeuf Noir', hp: 110, speed: 75, dmg: 19, xp: 5, r: 13, shape: 'bird', body: '#2a2a32', detail: '#ff6a3a' },
+  dragoeuf_volant:{ name: 'Dragoeuf Volant', hp: 70, speed: 120, dmg: 15, xp: 5, r: 12, shape: 'bug', body: '#c84a2a', detail: '#ffd84a', ranged: { range: 300, cd: 2.2, speed: 280, color: '#ff8a3a' } },
+  ignelicrobur: { name: 'Ignélicrobur', hp: 3590, speed: 90, dmg: 40, xp: 170, r: 34, shape: 'bug', body: '#e0401a', detail: '#ffe060', boss: 1 },
+  crocabulia:   { name: 'Crocabulia', hp: 10390, speed: 80, dmg: 46, xp: 420, r: 46, shape: 'boar', body: '#2a5a3a', detail: '#ffcc40', boss: 2 },
+  // Sanctuaire de Qu'Tan
+  petit_demon:  { name: 'Petit Démon Rapide', hp: 90, speed: 140, dmg: 18, xp: 5, r: 11, shape: 'jelly', body: '#c8303a', detail: '#ffd84a' },
+  chafer_maudit:{ name: 'Chafer Maudit', hp: 140, speed: 80, dmg: 22, xp: 6, r: 13, shape: 'skull', body: '#b8a8d8', detail: '#2a1a3a' },
+  chafer_archer_maudit:{ name: 'Chafer Archer Maudit', hp: 110, speed: 70, dmg: 20, xp: 6, r: 13, shape: 'skull', body: '#a898c8', detail: '#3a1a4a', ranged: { range: 330, cd: 2.2, speed: 280, color: '#c070ff' } },
+  sorcier_demon:{ name: 'Sorcier Démon', hp: 120, speed: 65, dmg: 22, xp: 7, r: 14, shape: 'jelly', body: '#5a2a7a', detail: '#ff70ff', ranged: { range: 320, cd: 2.4, speed: 260, color: '#ff60d0' } },
+  chafer_lamicel:{ name: 'Chafer Lamicel', hp: 4830, speed: 85, dmg: 44, xp: 200, r: 32, shape: 'skull', body: '#d8c8ff', detail: '#7a2aff', boss: 1 },
+  qutan:        { name: 'Qu’Tan', hp: 13980, speed: 85, dmg: 52, xp: 500, r: 46, shape: 'jelly', body: '#3a1a4a', detail: '#ff3a6a', boss: 2 },
+  // Belvédère d'Ilyzaelle
+  disciple_turorte:{ name: 'Disciple de Turorte', hp: 130, speed: 85, dmg: 22, xp: 6, r: 13, shape: 'penguin', body: '#f4f0e8', detail: '#d0a020' },
+  garde_havou:  { name: 'Garde d’Havou', hp: 200, speed: 60, dmg: 26, xp: 7, r: 16, shape: 'rock', body: '#c8d0e0', detail: '#4a6aa0' },
+  tireur_elite: { name: 'Tireur d’Élite', hp: 120, speed: 75, dmg: 22, xp: 7, r: 13, shape: 'penguin', body: '#d8e0f0', detail: '#3a5a8a', ranged: { range: 360, cd: 2, speed: 300, color: '#9ad0ff' } },
+  mage_celeste: { name: 'Mage Céleste', hp: 120, speed: 70, dmg: 24, xp: 7, r: 13, shape: 'jelly', body: '#a8d8ff', detail: '#ffffff', ranged: { range: 320, cd: 2.2, speed: 270, color: '#d0f0ff' } },
+  palidane:     { name: 'Palidane', hp: 5950, speed: 95, dmg: 48, xp: 230, r: 32, shape: 'penguin', body: '#ffe8a0', detail: '#a07010', boss: 1 },
+  ilyzaelle:    { name: 'Ilyzaelle', hp: 17220, speed: 100, dmg: 56, xp: 600, r: 40, shape: 'jelly', body: '#f0f4ff', detail: '#ffcc40', boss: 2 },
 };
 
-// ---------------------------------------------------------------- Zones (zaaps)
+// ---------------------------------------------------------------- Mondes (zaaps), dans l'ordre de ZaapRush
+// Le premier kill du boss final (vague 40) ouvre le monde suivant ; chaque boss final tente le Dofus du monde.
+// Chaque monde se rejoue depuis le niveau 1 : hpMul / dmgMul recalent les monstres sur une progression
+// d'environ ×1,25 (PV) et ×1,2 (dégâts) par monde.
 const ZONES = [
-  {
-    id: 'astrub', name: 'Astrub', sub: 'Cité d’Astrub',
-    ground: '#6a9b45', ground2: '#5f8f3e', deco: ['#4b7a30', '#e8d070', '#ff9ab0'], decoType: 'grass',
-    monsters: ['bouftou', 'tofu', 'piou', 'larve_bleue'], mini: 'tofu_royal', boss: 'bouftou_royal',
-    hpMul: 1, dmgMul: 1, kamas: 1, dofus: ['cawotte'],
-  },
-  {
-    id: 'amakna', name: 'Amakna', sub: 'Champs et forêts d’Amakna',
-    ground: '#8aa548', ground2: '#7d9840', deco: ['#c8a040', '#4a7a2a', '#e8e090'], decoType: 'field',
-    monsters: ['arakne', 'sanglier', 'moskito', 'prespic'], mini: 'black_wabbit', boss: 'dragon_cochon',
-    hpMul: 1.8, dmgMul: 1.3, kamas: 1.5, dofus: ['emeraude'],
-  },
-  {
-    id: 'abraknydes', name: 'Forêt des Abraknydes', sub: 'Forêt maléfique',
-    ground: '#3f5a32', ground2: '#36502b', deco: ['#2a3f22', '#5a4a3a', '#7a9a50'], decoType: 'forest',
-    monsters: ['chafer', 'abraknyde', 'fantome', 'chafer_archer'], mini: 'abrak_ancestral', boss: 'chene_mou',
-    hpMul: 3, dmgMul: 1.7, kamas: 2.2, dofus: ['turquoise'],
-  },
-  {
-    id: 'craqueleurs', name: 'Montagne des Craqueleurs', sub: 'Plaines de Cania',
-    ground: '#9a8a6a', ground2: '#8d7d5f', deco: ['#6a6a6a', '#b0a080', '#5a5040'], decoType: 'rock',
-    monsters: ['gelee', 'bwork', 'craqueleur', 'bwork_mage'], mini: 'craq_roc', boss: 'craq_legend',
-    hpMul: 5, dmgMul: 2.2, kamas: 3, dofus: ['pourpre'],
-  },
-  {
-    id: 'frigost', name: 'Frigost', sub: 'Île de Frigost',
-    ground: '#dfe9f2', ground2: '#d2dfeb', deco: ['#a8c4dc', '#2f4a3a', '#ffffff'], decoType: 'snow',
-    monsters: ['mansot', 'boufmouth', 'sapik', 'fecorce'], mini: 'mansot_royal', boss: 'obsidiantre',
-    hpMul: 8, dmgMul: 2.8, kamas: 4, dofus: ['ebene'],
-  },
+  { id: 'astrub', name: 'Astrub', sub: 'Cité d’Astrub', ground: '#6a9b45', ground2: '#5f8f3e', deco: ['#4b7a30', '#e8d070', '#ff9ab0'], decoType: 'grass',
+    monsters: ['bouftou', 'tofu', 'piou', 'boufton_noir'], mini: 'tofu_royal', boss: 'bouftou_royal', hpMul: 1, dmgMul: 1, kamas: 1, dofus: ['dofawa'] },
+  { id: 'wabbit', name: 'Île des Wabbits', sub: 'Les terres du Wa Wabbit', ground: '#8fbf5a', ground2: '#84b351', deco: ['#5a8a3a', '#ff8a3d', '#f0e6c0'], decoType: 'field',
+    monsters: ['wabbit', 'larve_bleue', 'moskito', 'crabe'], mini: 'black_wabbit', boss: 'wa_wabbit', hpMul: 0.8, dmgMul: 0.92, kamas: 1.4, dofus: ['cawotte'] },
+  { id: 'abraknydes', name: 'Forêt des Abraknydes', sub: 'Forêt maléfique', ground: '#3f5a32', ground2: '#36502b', deco: ['#2a3f22', '#5a4a3a', '#7a9a50'], decoType: 'forest',
+    monsters: ['arakne', 'abrakne', 'abraknyde', 'abraknyde_sombre'], mini: 'abrak_ancestral', boss: 'chene_mou', hpMul: 0.62, dmgMul: 0.78, kamas: 1.8, dofus: ['turquoise'] },
+  { id: 'litneg', name: 'Litneg', sub: 'Plaines de Cania', ground: '#b0a55a', ground2: '#a3984f', deco: ['#8a7a3a', '#d8c870', '#6a8a3a'], decoType: 'field',
+    monsters: ['sanglier', 'mulou', 'chafer', 'chafer_archer'], mini: 'kruorre', boss: 'meulou', hpMul: 0.85, dmgMul: 0.84, kamas: 2.3, dofus: ['emeraude'] },
+  { id: 'koalaks', name: 'Montagne des Koalaks', sub: 'Canyon sauvage', ground: '#b0704a', ground2: '#a36542', deco: ['#7a4a2a', '#d8a070', '#5a6a3a'], decoType: 'rock',
+    monsters: ['koalak_immature', 'warko_violet', 'guerrier_koalak', 'momie_koalak'], mini: 'koulosse', boss: 'skeunk', hpMul: 0.6, dmgMul: 0.77, kamas: 2.8, dofus: ['kaliptus'] },
+  { id: 'minotoror', name: 'Labyrinthe du Minotoror', sub: 'Île du Minotoror', ground: '#8a8a7a', ground2: '#7f7f70', deco: ['#5a5a50', '#b0a890', '#4a6a3a'], decoType: 'rock',
+    monsters: ['minoskito', 'scaratos', 'kramelehon', 'gamino'], mini: 'minotoror', boss: 'minotot', hpMul: 0.58, dmgMul: 0.83, kamas: 3.4, dofus: ['pourpre'] },
+  { id: 'dragoeufs', name: 'Sanctuaire des Dragoeufs', sub: 'Terres volcaniques', ground: '#5a3a2a', ground2: '#503325', deco: ['#3a2418', '#ff7a2a', '#8a5a3a'], decoType: 'rock',
+    monsters: ['dragoeuf_dore', 'dragoeuf_saphir', 'dragoeuf_noir', 'dragoeuf_volant'], mini: 'ignelicrobur', boss: 'crocabulia', hpMul: 0.54, dmgMul: 0.9, kamas: 4, dofus: ['vulbis'] },
+  { id: 'qutan', name: 'Sanctuaire de Qu’Tan', sub: 'Terres démoniaques', ground: '#3a2a40', ground2: '#332539', deco: ['#241a2a', '#a040c0', '#5a3a5a'], decoType: 'forest',
+    monsters: ['petit_demon', 'chafer_maudit', 'chafer_archer_maudit', 'sorcier_demon'], mini: 'chafer_lamicel', boss: 'qutan', hpMul: 0.48, dmgMul: 0.88, kamas: 4.6, dofus: ['ebene'] },
+  { id: 'ilyzaelle', name: 'Belvédère d’Ilyzaelle', sub: 'Les hauteurs célestes', ground: '#dfe6f2', ground2: '#d2dbea', deco: ['#a8b8d8', '#ffd84a', '#ffffff'], decoType: 'snow',
+    monsters: ['disciple_turorte', 'garde_havou', 'tireur_elite', 'mage_celeste'], mini: 'palidane', boss: 'ilyzaelle', hpMul: 0.46, dmgMul: 0.9, kamas: 5.2, dofus: ['ivoire'] },
 ];
 
-// ---------------------------------------------------------------- Dofus (bonus permanents, un par zone)
+// ---------------------------------------------------------------- Dofus (bonus permanents, un par monde comme dans ZaapRush)
 const DOFUS = {
-  cawotte:   { name: 'Dofus Cawotte',   color: '#ff8c1a', desc: '+1 PV régénéré/s' },
-  emeraude:  { name: 'Dofus Émeraude',  color: '#2ecc71', desc: '+15% PV max' },
-  pourpre:   { name: 'Dofus Pourpre',   color: '#a2286a', desc: '+12% dégâts' },
-  turquoise: { name: 'Dofus Turquoise', color: '#1fc4c4', desc: '+7% coups critiques' },
-  ebene:     { name: 'Dofus Ébène',     color: '#2a2a3a', desc: '+8% vitesse, +8% dégâts' },
+  dofawa:    { name: 'Dofawa',          color: '#f2d27a', desc: '+12% PV max' },
+  cawotte:   { name: 'Dofus Cawotte',   color: '#ff8c1a', desc: '+20% XP' },
+  turquoise: { name: 'Dofus Turquoise', color: '#1fc4c4', desc: '+50% dégâts critiques' },
+  emeraude:  { name: 'Dofus Émeraude',  color: '#2ecc71', desc: '+35% PV max' },
+  kaliptus:  { name: 'Dofus Kaliptus',  color: '#7fbf3f', desc: '+50% de chances d’équipement' },
+  pourpre:   { name: 'Dofus Pourpre',   color: '#a2286a', desc: '+25% dégâts' },
+  vulbis:    { name: 'Dofus Vulbis',    color: '#b8e0ff', desc: '20% de chances d’avoir 4 cartes, 5% d’esquive' },
+  ebene:     { name: 'Dofus Ébène',     color: '#2a2a3a', desc: '+25% dégâts des sorts (hors sort de départ)' },
+  ivoire:    { name: 'Dofus Ivoire',    color: '#f4f0e0', desc: '+20% taille des sorts' },
 };
 
 // ---------------------------------------------------------------- Équipements (valables pour la partie)
@@ -717,7 +741,6 @@ const ITEMS = {
   cape_tofu:         { name: 'Cape du Tofu', slot: 'cape', from: ['tofu'], bonus: { speed: 0.08 } },
   pantoufles_tofu:   { name: 'Pantoufles du Tofu', slot: 'bottes', from: ['tofu'], bonus: { speed: 0.05, crit: 0.02 } },
   coiffe_piou:       { name: 'Coiffe de Piou', slot: 'coiffe', from: ['piou'], bonus: { crit: 0.04 } },
-  anneau_larve:      { name: 'Anneau de Larve', slot: 'anneau', from: ['larve_bleue'], bonus: { cd: 0.04 } },
   // Astrub — Panoplie du Bouftou Royal (rare)
   royal_coiffe:      { name: 'Coiffe du Bouftou Royal', slot: 'coiffe', set: 'royal', rare: true, from: ['bouftou'], bonus: { hp: 0.18 } },
   royal_cape:        { name: 'Cape du Bouftou Royal', slot: 'cape', set: 'royal', rare: true, from: ['bouftou'], bonus: { dmg: 0.10 } },
@@ -726,30 +749,53 @@ const ITEMS = {
   royal_anneau:      { name: 'Anneau du Bouftou Royal', slot: 'anneau', set: 'royal', rare: true, from: ['bouftou'], bonus: { crit: 0.05 } },
   royal_ceinture:    { name: 'Ceinture du Bouftou Royal', slot: 'ceinture', set: 'royal', rare: true, from: ['bouftou'], bonus: { regen: 0.6 } },
   royal_epee:        { name: 'Épée du Bouftou Royal', slot: 'arme', set: 'royal', rare: true, from: ['bouftou'], bonus: { dmg: 0.15 } },
-  // Amakna
-  coiffe_sanglier:   { name: 'Coiffe du Sanglier', slot: 'coiffe', from: ['sanglier'], bonus: { hp: 0.10, dmg: 0.03 } },
-  anneau_arakne:     { name: 'Anneau d’Arakne', slot: 'anneau', from: ['arakne'], bonus: { crit: 0.04 } },
+  // Île des Wabbits
+  oreilles_wabbit:   { name: 'Oreilles de Wabbit', slot: 'coiffe', from: ['wabbit'], bonus: { speed: 0.06, xp: 0.05 } },
+  anneau_larve:      { name: 'Anneau de Larve', slot: 'anneau', from: ['larve_bleue'], bonus: { cd: 0.04 } },
   bottes_moskito:    { name: 'Bottes de Moskito', slot: 'bottes', from: ['moskito'], bonus: { speed: 0.08 } },
-  cape_prespic:      { name: 'Cape du Prespic', slot: 'cape', from: ['prespic'], bonus: { dmg: 0.07 } },
-  cape_black_wabbit: { name: 'Cape du Black Wabbit', slot: 'cape', rare: true, from: ['arakne', 'sanglier'], bonus: { dmg: 0.12, crit: 0.03 } },
+  bouclier_crabe:    { name: 'Carapace de Crabe', slot: 'ceinture', from: ['crabe'], bonus: { hp: 0.10 } },
+  couronne_wa:       { name: 'Couronne du Wa Wabbit', slot: 'coiffe', rare: true, from: ['wabbit'], bonus: { xp: 0.15, hp: 0.10 } },
   // Forêt des Abraknydes
+  anneau_arakne:     { name: 'Anneau d’Arakne', slot: 'anneau', from: ['arakne', 'abrakne'], bonus: { crit: 0.04 } },
   baton_abraknyde:   { name: 'Bâton d’Abraknyde', slot: 'arme', from: ['abraknyde'], bonus: { dmg: 0.10 } },
+  cape_sombre:       { name: 'Cape Sombre', slot: 'cape', from: ['abraknyde_sombre'], bonus: { dmg: 0.06, hp: 0.06 } },
+  ceinture_ancestrale: { name: 'Ceinture Ancestrale', slot: 'ceinture', rare: true, from: ['abraknyde', 'abraknyde_sombre'], bonus: { regen: 0.8, hp: 0.08 } },
+  // Litneg
+  cape_sanglier:     { name: 'Cape du Sanglier', slot: 'cape', from: ['sanglier'], bonus: { hp: 0.10, dmg: 0.03 } },
+  coiffe_mulou:      { name: 'Coiffe du Mulou', slot: 'coiffe', from: ['mulou'], bonus: { dmg: 0.08 } },
   casque_chafer:     { name: 'Casque du Chafer', slot: 'coiffe', from: ['chafer'], bonus: { hp: 0.12 } },
-  amulette_fantome:  { name: 'Amulette du Fantôme', slot: 'amulette', from: ['fantome'], bonus: { xp: 0.12, cd: 0.03 } },
   arc_chafer:        { name: 'Arc du Chafer Archer', slot: 'arme', from: ['chafer_archer'], bonus: { dmg: 0.08, crit: 0.03 } },
-  ceinture_ancestrale: { name: 'Ceinture Ancestrale', slot: 'ceinture', rare: true, from: ['abraknyde'], bonus: { regen: 0.8, hp: 0.08 } },
-  // Montagne des Craqueleurs
-  bottes_craqueleur: { name: 'Bottes du Craqueleur', slot: 'bottes', from: ['craqueleur'], bonus: { hp: 0.12 } },
-  ceinture_bwork:    { name: 'Ceinture du Bwork', slot: 'ceinture', from: ['bwork'], bonus: { dmg: 0.06, hp: 0.06 } },
-  anneau_gelee:      { name: 'Anneau de Gelée', slot: 'anneau', from: ['gelee'], bonus: { regen: 0.5 } },
-  amulette_bwork_mage: { name: 'Amulette du Bwork Mage', slot: 'amulette', from: ['bwork_mage'], bonus: { area: 0.10 } },
-  coiffe_craq_legend:{ name: 'Coiffe du Craqueleur Légendaire', slot: 'coiffe', rare: true, from: ['craqueleur'], bonus: { hp: 0.20 } },
-  // Frigost
-  cape_mansot:       { name: 'Cape du Mansot', slot: 'cape', from: ['mansot'], bonus: { speed: 0.08, crit: 0.02 } },
-  amulette_boufmouth:{ name: 'Amulette du Boufmouth', slot: 'amulette', from: ['boufmouth'], bonus: { hp: 0.12, xp: 0.08 } },
-  anneau_sapik:      { name: 'Anneau du Sapik', slot: 'anneau', from: ['sapik'], bonus: { crit: 0.05 } },
-  bottes_fecorce:    { name: 'Bottes de Fécorce', slot: 'bottes', from: ['fecorce'], bonus: { speed: 0.10 } },
-  coiffe_mansot_royal: { name: 'Coiffe du Mansot Royal', slot: 'coiffe', rare: true, from: ['mansot'], bonus: { dmg: 0.12, hp: 0.12 } },
+  hache_meulou:      { name: 'Hache du Meulou', slot: 'arme', rare: true, from: ['mulou'], bonus: { dmg: 0.16 } },
+  // Montagne des Koalaks
+  bottes_koalak:     { name: 'Bottes du Koalak', slot: 'bottes', from: ['koalak_immature'], bonus: { speed: 0.08, hp: 0.04 } },
+  amulette_warko:    { name: 'Amulette du Warko', slot: 'amulette', from: ['warko_violet'], bonus: { area: 0.10 } },
+  ceinture_koalak:   { name: 'Ceinture du Guerrier Koalak', slot: 'ceinture', from: ['guerrier_koalak'], bonus: { dmg: 0.06, hp: 0.06 } },
+  bandelettes:       { name: 'Bandelettes de Momie', slot: 'cape', from: ['momie_koalak'], bonus: { regen: 0.6 } },
+  coiffe_skeunk:     { name: 'Coiffe du Skeunk', slot: 'coiffe', rare: true, from: ['koalak_immature', 'guerrier_koalak'], bonus: { dmg: 0.10, crit: 0.04 } },
+  // Labyrinthe du Minotoror
+  anneau_minoskito:  { name: 'Anneau du Minoskito', slot: 'anneau', from: ['minoskito'], bonus: { crit: 0.05 } },
+  carapace_scaratos: { name: 'Carapace du Scaratos', slot: 'cape', from: ['scaratos'], bonus: { hp: 0.14 } },
+  amulette_kramelehon:{ name: 'Amulette du Kramelehon', slot: 'amulette', from: ['kramelehon'], bonus: { xp: 0.12, cd: 0.03 } },
+  marteau_gamino:    { name: 'Marteau du Gamino', slot: 'arme', from: ['gamino'], bonus: { dmg: 0.12 } },
+  cornes_minotot:    { name: 'Cornes du Minotot', slot: 'coiffe', rare: true, from: ['gamino'], bonus: { dmg: 0.14, hp: 0.10 } },
+  // Sanctuaire des Dragoeufs
+  coquille_doree:    { name: 'Coquille Dorée', slot: 'amulette', from: ['dragoeuf_dore'], bonus: { xp: 0.10, crit: 0.03 } },
+  bottes_saphir:     { name: 'Bottes Saphir', slot: 'bottes', from: ['dragoeuf_saphir'], bonus: { speed: 0.10 } },
+  cape_dragoeuf:     { name: 'Cape du Dragoeuf Noir', slot: 'cape', from: ['dragoeuf_noir'], bonus: { dmg: 0.10 } },
+  aile_volante:      { name: 'Aile de Dragoeuf Volant', slot: 'ceinture', from: ['dragoeuf_volant'], bonus: { cd: 0.05 } },
+  croc_crocabulia:   { name: 'Croc de Crocabulia', slot: 'arme', rare: true, from: ['dragoeuf_noir'], bonus: { dmg: 0.18 } },
+  // Sanctuaire de Qu'Tan
+  anneau_demon:      { name: 'Anneau Démoniaque', slot: 'anneau', from: ['petit_demon'], bonus: { crit: 0.06 } },
+  casque_maudit:     { name: 'Casque Maudit', slot: 'coiffe', from: ['chafer_maudit'], bonus: { hp: 0.16 } },
+  arc_maudit:        { name: 'Arc Maudit', slot: 'arme', from: ['chafer_archer_maudit'], bonus: { dmg: 0.12, crit: 0.03 } },
+  grimoire_demon:    { name: 'Grimoire du Sorcier', slot: 'amulette', from: ['sorcier_demon'], bonus: { area: 0.12, cd: 0.03 } },
+  ceinture_qutan:    { name: 'Ceinture de Qu’Tan', slot: 'ceinture', rare: true, from: ['chafer_maudit'], bonus: { dmg: 0.12, regen: 0.8 } },
+  // Belvédère d'Ilyzaelle
+  cape_turorte:      { name: 'Cape de Turorte', slot: 'cape', from: ['disciple_turorte'], bonus: { hp: 0.12, xp: 0.06 } },
+  bouclier_havou:    { name: 'Ceinture d’Havou', slot: 'ceinture', from: ['garde_havou'], bonus: { hp: 0.18 } },
+  bottes_elite:      { name: 'Bottes d’Élite', slot: 'bottes', from: ['tireur_elite'], bonus: { speed: 0.10, crit: 0.03 } },
+  amulette_celeste:  { name: 'Amulette Céleste', slot: 'amulette', from: ['mage_celeste'], bonus: { area: 0.14 } },
+  diademe_ilyzaelle: { name: 'Diadème d’Ilyzaelle', slot: 'coiffe', rare: true, from: ['disciple_turorte'], bonus: { dmg: 0.15, area: 0.10 } },
 };
 
 // Bonus de panoplie : débloqués à partir du nombre de pièces indiqué (bonus cumulés).

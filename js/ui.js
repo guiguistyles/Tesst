@@ -229,6 +229,7 @@ function onLevelUp(data) {
   banMode = false;
   const box = $('#choices');
   box.innerHTML = '';
+  box.classList.toggle('four', data.cards.length === 4);
   data.cards.forEach((c, i) => {
     const el = document.createElement('button');
     const isPassive = c.kind !== 'spell';
