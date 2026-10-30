@@ -1,7 +1,7 @@
 # ZaapSurvie 2.0
 
 Jeu de survie par vagues (façon *Vampire Survivors*) dans l'univers de **Dofus 2**, inspiré de ZaapRush (version Dofus Rétro).
-Jeu de fan non officiel, sans lien avec Ankama. Tous les graphismes sont dessinés en code, sans aucun asset Ankama.
+Jeu de fan non officiel, sans lien avec Ankama.
 
 ## Lancer le jeu
 
@@ -38,7 +38,7 @@ Ajoutez `?debug` à l'URL pour jouer en mode invincible pendant les tests, et `&
 
 ## Sprites
 
-Les 10 classes et les monstres d'Astrub (Bouftou, Tofu, Piou, Larve Bleue, Tofu Royal, Bouftou Royal) utilisent des planches de sprites animées en 8 directions, générées en code par `tools/sprites/` (aucun asset Ankama). Chaque classe a une course, une attente et une attaque (coup d'arme, tir à l'arc ou incantation selon la classe) ; chaque monstre a une marche et une attaque, jouée au contact. Les formats de case reprennent ceux de ZaapRush.
+Les 10 classes et les monstres d'Astrub (Bouftou, Tofu, Piou, Larve Bleue, Tofu Royal, Bouftou Royal) utilisent des planches de sprites animées en 8 directions, générées en code par `tools/sprites/`. Chaque classe a une course, une attente et une attaque (coup d'arme, tir à l'arc ou incantation selon la classe) ; chaque monstre a une marche et une attaque, jouée au contact. Les formats de case reprennent ceux de ZaapRush.
 
 | Fichier | Rôle |
 |---|---|
