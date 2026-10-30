@@ -448,9 +448,9 @@ const MODELS = (() => {
 
   const CLASS_SHEETS = {};
   for (const [id, L_] of Object.entries(LOOKS)) {
-    CLASS_SHEETS[id + '_run'] = { frameW: 78, frameH: 92, frames: 30, fps: 40, anchorX: 0.5, anchorY: 0.84, model: runModel(L_) };
-    CLASS_SHEETS[id + '_idle'] = { frameW: 56, frameH: 90, frames: 21, fps: 20, anchorX: 0.5, anchorY: 0.84, model: idleModel(L_) };
-    CLASS_SHEETS[id + '_attack'] = { frameW: 120, frameH: 112, frames: 24, fps: 40, anchorX: 0.5, anchorY: 0.78, model: attackModel(L_) };
+    CLASS_SHEETS[id + '_run'] = { res: 2, frameW: 78, frameH: 92, frames: 30, fps: 40, anchorX: 0.5, anchorY: 0.84, model: runModel(L_) };
+    CLASS_SHEETS[id + '_idle'] = { res: 2, frameW: 56, frameH: 90, frames: 21, fps: 20, anchorX: 0.5, anchorY: 0.84, model: idleModel(L_) };
+    CLASS_SHEETS[id + '_attack'] = { res: 2, frameW: 120, frameH: 112, frames: 24, fps: 40, anchorX: 0.5, anchorY: 0.78, model: attackModel(L_) };
   }
 
   // fit : rayon (en pixels de case) qui correspond au rayon r du monstre dans le jeu.
