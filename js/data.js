@@ -91,6 +91,88 @@ const UP = {
   melee: [{ d: '+30% dégâts', m: { dmg: 1.3 } }, { d: '+25% portée', m: { range: 1.25 } }, { d: 'Frappe aussi derrière vous', a: { double: 1 } }, { d: '+50% dégâts', m: { dmg: 1.5 } }],
 };
 
+// Éveil (comme dans ZaapRush) : un sort monte jusqu'au rang 10. Au rang 5, la seule carte proposée
+// pour ce sort est son Éveil, un choix définitif entre 3 branches ; les rangs 7 à 10 viennent ensuite.
+// Branches par type de sort (un sort peut définir les siennes avec `branches`).
+const BRANCHES = {
+  projectile: [
+    { key: 'salve', name: 'Salve', desc: '+2 projectiles.', a: { count: 2 } },
+    { key: 'cadence', name: 'Cadence', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+    { key: 'percecoeur', name: 'Perce-cœur', desc: '+25 % de chance de critique.', a: { crit: 0.25 } },
+  ],
+  melee: [
+    { key: 'moulinet', name: 'Moulinet', desc: 'Frappe tout autour de vous.', a: { arc: 6.3 } },
+    { key: 'fureur', name: 'Fureur', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+    { key: 'coupfatal', name: 'Coup fatal', desc: '+30 % de chance de critique.', a: { crit: 0.3 } },
+  ],
+  nova: [
+    { key: 'grandeonde', name: 'Grande onde', desc: 'Zone +60 %.', m: { radius: 1.6 } },
+    { key: 'pulsation', name: 'Pulsation', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+    { key: 'ecrasement', name: 'Écrasement', desc: 'Dégâts +60 %.', m: { dmg: 1.6 } },
+  ],
+  strike: [
+    { key: 'pluie', name: 'Pluie', desc: '+3 cibles.', a: { count: 3 } },
+    { key: 'impact', name: 'Impact', desc: 'Zone +80 %.', m: { radius: 1.8 } },
+    { key: 'foudrerapide', name: 'Foudre rapide', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+  ],
+  trap: [
+    { key: 'champmines', name: 'Champ de mines', desc: '+3 pièges posés à la fois.', a: { count: 3 } },
+    { key: 'detonation', name: 'Détonation', desc: 'Zone d’explosion +60 %.', m: { radius: 1.6 } },
+    { key: 'amorcage', name: 'Amorçage', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+  ],
+  glyph: [
+    { key: 'grandglyphe', name: 'Grand glyphe', desc: 'Zone +60 %.', m: { radius: 1.6 } },
+    { key: 'persistance', name: 'Persistance', desc: 'Durée doublée.', m: { duration: 2 } },
+    { key: 'brasier', name: 'Brasier', desc: 'Dégâts +60 %.', m: { dmg: 1.6 } },
+  ],
+  aura: [
+    { key: 'rayonnement', name: 'Rayonnement', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'morsure', name: 'Morsure', desc: 'Dégâts ×2,2.', m: { dmg: 2.2 } },
+    { key: 'entrave', name: 'Entrave', desc: 'Ralentit 30 % de plus.', a: { slow: 0.3 } },
+  ],
+  orbit: [
+    { key: 'carrousel', name: 'Carrousel', desc: '+2 lames.', a: { count: 2 } },
+    { key: 'tourbillon', name: 'Tourbillon', desc: 'Vitesse +60 %, rayon +20 %.', m: { speed: 1.6, radius: 1.2 } },
+    { key: 'tranchant', name: 'Tranchant', desc: 'Dégâts +60 %.', m: { dmg: 1.6 } },
+  ],
+  summon: [
+    { key: 'meute', name: 'Meute', desc: '+2 invocations.', a: { count: 2 } },
+    { key: 'ferocite', name: 'Férocité', desc: 'Dégâts +80 %.', m: { dmg: 1.8 } },
+    { key: 'celerite', name: 'Célérité', desc: 'Vitesse +60 %.', m: { speed: 1.6 } },
+  ],
+  heal: [
+    { key: 'grandsoin', name: 'Grand soin', desc: 'Soins doublés.', m: { heal: 2 } },
+    { key: 'regeneration', name: 'Régénération', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+    { key: 'equilibre', name: 'Équilibre', desc: 'Soins +50 %, recharge −20 %.', m: { heal: 1.5, cd: 0.8 } },
+  ],
+  shield: [
+    { key: 'rempart', name: 'Rempart', desc: 'Bouclier doublé.', m: { shield: 2 } },
+    { key: 'renouveau', name: 'Renouveau', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+    { key: 'resilience', name: 'Résilience', desc: 'Bouclier +50 %, recharge −20 %.', m: { shield: 1.5, cd: 0.8 } },
+  ],
+  buff: [
+    { key: 'transe', name: 'Transe', desc: 'Durée +4 s.', a: { dur: 4 } },
+    { key: 'exaltation', name: 'Exaltation', desc: 'Bonus +25 %.', a: { pow: 0.25 } },
+    { key: 'habitude', name: 'Habitude', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+  ],
+  dash: [
+    { key: 'fracas', name: 'Fracas', desc: 'Zone d’impact +80 %.', m: { radius: 1.8 } },
+    { key: 'elan', name: 'Élan', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+    { key: 'comete', name: 'Comète', desc: 'Dégâts +80 %.', m: { dmg: 1.8 } },
+  ],
+};
+
+// Rangs 7 à 10, après l'Éveil.
+const UP_AFTER = {
+  damage: [{ d: '+15% dégâts', m: { dmg: 1.15 } }, { d: '-10% recharge', m: { cd: 0.9 } }, { d: '+15% dégâts', m: { dmg: 1.15 } }, { d: '+20% dégâts', m: { dmg: 1.2 } }],
+  heal: [{ d: '+20% soins', m: { heal: 1.2 } }, { d: '-10% recharge', m: { cd: 0.9 } }, { d: '+20% soins', m: { heal: 1.2 } }, { d: '-15% recharge', m: { cd: 0.85 } }],
+  shield: [{ d: '+20% bouclier', m: { shield: 1.2 } }, { d: '-10% recharge', m: { cd: 0.9 } }, { d: '+20% bouclier', m: { shield: 1.2 } }, { d: '-15% recharge', m: { cd: 0.85 } }],
+  buff: [{ d: '+1 s de durée', a: { dur: 1 } }, { d: '+10% de bonus', a: { pow: 0.1 } }, { d: '-10% recharge', m: { cd: 0.9 } }, { d: '+1 s, +10% de bonus', a: { dur: 1, pow: 0.1 } }],
+};
+const upAfter = (def) => UP_AFTER[def.type] || UP_AFTER.damage;
+const branchesOf = (def) => def.branches || BRANCHES[def.type];
+const AWAKEN_RANK = 5, MAX_RANK = 10;
+
 const SPELLS = {
   // Iop
   pression: {

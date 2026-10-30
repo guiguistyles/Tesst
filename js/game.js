@@ -240,11 +240,14 @@ const Game = (() => {
     const def = SPELLS[sp.id];
     const s = Object.assign({}, def.base);
     if (s.dmg && sp.id !== CLASSES[S.cls].spells[0]) s.dmg *= S.meta.spellDmg; // Dofus Ébène
-    for (let i = 0; i < sp.lvl - 1; i++) {
-      const u = def.up[i];
+    const apply = (u) => {
       if (u.m) for (const k in u.m) s[k] = (s[k] || 0) * u.m[k];
       if (u.a) for (const k in u.a) s[k] = (s[k] || 0) + u.a[k];
-    }
+    };
+    // rangs 2 à 5, puis l'Éveil (rang 6), puis les rangs 7 à 10
+    for (let i = 0; i < Math.min(sp.lvl, AWAKEN_RANK) - 1; i++) apply(def.up[i]);
+    if (sp.branch) apply(branchesOf(def).find((b) => b.key === sp.branch));
+    for (let i = 0; i < sp.lvl - AWAKEN_RANK - 1; i++) apply(upAfter(def)[i]);
     return s;
   }
 
@@ -638,7 +641,7 @@ const Game = (() => {
             x: p.x, y: p.y - 6, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed,
             life: s.range / s.speed + 0.1, size: s.size, dmg: s.dmg, pierce: Math.round(s.pierce || 0),
             explode: s.explode ? s.explode * area : 0, knock: s.knock || 0, poison: s.poison || 0,
-            poisonDur: s.poisonDur || 0, slow: s.slow || 0, gold: s.gold, color: def.color, hit: new Set(),
+            poisonDur: s.poisonDur || 0, slow: s.slow || 0, crit: s.crit || 0, gold: s.gold, color: def.color, hit: new Set(),
           });
         }
         return true;
@@ -862,7 +865,7 @@ const Game = (() => {
         if (pr.life <= 0 || pr.hit.has(e)) return;
         if (pr.explode) { explodeProj(pr); return; }
         pr.hit.add(e);
-        hitEnemy(e, pr.dmg, { knock: pr.knock, poison: pr.poison, poisonDur: pr.poisonDur, slow: pr.slow, gold: pr.gold, sx: pr.x - pr.vx, sy: pr.y - pr.vy });
+        hitEnemy(e, pr.dmg, { knock: pr.knock, poison: pr.poison, poisonDur: pr.poisonDur, slow: pr.slow, crit: pr.crit, gold: pr.gold, sx: pr.x - pr.vx, sy: pr.y - pr.vy });
         if (--pr.pierce < 0) pr.life = 0;
       });
     }
@@ -960,9 +963,11 @@ const Game = (() => {
     const ok = (o) => !S.banned.has(o.kind + ':' + o.id);
     for (const id of CLASSES[S.cls].spells) {
       const own = S.spells.find((s) => s.id === id), def = SPELLS[id];
-      const base = { kind: 'spell', id, name: def.name, icon: def.icon, color: def.color, type: TYPE_LABEL[def.type], max: 5 };
+      const base = { kind: 'spell', id, name: def.name, icon: def.icon, color: def.color, type: TYPE_LABEL[def.type], max: MAX_RANK };
       if (!own) news.push({ ...base, lvl: 1, tag: 'Nouveau sort', desc: def.desc });
-      else if (own.lvl < 5) ups.push({ ...base, lvl: own.lvl + 1, tag: 'Améliorer', desc: def.up[own.lvl - 1].d });
+      else if (own.lvl === AWAKEN_RANK) ups.push({ ...base, kind: 'awaken', lvl: AWAKEN_RANK + 1, tag: 'Éveil', desc: 'Choix définitif entre 3 branches : ' + branchesOf(def).map((b) => b.name).join(', ') + '.' });
+      else if (own.lvl < AWAKEN_RANK) ups.push({ ...base, lvl: own.lvl + 1, tag: 'Améliorer', desc: def.up[own.lvl - 1].d });
+      else if (own.lvl < MAX_RANK) ups.push({ ...base, lvl: own.lvl + 1, tag: 'Améliorer', desc: upAfter(def)[own.lvl - AWAKEN_RANK - 1].d });
     }
     const nPass = Object.keys(S.passives).length;
     for (const id in PASSIVES) {
@@ -1008,10 +1013,26 @@ const Game = (() => {
     return genChoices();
   }
 
+  // Carte d'Éveil : on ne la valide pas tout de suite, on propose ses 3 branches (sans relance ni bannissement).
+  function awakenChoices(id) {
+    const def = SPELLS[id];
+    return {
+      awaken: true, rerolls: S.rerolls, bans: S.bans, spells: S.spells.length,
+      cards: branchesOf(def).map((b, i) => ({ kind: 'branch', id, branch: b.key, slot: i, name: b.name, desc: b.desc, tag: 'Éveil',
+        icon: def.icon, color: def.color, type: def.name, lvl: AWAKEN_RANK + 1, max: MAX_RANK })),
+    };
+  }
+
   function choose(c) {
-    if (c.kind === 'spell') {
+    if (c.kind === 'awaken') { cb.onLevelUp(awakenChoices(c.id)); return; }
+    if (c.kind === 'branch') {
       const own = S.spells.find((s) => s.id === c.id);
-      if (own) { own.lvl++; own.s = spellStats(own); } else addSpell(c.id);
+      own.branch = c.branch; own.lvl = AWAKEN_RANK + 1; own.s = spellStats(own);
+      banner(SPELLS[c.id].name + ' s’éveille', c.name + ' : ' + c.desc, true);
+    } else if (c.kind === 'spell') {
+      const own = S.spells.find((s) => s.id === c.id);
+      // au rang 5, un sort ne monte plus que par son Éveil ; rang 10 au plus
+      if (own && own.lvl !== AWAKEN_RANK && own.lvl < MAX_RANK) { own.lvl++; own.s = spellStats(own); } else if (!own) addSpell(c.id);
     } else if (c.kind === 'passive') {
       S.passives[c.id] = (S.passives[c.id] || 0) + 1;
       recomputeStats();

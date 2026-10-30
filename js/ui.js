@@ -251,12 +251,15 @@ function onLevelUp(data) {
     el.dataset.idx = i + 1;
     box.appendChild(el);
   });
-  $('#lvl-tip').textContent = data.spells < 4
-    ? `Sorts : ${data.spells}/8. Chaque nouveau sort ajoute des dégâts.`
-    : 'Montez vos meilleurs sorts au niveau 5.';
+  $('#lvl-tip').textContent = data.awaken
+    ? 'Éveil : choisissez une branche. Ce choix est définitif.'
+    : data.spells < 4
+      ? `Sorts : ${data.spells}/8. Chaque nouveau sort ajoute des dégâts.`
+      : 'Au rang 5, un sort s’éveille : il choisit une branche, puis monte jusqu’au rang 10.';
+  $('#ov-levelup h2').textContent = data.awaken ? 'Éveil du sort' : 'Niveau supérieur !';
   const rr = $('#btn-reroll'), bn = $('#btn-ban');
-  rr.disabled = data.rerolls <= 0; rr.querySelector('em').textContent = '×' + data.rerolls;
-  bn.disabled = data.bans <= 0; bn.querySelector('em').textContent = '×' + data.bans;
+  rr.disabled = data.awaken || data.rerolls <= 0; rr.querySelector('em').textContent = '×' + data.rerolls;
+  bn.disabled = data.awaken || data.bans <= 0; bn.querySelector('em').textContent = '×' + data.bans;
   bn.classList.remove('active');
   $('#ov-levelup').classList.remove('hidden');
 }

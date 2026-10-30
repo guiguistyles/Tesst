@@ -15,7 +15,7 @@ Ajoutez `?debug` à l'URL pour jouer en mode invincible pendant les tests, et `&
 
 ## Contenu
 
-- **10 classes** : Iop, Crâ, Féca, Eniripsa, Sram, Xélor, Osamodas, plus Sacrieur, Enutrof et Roublard à débloquer avec des kamas. Chaque classe a **8 sorts** tirés de son kit Dofus 2 (Pression, Bond, Colère de Iop…), améliorables jusqu'au niveau 5. Le premier est connu d'entrée, les autres arrivent par les cartes de niveau.
+- **10 classes** : Iop, Crâ, Féca, Eniripsa, Sram, Xélor, Osamodas, plus Sacrieur, Enutrof et Roublard à débloquer avec des kamas. Chaque classe a **8 sorts** tirés de son kit Dofus 2 (Pression, Bond, Colère de Iop…). Comme dans ZaapRush, un sort monte jusqu'au **rang 10** : au rang 5, la seule carte proposée pour ce sort est son **Éveil**, un choix définitif entre 3 branches (par exemple Salve, Cadence ou Perce-cœur pour un sort de projectiles), puis il continue jusqu'au rang 10. Les branches sont dans `BRANCHES` (`js/data.js`). Le premier est connu d'entrée, les autres arrivent par les cartes de niveau.
 - **Cartes de niveau** façon ZaapRush : à chaque niveau, 3 cartes de natures différentes (améliorer un sort, nouveau sort, caractéristique), une carte conseillée, *Relancer* (×2) et *Bannir* (×1) par partie. Raccourcis 1/2/3, R et B.
 - **XP directe** : chaque monstre tué donne son expérience tout de suite, sans rien à ramasser.
 - **9 caractéristiques** proposées par les cartes : Vitalité, Force, Agilité, Intelligence, Sagesse, Chance, Prospection (+30% de chances d'équipement), PA, Soins.
