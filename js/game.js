@@ -170,6 +170,7 @@ const Game = (() => {
            revive: save.upgrades.resurrection ? 1 : 0 },
       meta: metaStats(save), stats: null, passives: {}, spells: [],
       enemies: [], projs: [], eprojs: [], gems: [], fx: [], texts: [], traps: [], glyphs: [], strikes: [],
+      buffs: [], rerolls: 2, bans: 1, banned: new Set(),
       spawnAcc: 0, nextWave: 60, bossIdx: 0, boss: null, pending: 0, choosing: false,
       found: [], over: false, endTimer: -1, victory: false, grid: new Map(),
     };
@@ -246,7 +247,7 @@ const Game = (() => {
     const l = Math.hypot(mx, my);
     if (l > 1) { mx /= l; my /= l; }
     if (l > 0.05) {
-      const sp = CLASSES[S.cls].speed * S.stats.speed;
+      const sp = CLASSES[S.cls].speed * S.stats.speed * (1 + buffPow('spd'));
       p.x += mx * sp * dt; p.y += my * sp * dt;
       const n = Math.hypot(mx, my);
       p.dirX = mx / n; p.dirY = my / n;
@@ -385,7 +386,7 @@ const Game = (() => {
 
   function hitEnemy(e, base, o) {
     if (e.dead) return;
-    let d = base * S.stats.dmg;
+    let d = base * S.stats.dmg * (1 + buffPow('pow'));
     if (o.rage) d *= 1 + (1 - S.p.hp / S.p.maxHp) * 1.5;
     const crit = Math.random() < S.stats.crit + (o.crit || 0);
     if (crit) d *= 2;
@@ -409,7 +410,7 @@ const Game = (() => {
     e.dead = true;
     S.kills++;
     const z = S.zone;
-    dropXp(e.x, e.y, e.xp);
+    gainXp(e.x, e.y, e.xp);
     if (e.gold || Math.random() < 0.07) {
       S.gems.push({ kind: 'kamas', x: e.x + rand(-6, 6), y: e.y + rand(-6, 6), v: Math.ceil(rand(1, 4) * z.kamas) });
     }
@@ -431,7 +432,7 @@ const Game = (() => {
         S.victory = true;
         S.endTimer = 3.5;
         for (const g of S.gems) g.mag = true;
-        for (const o of S.enemies) if (!o.dead && o !== e) { o.dead = true; dropXp(o.x, o.y, o.xp); }
+        for (const o of S.enemies) if (!o.dead && o !== e) { o.dead = true; gainXp(o.x, o.y, o.xp); }
         cb.onBanner('Victoire !', e.def.name + ' est vaincu');
       } else {
         S.gems.push({ kind: 'chest', x: e.x, y: e.y, v: 0 });
@@ -439,10 +440,18 @@ const Game = (() => {
     }
   }
 
-  function dropXp(x, y, v) {
-    const xp = S.gems.filter((g) => g.kind === 'xp');
-    if (xp.length > 400) { pick(xp).v += v; return; }
-    S.gems.push({ kind: 'xp', x: x + rand(-4, 4), y: y + rand(-4, 4), v });
+  // L'XP d'un monstre tué va directement au personnage (petite étincelle qui file vers lui).
+  function gainXp(x, y, v) {
+    S.xp += v * S.stats.xp;
+    while (S.xp >= S.xpNext) { S.xp -= S.xpNext; S.level++; S.xpNext = xpFor(S.level); S.pending++; }
+    if (S.fx.length < 220) S.fx.push({ type: 'xpfly', x, y, sx: x, sy: y, t: 0, life: 0.45 });
+  }
+
+  // Somme des bonus temporaires actifs (sorts de type buff) pour une clé (pow ou spd).
+  function buffPow(k) {
+    let v = 0;
+    for (const b of S.buffs) v += b[k];
+    return v;
   }
 
   function addText(x, y, txt, color, big) {
@@ -484,7 +493,7 @@ const Game = (() => {
             x: p.x, y: p.y - 6, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed,
             life: s.range / s.speed + 0.1, size: s.size, dmg: s.dmg, pierce: Math.round(s.pierce || 0),
             explode: s.explode ? s.explode * area : 0, knock: s.knock || 0, poison: s.poison || 0,
-            poisonDur: s.poisonDur || 0, gold: s.gold, color: def.color, hit: new Set(),
+            poisonDur: s.poisonDur || 0, slow: s.slow || 0, gold: s.gold, color: def.color, hit: new Set(),
           });
         }
         return true;
@@ -519,7 +528,7 @@ const Game = (() => {
         for (let i = 0; i < n; i++) {
           // la première frappe vise le boss s’il est à portée
           const e = i === 0 && S.boss && cands.includes(S.boss) ? S.boss : pick(cands);
-          S.strikes.push({ x: e.x, y: e.y, r: s.radius * area, dmg: s.dmg, t: s.delay, life: s.delay, color: def.color });
+          S.strikes.push({ x: e.x, y: e.y, r: s.radius * area, dmg: s.dmg, rage: s.rage, t: s.delay, life: s.delay, color: def.color });
         }
         return true;
       }
@@ -549,13 +558,34 @@ const Game = (() => {
         p.shield = Math.max(p.shield, s.shield);
         S.fx.push({ type: 'ring', x: p.x, y: p.y, r: 34, t: 0, life: 0.4, color: def.color });
         return true;
+      case 'buff': {
+        // ne se lance qu'en combat
+        if (!nearest(p.x, p.y, 360, 1).length) return false;
+        S.buffs.push({ pow: s.pow || 0, spd: s.spd || 0, t: s.dur, color: def.color });
+        S.fx.push({ type: 'ring', x: p.x, y: p.y, r: 46, t: 0, life: 0.5, color: def.color, fill: true });
+        addText(p.x, p.y - 44, def.name, def.color, true);
+        return true;
+      }
+      case 'dash': {
+        const t = nearest(p.x, p.y, s.range, 1)[0];
+        if (!t) return false;
+        const dx = t.x - p.x, dy = t.y - p.y, l = Math.hypot(dx, dy) || 1, go = Math.max(0, l - 18);
+        S.fx.push({ type: 'trail', x: p.x, y: p.y, x2: p.x + (dx / l) * go, y2: p.y + (dy / l) * go, t: 0, life: 0.3, color: def.color });
+        p.x += (dx / l) * go; p.y += (dy / l) * go;
+        p.dirX = dx / l; p.dirY = dy / l;
+        p.inv = Math.max(p.inv, 0.35);
+        const r = s.radius * area;
+        query(p.x, p.y, r, (e) => hitEnemy(e, s.dmg, { knock: s.knock }));
+        S.fx.push({ type: 'ring', x: p.x, y: p.y, r, t: 0, life: 0.4, color: def.color, fill: true });
+        return true;
+      }
     }
     return true;
   }
 
   function auraTick(sp) {
     const s = sp.s, p = S.p;
-    query(p.x, p.y, s.radius * S.stats.area, (e) => hitEnemy(e, s.dmg, { slow: s.slow }));
+    query(p.x, p.y, s.radius * S.stats.area, (e) => hitEnemy(e, s.dmg, { slow: s.slow, rage: s.rage }));
   }
 
   function updateOrbit(sp, dt) {
@@ -686,7 +716,7 @@ const Game = (() => {
         if (pr.life <= 0 || pr.hit.has(e)) return;
         if (pr.explode) { explodeProj(pr); return; }
         pr.hit.add(e);
-        hitEnemy(e, pr.dmg, { knock: pr.knock, poison: pr.poison, poisonDur: pr.poisonDur, gold: pr.gold, sx: pr.x - pr.vx, sy: pr.y - pr.vy });
+        hitEnemy(e, pr.dmg, { knock: pr.knock, poison: pr.poison, poisonDur: pr.poisonDur, slow: pr.slow, gold: pr.gold, sx: pr.x - pr.vx, sy: pr.y - pr.vy });
         if (--pr.pierce < 0) pr.life = 0;
       });
     }
@@ -725,7 +755,7 @@ const Game = (() => {
 
     for (const s of S.strikes) {
       s.t -= dt;
-      if (s.t <= 0) { aoe(s.x, s.y, s.r, s.dmg, { knock: 30 }, s.color); s.done = true; }
+      if (s.t <= 0) { aoe(s.x, s.y, s.r, s.dmg, { knock: 30, rage: s.rage }, s.color); s.done = true; }
     }
     S.strikes = S.strikes.filter((s) => !s.done);
   }
@@ -735,7 +765,7 @@ const Game = (() => {
     const p = S.p, pr = S.stats.pickup;
     for (const g of S.gems) {
       const dd = Math.sqrt(d2(g.x, g.y, p.x, p.y));
-      if (!g.mag && (g.kind === 'xp' || g.kind === 'kamas') && dd < pr) g.mag = true;
+      if (!g.mag && g.kind === 'kamas' && dd < pr) g.mag = true;
       if (!g.mag && dd < p.r + 16) g.mag = true;
       if (g.mag) {
         g.sp = (g.sp || 150) + 900 * dt;
@@ -750,17 +780,13 @@ const Game = (() => {
   function collect(g) {
     const p = S.p;
     switch (g.kind) {
-      case 'xp':
-        S.xp += g.v * S.stats.xp;
-        while (S.xp >= S.xpNext) { S.xp -= S.xpNext; S.level++; S.xpNext = xpFor(S.level); S.pending++; }
-        break;
       case 'kamas': S.kamas += g.v * S.stats.kamas; break;
       case 'heal': {
         const h = p.maxHp * 0.3; p.hp = Math.min(p.maxHp, p.hp + h);
         addText(p.x, p.y - 30, '+' + Math.round(h), '#7dff9a', true);
         break;
       }
-      case 'magnet': for (const o of S.gems) if (o.kind === 'xp' || o.kind === 'kamas') o.mag = true; break;
+      case 'magnet': for (const o of S.gems) if (o.kind === 'kamas') o.mag = true; break;
       case 'chest':
         S.pending += 2;
         S.kamas += 30 * S.zone.kamas * S.stats.kamas;
@@ -774,31 +800,64 @@ const Game = (() => {
   }
 
   // ------------------------------------------------------------ Niveaux
+  // Cartes de niveau, façon ZaapRush : on vise une carte de chaque nature
+  // (améliorer un sort, nouveau sort, caractéristique), puis on complète au hasard.
+  const TYPE_LABEL = {
+    projectile: 'Projectile', melee: 'Mêlée', nova: 'Zone', aura: 'Aura', orbit: 'Orbite', strike: 'Frappe',
+    summon: 'Invocation', trap: 'Piège', glyph: 'Glyphe', heal: 'Soin', shield: 'Bouclier', buff: 'Bonus', dash: 'Bond',
+  };
+
   function genChoices() {
-    const opts = [];
+    const ups = [], news = [], stats = [];
+    const ok = (o) => !S.banned.has(o.kind + ':' + o.id);
     for (const id of CLASSES[S.cls].spells) {
-      const own = S.spells.find((s) => s.id === id);
-      const def = SPELLS[id];
-      if (!own) opts.push({ kind: 'spell', id, lvl: 1, w: 3, name: def.name, icon: def.icon, color: def.color, desc: def.desc });
-      else if (own.lvl < 5) opts.push({ kind: 'spell', id, lvl: own.lvl + 1, w: 2.5, name: def.name, icon: def.icon, color: def.color, desc: def.up[own.lvl - 1].d });
+      const own = S.spells.find((s) => s.id === id), def = SPELLS[id];
+      const base = { kind: 'spell', id, name: def.name, icon: def.icon, color: def.color, type: TYPE_LABEL[def.type], max: 5 };
+      if (!own) news.push({ ...base, lvl: 1, tag: 'Nouveau sort', desc: def.desc });
+      else if (own.lvl < 5) ups.push({ ...base, lvl: own.lvl + 1, tag: 'Améliorer', desc: def.up[own.lvl - 1].d });
     }
     const nPass = Object.keys(S.passives).length;
     for (const id in PASSIVES) {
       const l = S.passives[id] || 0, def = PASSIVES[id];
       if (l >= def.max || (!l && nPass >= MAX_PASSIVES)) continue;
-      opts.push({ kind: 'passive', id, lvl: l + 1, w: 1, name: def.name, icon: def.icon, color: def.color, desc: def.desc });
+      const c = { kind: 'passive', id, lvl: l + 1, max: def.max, name: def.name, icon: def.icon, color: def.color, desc: def.desc, type: 'Caractéristique' };
+      c.tag = l ? 'Améliorer' : 'Débloquer';
+      (l ? ups : stats).push(c);
     }
+    const pools = [ups, news, stats].map((a) => a.filter(ok));
     const out = [];
-    while (out.length < 3 && opts.length) {
-      let tot = opts.reduce((a, o) => a + o.w, 0), r = Math.random() * tot, i = 0;
-      while ((r -= opts[i].w) > 0) i++;
-      out.push(opts.splice(i, 1)[0]);
+    for (const i of [0, 1, 2].sort(() => Math.random() - 0.5)) {
+      const pool = pools[i];
+      if (pool.length && out.length < 3) out.push(pool.splice((Math.random() * pool.length) | 0, 1)[0]);
     }
+    const rest = pools.flat();
+    while (out.length < 3 && rest.length) out.push(rest.splice((Math.random() * rest.length) | 0, 1)[0]);
     if (!out.length) {
-      out.push({ kind: 'heal', name: 'Pain d’Amakna', icon: '🍞', color: '#e0b060', desc: 'Rend 50% des PV', lvl: 0 });
-      out.push({ kind: 'kamas', name: 'Bourse', icon: 'K', color: '#ffd84a', desc: '+50 kamas', lvl: 0 });
+      out.push({ kind: 'heal', name: 'Pain d’Amakna', icon: '🍞', color: '#e0b060', desc: 'Rend 50% des PV', lvl: 0, tag: 'Bonus' });
+      out.push({ kind: 'kamas', name: 'Bourse', icon: 'K', color: '#ffd84a', desc: '+50 kamas', lvl: 0, tag: 'Bonus' });
     }
-    return out;
+    // carte conseillée : un nouveau sort tant qu'on en a moins de 4, sinon le sort le plus avancé
+    const nSpells = S.spells.length;
+    let best = nSpells < 4 ? out.find((c) => c.kind === 'spell' && c.lvl === 1) : null;
+    if (!best) best = out.filter((c) => c.kind === 'spell' && c.lvl > 1).sort((a, b) => b.lvl - a.lvl)[0];
+    if (!best) best = out.find((c) => c.kind === 'spell') || out[0];
+    best.advised = true;
+    out.forEach((c, i) => { c.slot = i; });
+    return { cards: out, rerolls: S.rerolls, bans: S.bans, spells: nSpells };
+  }
+
+  function reroll() {
+    if (!S || S.rerolls <= 0) return null;
+    S.rerolls--;
+    return genChoices();
+  }
+
+  // Bannir une carte : elle ne reviendra plus de la partie, et on retire.
+  function ban(c) {
+    if (!S || S.bans <= 0 || !c.id) return null;
+    S.bans--;
+    S.banned.add(c.kind + ':' + c.id);
+    return genChoices();
   }
 
   function choose(c) {
@@ -831,6 +890,8 @@ const Game = (() => {
 
   // ------------------------------------------------------------ Effets
   function updateFx(dt) {
+    for (const b of S.buffs) b.t -= dt;
+    S.buffs = S.buffs.filter((b) => b.t > 0);
     for (const f of S.fx) {
       f.t += dt;
       if (f.type === 'spark') { f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 300 * dt; }
@@ -990,6 +1051,15 @@ const Game = (() => {
       } else if (f.type === 'spark') {
         ctx.fillStyle = f.color;
         ctx.fillRect(f.x - 2, f.y - 2, 4, 4);
+      } else if (f.type === 'trail') {
+        ctx.strokeStyle = f.color; ctx.lineWidth = 10 * (1 - k); ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(f.x, f.y - 14); ctx.lineTo(f.x2, f.y2 - 14); ctx.stroke();
+      } else if (f.type === 'xpfly') {
+        // l'étincelle d'XP file du monstre vers le personnage
+        const e = k * k, x = f.sx + (p.x - f.sx) * e, y = f.sy + (p.y - 20 - f.sy) * e - Math.sin(k * Math.PI) * 30;
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#7fd4ff'; ctx.beginPath(); ctx.arc(x, y, 3.5 * (1 - k * 0.5), 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x - 1, y - 1, 1.3, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
     }
@@ -1144,14 +1214,6 @@ const Game = (() => {
     const bob = Math.sin(S.t * 4 + g.x * 0.1) * 2;
     const x = g.x, y = g.y + bob;
     switch (g.kind) {
-      case 'xp': {
-        const s = g.v >= 10 ? 7 : g.v >= 3 ? 5.5 : 4.5;
-        ctx.fillStyle = g.v >= 10 ? '#ff5fa2' : g.v >= 3 ? '#4fd1ff' : '#7dff6a';
-        ctx.beginPath(); ctx.moveTo(x, y - s * 1.4); ctx.lineTo(x + s, y); ctx.lineTo(x, y + s * 1.4); ctx.lineTo(x - s, y); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,.6)';
-        ctx.beginPath(); ctx.moveTo(x, y - s * 1.4); ctx.lineTo(x + s * 0.4, y - s * 0.2); ctx.lineTo(x - s * 0.3, y); ctx.closePath(); ctx.fill();
-        break;
-      }
       case 'kamas':
         ctx.fillStyle = '#c8962a';
         ctx.beginPath(); ctx.ellipse(x, y, 7, 6, 0, 0, Math.PI * 2); ctx.fill();
@@ -1310,7 +1372,7 @@ const Game = (() => {
     const bob = Math.abs(Math.sin(m.walk)) * 2;
     ctx.strokeStyle = 'rgba(111,220,111,.85)'; ctx.lineWidth = 2;
     isoEllipse(m.x, m.y + 2, sp.s.size + 4); ctx.stroke();
-    if (def.look === 'sheep' || def.look === 'bird') {
+    if (def.look && def.look !== 'shovel') { // n'importe quelle forme de monstre
       drawMonster({ def: { shape: def.look, body: def.color, detail: '#6b4a2a' }, seed: 0, boss: 0, hp: 1, maxHp: 1 }, m.x, m.y - bob, sp.s.size, false, m.face, true);
       return;
     }
@@ -1515,5 +1577,5 @@ const Game = (() => {
     }
   }
 
-  return { init, start, stop, setPaused, choose };
+  return { init, start, stop, setPaused, choose, reroll, ban };
 })();

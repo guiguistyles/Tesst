@@ -216,27 +216,58 @@ function buildSlots(spells, passives) {
   return html;
 }
 
-function onLevelUp(choices) {
+// Écran de niveau : 3 cartes (améliorer / nouveau sort / caractéristique), Relancer et Bannir.
+let banMode = false;
+function onLevelUp(data) {
+  banMode = false;
   const box = $('#choices');
   box.innerHTML = '';
-  choices.forEach((c, i) => {
+  data.cards.forEach((c, i) => {
     const el = document.createElement('button');
-    el.className = 'choice';
     const isPassive = c.kind !== 'spell';
+    const pips = c.max ? Array.from({ length: c.max }, (_, k) => `<i class="${k < c.lvl ? 'on' : ''}"></i>`).join('') : '';
+    el.className = `choice tag-${(c.tag || '').normalize('NFD').replace(/[^a-z]/gi, '').toLowerCase()}${c.advised ? ' advised' : ''}`;
     el.innerHTML = `
+      ${c.advised ? '<span class="advice">Conseillé</span>' : ''}
+      <span class="num">${i + 1}</span>
+      <span class="tag">${c.tag || ''}</span>
       <div class="ico ${isPassive ? 'passive' : ''}" style="background:${c.color};border-color:${c.color}">${c.icon}</div>
-      <div><b>${c.name}</b><small>${c.desc}</small></div>
-      ${c.lvl ? `<span class="lv ${c.lvl === 1 ? 'new' : ''}">${c.lvl === 1 ? 'Nouveau !' : 'Niv. ' + c.lvl}</span>` : ''}`;
-    el.addEventListener('click', () => pickChoice(c));
+      <b>${c.name}</b>
+      <small class="type">${c.type || ''}</small>
+      <p>${c.desc}</p>
+      ${pips ? `<div class="pips">${pips}<em>${c.lvl}/${c.max}</em></div>` : ''}`;
+    el.addEventListener('click', () => {
+      if (banMode) { const next = Game.ban(c); if (next) onLevelUp(next); return; }
+      pickChoice(c);
+    });
     el.dataset.idx = i + 1;
     box.appendChild(el);
   });
+  $('#lvl-tip').textContent = data.spells < 4
+    ? `Sorts : ${data.spells}/8. Chaque nouveau sort ajoute des dégâts.`
+    : 'Montez vos meilleurs sorts au niveau 5.';
+  const rr = $('#btn-reroll'), bn = $('#btn-ban');
+  rr.disabled = data.rerolls <= 0; rr.querySelector('em').textContent = '×' + data.rerolls;
+  bn.disabled = data.bans <= 0; bn.querySelector('em').textContent = '×' + data.bans;
+  bn.classList.remove('active');
   $('#ov-levelup').classList.remove('hidden');
 }
 
 function pickChoice(c) {
   $('#ov-levelup').classList.add('hidden');
   Game.choose(c);
+}
+
+function rerollChoices() {
+  const next = Game.reroll();
+  if (next) onLevelUp(next);
+}
+
+function toggleBan() {
+  if ($('#btn-ban').disabled) return;
+  banMode = !banMode;
+  $('#btn-ban').classList.toggle('active', banMode);
+  $('#lvl-tip').textContent = banMode ? 'Cliquez la carte à bannir pour le reste de la partie.' : '';
 }
 
 let bannerTimer = 0;
@@ -307,9 +338,13 @@ function boot() {
   $('#btn-again').addEventListener('click', startGame);
   $('#btn-menu').addEventListener('click', quitToMenu);
 
-  // raccourcis 1/2/3 pour les choix de niveau
+  // raccourcis : 1/2/3 pour les cartes, R pour relancer, B pour bannir
+  $('#btn-reroll').addEventListener('click', rerollChoices);
+  $('#btn-ban').addEventListener('click', toggleBan);
   addEventListener('keydown', (e) => {
     if ($('#ov-levelup').classList.contains('hidden')) return;
+    if (e.code === 'KeyR') return rerollChoices();
+    if (e.code === 'KeyB') return toggleBan();
     const el = $(`#choices .choice[data-idx="${e.key}"]`);
     if (el) el.click();
   });
