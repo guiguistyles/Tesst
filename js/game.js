@@ -21,6 +21,8 @@ const Game = (() => {
   const START_WAVE = GOD_MODE ? Math.max(1, +(location.search.match(/[?&]wave=(\d+)/) || [])[1] || 1) : 1;
   // Rythme façon ZaapRush : une vague toutes les 22 s, boss intermédiaires aux vagues 14 et 27,
   // boss final à la vague 40 puis toutes les 15 vagues (+15 % de PV à chaque retour).
+  // Arène bornée (comme les cartes de ZaapRush) : le joueur ne peut pas en sortir, la caméra s'arrête au bord.
+  const ARENA_W = 1800, ARENA_H = 1250, BORDER = 170, GROUND_RES = 1.25;
   const WAVE_LEN = 22, FINAL_WAVE = 40, BOSS_RETURN = 15, BOSS_HP_STEP = 0.15;
   const MINI_WAVES = [{ wave: 14, hp: 1 }, { wave: 27, hp: 1.8 }];
   const DOFUS_CHANCE = [0.01, 0.005]; // 1 % + 0,5 % par boss final battu sans le Dofus
@@ -274,6 +276,10 @@ const Game = (() => {
       spawnAcc: 0, nextHorde: 60, wave: 1, miniIdx: 0, nextFinal: FINAL_WAVE, bossKills: 0, boss: null, pending: 0, choosing: false,
       found: [], over: false, endTimer: -1, victory: false, grid: new Map(),
     };
+    S.arena = { x0: -ARENA_W / 2, x1: ARENA_W / 2, y0: -ARENA_H / 2, y1: ARENA_H / 2 };
+    S.obstacles = makeObstacles(S.zone, zoneIdx);
+    S.groundCv = buildGround(S.zone, zoneIdx);
+    S.cam = { x: 0, y: 0 };
     if (START_WAVE > 1) {
       S.t = (START_WAVE - 1) * WAVE_LEN; S.wave = START_WAVE; S.nextHorde = S.t + 60;
       S.miniIdx = MINI_WAVES.filter((m) => m.wave < START_WAVE).length;
@@ -354,6 +360,7 @@ const Game = (() => {
     if (l > 0.05) {
       const sp = CLASSES[S.cls].speed * S.stats.speed * (1 + buffPow('spd'));
       p.x += mx * sp * dt; p.y += my * sp * dt;
+      confine(p, p.r);
       const n = Math.hypot(mx, my);
       p.dirX = mx / n; p.dirY = my / n;
       if (Math.abs(mx) > 0.1) p.face = mx > 0 ? 1 : -1;
@@ -449,13 +456,152 @@ const Game = (() => {
   // ------------------------------------------------------------ Apparition des monstres
   function viewRadius() { return Math.hypot(W, H) / 2 / zoom + 50; }
 
+  // ------------------------------------------------------------ Arène et obstacles
+  function clampArena(x, y, m) {
+    const A = S.arena;
+    return { x: clamp(x, A.x0 + m, A.x1 - m), y: clamp(y, A.y0 + m, A.y1 - m) };
+  }
+
+  // Garde une entité dans l'arène et la fait glisser autour des obstacles.
+  function confine(o, r) {
+    const c = clampArena(o.x, o.y, r);
+    o.x = c.x; o.y = c.y;
+    for (const b of S.obstacles) {
+      const dx = o.x - b.x, dy = (o.y - b.y) * 1.6, rr = b.r + r * 0.7, dd = Math.hypot(dx, dy);
+      if (dd < rr && dd > 0.01) { o.x = b.x + (dx / dd) * rr; o.y = b.y + (dy / dd) * rr / 1.6; }
+    }
+  }
+
+  const blocked = (x, y, r) => S.obstacles.some((b) => d2(x, y, b.x, b.y) < (b.r + r) * (b.r + r));
+
+  // Point d'apparition : juste hors de l'écran si c'est encore dans l'arène, sinon sur un bord éloigné du joueur.
+  function spawnPoint() {
+    const p = S.p, A = S.arena, R = viewRadius();
+    for (let i = 0; i < 10; i++) {
+      const a = rand(0, Math.PI * 2), x = p.x + Math.cos(a) * R, y = p.y + Math.sin(a) * R;
+      if (x > A.x0 + 30 && x < A.x1 - 30 && y > A.y0 + 30 && y < A.y1 - 30 && !blocked(x, y, 16)) return { x, y };
+    }
+    let best = null, bestD = -1;
+    for (let i = 0; i < 8; i++) {
+      const side = (Math.random() * 4) | 0, u = Math.random();
+      const x = side < 2 ? A.x0 + 30 + u * (ARENA_W - 60) : side === 2 ? A.x0 + 30 : A.x1 - 30;
+      const y = side >= 2 ? A.y0 + 30 + u * (ARENA_H - 60) : side === 0 ? A.y0 + 30 : A.y1 - 30;
+      const dd = d2(x, y, p.x, p.y);
+      if (dd > bestD && !blocked(x, y, 16)) { bestD = dd; best = { x, y }; }
+    }
+    return best || { x: A.x0 + 30, y: A.y0 + 30 };
+  }
+
+  // Une douzaine d'obstacles par monde, toujours les mêmes pour un monde donné, loin du centre.
+  function makeObstacles(z, zi) {
+    const kinds = { grass: ['tree', 'tree', 'rock'], field: ['rock', 'stump', 'tree'], forest: ['bigtree', 'bigtree', 'stump'],
+      rock: ['boulder', 'boulder', 'rock'], snow: ['pine', 'pine', 'icerock'] }[z.decoType];
+    const R = { tree: 22, bigtree: 28, rock: 24, boulder: 32, stump: 18, pine: 20, icerock: 26 };
+    const out = [];
+    for (let i = 0; out.length < 13 && i < 300; i++) {
+      const x = (hash(i, zi, 3) - 0.5) * (ARENA_W - 220), y = (hash(i, zi, 5) - 0.5) * (ARENA_H - 220);
+      if (Math.hypot(x, y) < 260 || out.some((o) => d2(o.x, o.y, x, y) < 190 * 190)) continue;
+      const kind = kinds[(hash(i, zi, 9) * kinds.length) | 0];
+      out.push({ x, y, kind, r: R[kind] * (0.9 + hash(i, zi, 11) * 0.3), seed: hash(i, zi, 13) });
+    }
+    return out;
+  }
+
+  // Éclaircit (t > 0) ou assombrit (t < 0) une couleur #rrggbb.
+  function shade(col, t) {
+    const n = parseInt(col.slice(1), 16), c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    return 'rgb(' + c.map((v) => Math.round(t > 0 ? v + (255 - v) * t : v * (1 + t))).join(',') + ')';
+  }
+
+  // Sol de l'arène dessiné une seule fois : taches de couleur, détails, bord assombri et décor tout autour.
+  function buildGround(z, zi) {
+    const w = ARENA_W + BORDER * 2, h = ARENA_H + BORDER * 2;
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(w * GROUND_RES); cv.height = Math.round(h * GROUND_RES);
+    const g = cv.getContext('2d'), saved = ctx;
+    ctx = g; // les fonctions de décor dessinent sur ce canevas
+    try {
+      g.scale(GROUND_RES, GROUND_RES); g.translate(w / 2, h / 2);
+      g.fillStyle = z.ground; g.fillRect(-w / 2, -h / 2, w, h);
+      // grandes taches douces
+      for (let i = 0; i < 90; i++) {
+        const x = (hash(i, zi, 21) - 0.5) * w, y = (hash(i, zi, 23) - 0.5) * h, r = 70 + hash(i, zi, 25) * 170;
+        const col = [z.ground2, shade(z.ground, 0.12), shade(z.ground, -0.1)][i % 3];
+        const gr = g.createRadialGradient(x, y, 0, x, y, r);
+        gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        g.globalAlpha = 0.5; g.fillStyle = gr;
+        g.beginPath(); g.ellipse(x, y, r, r * 0.6, 0, 0, Math.PI * 2); g.fill();
+      }
+      g.globalAlpha = 1;
+      // trame isométrique très légère
+      g.strokeStyle = 'rgba(0,0,0,.05)'; g.lineWidth = 1;
+      g.beginPath();
+      for (let k = -w; k < w; k += 96) { g.moveTo(k - h, -h / 2); g.lineTo(k + h, h / 2 + h / 2); g.moveTo(k + h, -h / 2); g.lineTo(k - h, h); }
+      g.stroke();
+      // petits détails (herbe, fleurs, cailloux…) sans les grands arbres
+      for (let i = 0; i < 420; i++) {
+        const x = (hash(i, zi, 31) - 0.5) * w, y = (hash(i, zi, 33) - 0.5) * h;
+        drawDeco(z, x, y, 0.45 + hash(i, zi, 35) * 0.55, hash(i, zi, 37)); // h ≥ 0,45 : jamais d'arbre (seuls les obstacles en sont)
+      }
+      // hors de l'arène : sol assombri, ombre douce le long du bord
+      const A = { x0: -ARENA_W / 2, y0: -ARENA_H / 2 };
+      g.fillStyle = 'rgba(0,0,0,.3)';
+      g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.rect(A.x0, A.y0, ARENA_W, ARENA_H); g.fill('evenodd');
+      g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 10; g.strokeRect(A.x0 + 5, A.y0 + 5, ARENA_W - 10, ARENA_H - 10);
+      g.strokeStyle = 'rgba(255,255,255,.12)'; g.lineWidth = 2; g.strokeRect(A.x0, A.y0, ARENA_W, ARENA_H);
+      // décor tout autour de l'arène (arbres ou rochers serrés), du haut vers le bas pour la profondeur
+      const ring = [];
+      for (let x = -w / 2; x < w / 2; x += 62) { ring.push([x, A.y0 - 40 - hash(x | 0, zi, 41) * 90]); ring.push([x, -A.y0 + 40 + hash(x | 0, zi, 43) * 90]); }
+      for (let y = A.y0; y < -A.y0; y += 62) { ring.push([A.x0 - 40 - hash(y | 0, zi, 45) * 90, y]); ring.push([-A.x0 + 40 + hash(y | 0, zi, 47) * 90, y]); }
+      ring.sort((a, b) => a[1] - b[1]);
+      ring.forEach(([x, y], i) => drawObstacle({ x, y, kind: makeObstacles.border[z.decoType], r: 24, seed: hash(i, zi, 49) }));
+    } finally { ctx = saved; }
+    return cv;
+  }
+  makeObstacles.border = { grass: 'tree', field: 'tree', forest: 'bigtree', rock: 'boulder', snow: 'pine' };
+
+  function drawObstacle(o) {
+    const z = S.zone, c = z.deco, x = o.x, y = o.y, r = o.r;
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    ctx.beginPath(); ctx.ellipse(x, y + 2, r * 1.15, r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+    switch (o.kind) {
+      case 'tree': tree(x, y, c[0], 1 + o.seed * 0.3); break;
+      case 'bigtree': tree(x, y, shade(c[0], -0.1), 1.4 + o.seed * 0.3); break;
+      case 'stump':
+        ctx.fillStyle = '#6a4a2a'; ctx.fillRect(x - r * 0.8, y - r * 0.9, r * 1.6, r * 0.9);
+        ctx.fillStyle = '#a07a4a'; ctx.beginPath(); ctx.ellipse(x, y - r * 0.9, r * 0.8, r * 0.38, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#7a5a34'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(x, y - r * 0.9, r * 0.45, r * 0.2, 0, 0, Math.PI * 2); ctx.stroke();
+        break;
+      case 'rock': case 'boulder': case 'icerock': {
+        const base = o.kind === 'icerock' ? '#cfe2f2' : o.kind === 'boulder' ? shade(z.ground, -0.35) : '#8a8a86';
+        const s = r * 1.1;
+        ctx.fillStyle = shade(base.startsWith('#') ? base : '#8a8a86', -0.25);
+        ctx.beginPath(); ctx.moveTo(x - s, y); ctx.lineTo(x - s * 0.7, y - s * 0.9); ctx.lineTo(x + s * 0.3, y - s * 1.15); ctx.lineTo(x + s, y - s * 0.35); ctx.lineTo(x + s * 0.8, y + s * 0.15); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = base.startsWith('#') ? base : '#8a8a86';
+        ctx.beginPath(); ctx.moveTo(x - s * 0.85, y - s * 0.1); ctx.lineTo(x - s * 0.62, y - s * 0.85); ctx.lineTo(x + s * 0.3, y - s * 1.08); ctx.lineTo(x + s * 0.55, y - s * 0.5); ctx.lineTo(x, y - s * 0.2); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.25)';
+        ctx.beginPath(); ctx.moveTo(x - s * 0.6, y - s * 0.82); ctx.lineTo(x + s * 0.25, y - s * 1.04); ctx.lineTo(x - s * 0.1, y - s * 0.7); ctx.closePath(); ctx.fill();
+        break;
+      }
+      case 'pine': {
+        const sc = r / 18;
+        ctx.fillStyle = '#5a4030'; ctx.fillRect(x - 3 * sc, y - 8 * sc, 6 * sc, 9 * sc);
+        for (const [yy, ww] of [[-8, 20], [-24, 16], [-38, 11]]) {
+          ctx.fillStyle = '#2f5a44';
+          ctx.beginPath(); ctx.moveTo(x, y + (yy - 20) * sc); ctx.lineTo(x + ww * sc, y + yy * sc); ctx.lineTo(x - ww * sc, y + yy * sc); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#f2f6fb';
+          ctx.beginPath(); ctx.moveTo(x, y + (yy - 20) * sc); ctx.lineTo(x + ww * 0.45 * sc, y + (yy - 11) * sc); ctx.lineTo(x - ww * 0.45 * sc, y + (yy - 11) * sc); ctx.closePath(); ctx.fill();
+        }
+        break;
+      }
+    }
+  }
+
   function spawnEnemy(id, x, y, hpMul = 1) {
     const def = MONSTERS[id], z = S.zone;
     const scale = def.boss ? 1 : 1 + S.t / 300;
-    if (x === undefined) {
-      const a = rand(0, Math.PI * 2), R = viewRadius();
-      x = S.p.x + Math.cos(a) * R; y = S.p.y + Math.sin(a) * R;
-    }
+    if (x === undefined) ({ x, y } = spawnPoint());
+    else ({ x, y } = clampArena(x, y, 30));
     const hp = def.hp * z.hpMul * scale * hpMul;
     const e = {
       id, def, x, y, r: def.r, hp, maxHp: hp, speed: def.speed * rand(0.9, 1.1),
@@ -867,6 +1013,7 @@ const Game = (() => {
       }
       e.x += ux * sp * dt + e.kvx * dt;
       e.y += uy * sp * dt + e.kvy * dt;
+      confine(e, e.r * 0.8);
       const decay = Math.exp(-10 * dt);
       e.kvx *= decay; e.kvy *= decay;
 
@@ -877,10 +1024,7 @@ const Game = (() => {
         damagePlayer(e.dmg);
       }
       // éloigne les monstres trop loin derrière le joueur
-      if (!e.boss && dist > viewRadius() * 1.6) {
-        const a = Math.atan2(dy, dx) + rand(-0.6, 0.6), R = viewRadius();
-        e.x = p.x + Math.cos(a) * R; e.y = p.y + Math.sin(a) * R;
-      }
+      if (!e.boss && dist > viewRadius() * 1.6) { const at = spawnPoint(); e.x = at.x; e.y = at.y; }
     }
     // séparation
     for (const e of S.enemies) {
@@ -1158,14 +1302,18 @@ const Game = (() => {
     if (!S) return;
     const p = S.p;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = S.zone.ground;
+    ctx.fillStyle = shade(S.zone.ground, -0.45);
     ctx.fillRect(0, 0, W, H);
-    const ox = W / 2 - p.x * zoom, oy = H / 2 - p.y * zoom;
+    // caméra : suit le joueur mais s'arrête au bord de l'arène (un peu de décor reste visible)
+    const hw = W / 2 / zoom, hh = H / 2 / zoom, A = S.arena, cam = S.cam;
+    cam.x = hw * 2 >= ARENA_W + BORDER * 2 ? 0 : clamp(p.x, A.x0 - BORDER + hw, A.x1 + BORDER - hw);
+    cam.y = hh * 2 >= ARENA_H + BORDER * 2 ? 0 : clamp(p.y, A.y0 - BORDER + hh, A.y1 + BORDER - hh);
+    const ox = W / 2 - cam.x * zoom, oy = H / 2 - cam.y * zoom;
     ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, dpr * ox, dpr * oy);
-    const hw = W / 2 / zoom, hh = H / 2 / zoom;
-    const vx0 = p.x - hw, vx1 = p.x + hw, vy0 = p.y - hh, vy1 = p.y + hh;
+    const vx0 = cam.x - hw, vx1 = cam.x + hw, vy0 = cam.y - hh, vy1 = cam.y + hh;
 
-    drawGround(vx0, vy0, vx1, vy1);
+    const gw = ARENA_W + BORDER * 2, gh = ARENA_H + BORDER * 2;
+    ctx.drawImage(S.groundCv, -gw / 2, -gh / 2, gw, gh);
 
     // zones au sol
     for (const g of S.glyphs) {
@@ -1235,9 +1383,11 @@ const Game = (() => {
     }
     for (const sp of S.spells) for (const m of sp.minions) list.push({ minion: m, sp, y: m.y });
     list.push({ player: true, y: p.y });
+    for (const ob of S.obstacles) if (ob.x > vx0 - 80 && ob.x < vx1 + 80 && ob.y > vy0 - 40 && ob.y < vy1 + 120) list.push({ obstacle: ob, y: ob.y });
     list.sort((a, b) => a.y - b.y);
     for (const o of list) {
-      if (o.player) drawPlayer();
+      if (o.obstacle) drawObstacle(o.obstacle);
+      else if (o.player) drawPlayer();
       else if (o.minion) drawMinion(o.minion, o.sp);
       else drawMonster(o, o.x, o.y, o.r, o.flash > 0, p.x < o.x ? -1 : 1);
     }
@@ -1372,34 +1522,6 @@ const Game = (() => {
   }
 
   // ------------------------------------------------------------ Sol isométrique
-  function drawGround(x0, y0, x1, y1) {
-    const z = S.zone;
-    const TW = 96, TH = 48;
-    ctx.fillStyle = z.ground2;
-    const k0 = Math.floor(x0 / TW) - 1, k1 = Math.ceil(x1 / TW) + 1;
-    const m0 = Math.floor(y0 / TH) - 1, m1 = Math.ceil(y1 / TH) + 1;
-    ctx.beginPath();
-    for (let m = m0; m <= m1; m++) {
-      for (let k = k0; k <= k1; k++) {
-        const cx = k * TW, cy = m * TH;
-        ctx.moveTo(cx, cy - TH / 2); ctx.lineTo(cx + TW / 2, cy); ctx.lineTo(cx, cy + TH / 2); ctx.lineTo(cx - TW / 2, cy); ctx.closePath();
-      }
-    }
-    ctx.fill();
-
-    const C = 150;
-    const c0 = Math.floor(x0 / C) - 1, c1 = Math.ceil(x1 / C) + 1;
-    const r0 = Math.floor(y0 / C) - 1, r1 = Math.ceil(y1 / C) + 1;
-    for (let cy = r0; cy <= r1; cy++) {
-      for (let cx = c0; cx <= c1; cx++) {
-        const h = hash(cx, cy, S.zoneIdx + 1);
-        if (h > 0.55) continue;
-        const x = cx * C + hash(cx, cy, 7) * C, y = cy * C + hash(cx, cy, 13) * C;
-        drawDeco(z, x, y, h / 0.55, hash(cx, cy, 21));
-      }
-    }
-  }
-
   function drawDeco(z, x, y, h, h2) {
     const c = z.deco;
     const big = h < 0.12;
