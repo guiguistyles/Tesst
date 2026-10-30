@@ -98,7 +98,7 @@ const Game = (() => {
     if (!s) return false;
     const row = ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
     const col = Math.floor(time * s.fps) % s.frames;
-    const w = s.frameW * k, h = s.frameH * k;
+    const w = (s.frameW * k) / (s.res || 1), h = (s.frameH * k) / (s.res || 1); // une planche fine (res) s'affiche à la même taille
     if (flash) ctx.filter = 'brightness(3) saturate(0)';
     ctx.drawImage(s.img, col * s.frameW, row * s.frameH, s.frameW, s.frameH, x - w * s.anchorX, y - h * s.anchorY, w, h);
     if (flash) ctx.filter = 'none';

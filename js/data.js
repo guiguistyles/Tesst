@@ -619,7 +619,7 @@ const MONSTERS = {
   bouftou:      { name: 'Bouftou', hp: 10, speed: 60, dmg: 5, xp: 1, r: 14, shape: 'sheep', body: '#f2efe6', detail: '#6b4a2a', sprite: 'bouftou' },
   tofu:         { name: 'Tofu', hp: 6, speed: 105, dmg: 4, xp: 1, r: 9, shape: 'bird', body: '#ffd23f', detail: '#e07a1f', sprite: 'tofu' },
   piou:         { name: 'Piou Rouge', hp: 7, speed: 90, dmg: 4, xp: 1, r: 9, shape: 'bird', body: '#ff5b5b', detail: '#ffcc33', sprite: 'piou' },
-  boufton_noir: { name: 'Boufton Noir', hp: 14, speed: 70, dmg: 6, xp: 2, r: 12, shape: 'sheep', body: '#4a4a52', detail: '#1a1a1e' },
+  boufton_noir: { name: 'Boufton Noir', hp: 14, speed: 70, dmg: 6, xp: 2, r: 12, shape: 'sheep', body: '#4a4a52', detail: '#1a1a1e', sprite: 'boufton_noir' },
   tofu_royal:   { name: 'Tofu Royal', hp: 380, speed: 95, dmg: 12, xp: 30, r: 26, shape: 'bird', body: '#ffcc00', detail: '#d06010', boss: 1, sprite: 'tofu_royal' },
   bouftou_royal:{ name: 'Bouftou Royal', hp: 1100, speed: 75, dmg: 18, xp: 80, r: 36, shape: 'sheep', body: '#fffbe8', detail: '#4a2f1a', boss: 2, sprite: 'bouftou_royal' },
   // Île des Wabbits

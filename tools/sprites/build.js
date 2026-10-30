@@ -16,22 +16,23 @@ const only = process.argv.slice(2);
   await page.goto('file://' + path.join(__dirname, 'generate.html') + '?noview');
   const sheets = await page.evaluate((only) => Object.fromEntries(Object.entries(MODELS).map(([name, spec]) => {
     const { model, ...meta } = spec;
-    if (only.length && !only.includes(name)) return [name, { ...meta, skip: true }];
+    if (only.length && !only.includes(name)) return [name, { ...meta, frameW: spec.frameW * (spec.res || 1), frameH: spec.frameH * (spec.res || 1), skip: true }];
     const cv = Rig.sheet(spec), ctx = cv.getContext('2d');
     // cases dont un pixel opaque touche le bord : l'image déborde
-    const clipped = [];
+    const clipped = [], res = spec.res || 1, fw = spec.frameW * res, fh = spec.frameH * res;
     const px = ctx.getImageData(0, 0, cv.width, cv.height).data;
     const alpha = (x, y) => px[(y * cv.width + x) * 4 + 3];
     for (let row = 0; row < 8; row++) {
       for (let i = 0; i < spec.frames; i++) {
-        const x0 = i * spec.frameW, y0 = row * spec.frameH, x1 = x0 + spec.frameW - 1, y1 = y0 + spec.frameH - 1;
+        const x0 = i * fw, y0 = row * fh, x1 = x0 + fw - 1, y1 = y0 + fh - 1;
         let hit = '';
         for (let x = x0; x <= x1 && !hit; x++) { if (alpha(x, y0) > 40) hit = 'haut'; else if (alpha(x, y1) > 40) hit = 'bas'; }
         for (let y = y0; y <= y1 && !hit; y++) { if (alpha(x0, y) > 40) hit = 'gauche'; else if (alpha(x1, y) > 40) hit = 'droite'; }
         if (hit && !clipped.includes(`dir ${row} ${hit}`)) clipped.push(`dir ${row} ${hit}`);
       }
     }
-    return [name, { ...meta, clipped, data: cv.toDataURL('image/webp', 0.92) }];
+    // dans le manifeste, frameW/frameH sont en pixels réels de la planche ; fit reste en unités de dessin
+    return [name, { ...meta, frameW: fw, frameH: fh, clipped, data: cv.toDataURL('image/webp', 0.9) }];
   })), only);
   await browser.close();
 
@@ -44,12 +45,12 @@ const only = process.argv.slice(2);
     if (skip) continue;
     fs.writeFileSync(path.join(OUT, file), Buffer.from(data.split(',')[1], 'base64'));
     const kb = Math.round(fs.statSync(path.join(OUT, file)).size / 1024);
-    console.log(`${file.padEnd(28)} ${s.frameW}×${s.frameH} × ${s.frames} images × 8 directions  ${kb} Ko` +
+    console.log(`${file.padEnd(28)} ${s.frameW}×${s.frameH}${s.res > 1 ? ' (×' + s.res + ')' : ''} × ${s.frames} images × 8 directions  ${kb} Ko` +
       (clipped.length ? `  ⚠ coupé : ${clipped.join(', ')}` : ''));
   }
   const js = `'use strict';\n// Généré par tools/sprites/build.js — ne pas modifier à la main.\n` +
     `// Lignes : 8 directions (0 = est, puis sens horaire ; 2 = vers le bas de l'écran).\n` +
-    `// fit : rayon (pixels de case) qui correspond au rayon r d'un monstre dans le jeu.\n` +
+    `// fit : rayon (unités de dessin) qui correspond au rayon r d'un monstre ; res : planche dessinée res fois plus fine.\n` +
     `const SPRITE_SHEETS = ${JSON.stringify(manifest, null, 2)};\n`;
   fs.writeFileSync(path.join(ROOT, 'js/sprites.js'), js);
 })();

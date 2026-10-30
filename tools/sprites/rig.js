@@ -29,70 +29,79 @@ const Rig = (() => {
     return { x: ox + wx, y: oy + wy * SIN_A - p.z * COS_A, d: wy * COS_A + p.z * SIN_A };
   }
 
+  // Rendu « dessin animé » : aplats de couleur plutôt que dégradés lisses.
+  // Chaque volume a son ton de base, une ombre en croissant en bas à droite (opposée à la lumière),
+  // un petit reflet en haut à gauche et un contour sombre teinté.
+  const SHADE = { x: -LIGHT.x, y: -LIGHT.y };
+  const outline = (col, o) => o.lineColor || dark(col, 0.6);
+
   function sphere(ctx, q, r, col, o) {
-    const g = ctx.createRadialGradient(q.x + LIGHT.x * r * 0.7, q.y + LIGHT.y * r * 0.7, r * 0.1, q.x, q.y, r * 1.05);
-    g.addColorStop(0, light(col, o.hi ?? 0.35));
-    g.addColorStop(0.55, col);
-    g.addColorStop(1, dark(col, o.shade ?? 0.3));
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, Math.PI * 2); ctx.fill();
-    if (o.line !== 0) {
-      ctx.strokeStyle = o.lineColor || dark(col, 0.55);
-      ctx.lineWidth = o.line ?? 1.2;
-      ctx.stroke();
+    const line = o.line ?? 1.3;
+    if (line) {
+      ctx.fillStyle = outline(col, o);
+      ctx.beginPath(); ctx.arc(q.x, q.y, r + line, 0, Math.PI * 2); ctx.fill();
     }
+    ctx.save();
+    ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, Math.PI * 2);
+    if (r < 2.4) { ctx.fillStyle = col; ctx.fill(); ctx.restore(); return; }
+    ctx.fillStyle = dark(col, o.shade ?? 0.24); ctx.fill();
+    ctx.clip();
+    // ton de base décalé vers la lumière : il laisse un croissant d'ombre de l'autre côté
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(q.x - SHADE.x * r * 0.32, q.y - SHADE.y * r * 0.32, r * 0.97, 0, Math.PI * 2); ctx.fill();
+    if (o.hi !== 0) {
+      ctx.fillStyle = light(col, o.hi ?? 0.5); ctx.globalAlpha = 0.85;
+      ctx.beginPath(); ctx.ellipse(q.x + LIGHT.x * r * 0.5, q.y + LIGHT.y * r * 0.5, r * 0.3, r * 0.18, -0.6, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
   }
 
   function limb(ctx, a, b, w, col, o) {
+    const seg = (dx, dy) => { ctx.beginPath(); ctx.moveTo(a.x + dx, a.y + dy); ctx.lineTo(b.x + dx, b.y + dy); ctx.stroke(); };
     ctx.lineCap = 'round';
-    if (o.line !== 0) {
-      ctx.strokeStyle = o.lineColor || dark(col, 0.55);
-      ctx.lineWidth = w + (o.line ?? 1.2) * 2;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    }
-    ctx.strokeStyle = col; ctx.lineWidth = w;
-    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    ctx.strokeStyle = light(col, 0.3); ctx.lineWidth = w * 0.35; ctx.globalAlpha = 0.8;
-    const k = w * 0.18;
-    ctx.beginPath(); ctx.moveTo(a.x + LIGHT.x * k, a.y + LIGHT.y * k); ctx.lineTo(b.x + LIGHT.x * k, b.y + LIGHT.y * k); ctx.stroke();
-    ctx.globalAlpha = 1;
+    const line = o.line ?? 1.3;
+    if (line) { ctx.strokeStyle = outline(col, o); ctx.lineWidth = w + line * 2; seg(0, 0); }
+    ctx.strokeStyle = dark(col, 0.24); ctx.lineWidth = w; seg(0, 0);                 // ombre
+    ctx.strokeStyle = col; ctx.lineWidth = w * 0.72; seg(-SHADE.x * w * 0.14, -SHADE.y * w * 0.14); // ton de base
+    if (w > 3) { ctx.strokeStyle = light(col, 0.45); ctx.lineWidth = w * 0.22; ctx.globalAlpha = 0.8; seg(LIGHT.x * w * 0.24, LIGHT.y * w * 0.24); ctx.globalAlpha = 1; }
   }
 
   function poly(ctx, pts, col, o) {
-    ctx.beginPath();
-    pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
-    ctx.closePath();
-    const ys = pts.map((q) => q.y), y0 = Math.min(...ys), y1 = Math.max(...ys);
-    const g = ctx.createLinearGradient(0, y0, 0, y1 + 0.01);
-    g.addColorStop(0, light(col, o.hi ?? 0.2)); g.addColorStop(1, dark(col, o.shade ?? 0.25));
-    ctx.fillStyle = g; ctx.fill();
-    if (o.line !== 0) { ctx.strokeStyle = o.lineColor || dark(col, 0.55); ctx.lineWidth = o.line ?? 1.2; ctx.lineJoin = 'round'; ctx.stroke(); }
+    const path = () => { ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y))); ctx.closePath(); };
+    ctx.lineJoin = 'round';
+    const line = o.line ?? 1.3;
+    if (line) { ctx.strokeStyle = outline(col, o); ctx.lineWidth = line * 2; path(); ctx.stroke(); }
+    path(); ctx.fillStyle = dark(col, 0.2); ctx.fill();
+    ctx.save(); path(); ctx.clip();
+    ctx.translate(-SHADE.x * 1.6, -SHADE.y * 1.6); path(); ctx.fillStyle = col; ctx.fill();
+    ctx.restore();
   }
 
-  // Nuage de sphères (laine, fourrure) : un seul contour extérieur, un éclairage d'ensemble
-  // et une petite boucle par sphère pour la texture.
+  // Nuage de sphères (laine, fourrure) : un seul contour extérieur, puis chaque boucle,
+  // de l'arrière vers l'avant, avec son propre croissant d'ombre et un petit reflet.
   function blob(ctx, qs, rs, col, o) {
-    const line = o.line ?? 1.3, lc = o.lineColor || dark(col, 0.5);
-    ctx.fillStyle = lc;
-    ctx.beginPath(); qs.forEach((q, i) => { ctx.moveTo(q.x + rs[i] + line, q.y); ctx.arc(q.x, q.y, rs[i] + line, 0, Math.PI * 2); }); ctx.fill();
-    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-    qs.forEach((q, i) => { x0 = Math.min(x0, q.x - rs[i]); y0 = Math.min(y0, q.y - rs[i]); x1 = Math.max(x1, q.x + rs[i]); y1 = Math.max(y1, q.y + rs[i]); });
-    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, R = Math.max(x1 - x0, y1 - y0) / 2;
-    const g = ctx.createRadialGradient(cx + LIGHT.x * R * 0.6, cy + LIGHT.y * R * 0.6, R * 0.1, cx, cy, R * 1.1);
-    g.addColorStop(0, light(col, 0.45)); g.addColorStop(0.5, col); g.addColorStop(1, dark(col, 0.22));
-    ctx.fillStyle = g;
-    ctx.beginPath(); qs.forEach((q, i) => { ctx.moveTo(q.x + rs[i], q.y); ctx.arc(q.x, q.y, rs[i], 0, Math.PI * 2); }); ctx.fill();
-    // boucles : ombre sous chaque sphère visible, reflet au-dessus
+    const line = o.line ?? 1.4, lc = outline(col, o);
+    const union = (grow) => { ctx.beginPath(); qs.forEach((q, i) => { ctx.moveTo(q.x + rs[i] + grow, q.y); ctx.arc(q.x, q.y, rs[i] + grow, 0, Math.PI * 2); }); };
+    ctx.fillStyle = lc; union(line); ctx.fill();
+    ctx.save();
+    union(0); ctx.fillStyle = dark(col, 0.26); ctx.fill(); ctx.clip();
     const order = qs.map((q, i) => i).sort((a, b) => qs[a].d - qs[b].d);
-    ctx.lineCap = 'round';
+    for (const i of order) {
+      const q = qs[i], r = rs[i];
+      ctx.fillStyle = dark(col, 0.2);
+      ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(q.x - SHADE.x * r * 0.3, q.y - SHADE.y * r * 0.3, r * 0.9, 0, Math.PI * 2); ctx.fill();
+    }
     for (const i of order) {
       if (qs[i].d < o.minD) continue;
       const q = qs[i], r = rs[i];
-      ctx.strokeStyle = dark(col, 0.18); ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(q.x, q.y, r * 0.78, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
-      ctx.strokeStyle = light(col, 0.6); ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(q.x - r * 0.15, q.y - r * 0.15, r * 0.45, Math.PI * 1.1, Math.PI * 1.6); ctx.stroke();
+      ctx.fillStyle = light(col, 0.55); ctx.globalAlpha = 0.9;
+      ctx.beginPath(); ctx.ellipse(q.x + LIGHT.x * r * 0.45, q.y + LIGHT.y * r * 0.45, r * 0.28, r * 0.16, -0.6, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
     }
+    ctx.restore();
   }
 
   // Une arête courbe (arc, corde) : suite de points reliés, sans remplissage.
@@ -128,14 +137,16 @@ const Rig = (() => {
   }
 
   // Rend une planche : lignes = 8 directions, colonnes = images de l'animation.
+  // spec.res : facteur de résolution (2 = planche deux fois plus fine, pour les écrans haute densité).
   function sheet(spec) {
-    const { frameW: fw, frameH: fh, frames, anchorX, anchorY, model } = spec;
+    const { frameW: fw, frameH: fh, frames, anchorX, anchorY, model } = spec, res = spec.res || 1;
     const cv = document.createElement('canvas');
-    cv.width = fw * frames; cv.height = fh * DIRS.length;
+    cv.width = fw * frames * res; cv.height = fh * DIRS.length * res;
     const ctx = cv.getContext('2d');
     DIRS.forEach((th, row) => {
       for (let i = 0; i < frames; i++) {
         ctx.save();
+        ctx.scale(res, res);
         ctx.beginPath(); ctx.rect(i * fw, row * fh, fw, fh); ctx.clip();
         draw(ctx, model(i / frames), th, i * fw + fw * anchorX, row * fh + fh * anchorY);
         ctx.restore();

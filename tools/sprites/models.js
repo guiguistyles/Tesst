@@ -38,10 +38,14 @@ const MODELS = (() => {
   const TUFT_R = [5, 4.2, 4.2, 3.6, 3.6];
 
   // o.pal : couleurs, o.attack : t est alors l'avancement du coup de tête.
+  // o.pal : couleurs, o.attack : t est alors l'avancement du coup de tête,
+  // o.horns (défaut vrai), o.eye : taille des yeux, o.collar : couleur d'un collier.
   function bouftouModel(t, o) {
-    const C = o.pal, ph = t * TAU, out = [];
+    const C = o.pal, ph = t * TAU, out = [], eye = o.eye || 1;
     let bob = 1.4 + 1.4 * Math.cos(2 * ph), pitch = Math.sin(2 * ph) * 0.8, push = 0, gait = 1;
-    if (o.attack) { const l = lunge(t); push = l * 9; pitch = -l * 4; bob = 1 + Math.max(0, -l) * 3; gait = 0.25; }
+    // la toison s'écrase quand elle retombe et s'étire en remontant ; la tête suit avec un léger retard
+    let squash = 0.07 * Math.cos(2 * ph), lag = Math.cos(2 * ph - 0.9) * 1.2;
+    if (o.attack) { const l = lunge(t); push = l * 9; pitch = -l * 4; bob = 1 + Math.max(0, -l) * 3; gait = 0.25; squash = -0.08 * l; lag = -l * 1.5; }
     const body = P(-2 + push * 0.6, 0, 22 + bob);
     // pattes : trot en diagonale
     for (const [f, s, k] of [[8, 7, 0], [-10, -7, 0], [8, -7, 1], [-10, 7, 1]]) {
@@ -51,33 +55,46 @@ const MODELS = (() => {
       out.push(L(hip, foot, 5.5, C.face, { bias: -100 })); // toujours sous la laine
       out.push(S(foot, 3.2, C.hoof, { line: 1, bias: -99 }));
     }
-    // corps en laine (un seul nuage) et queue
-    out.push(Blob(
-      [...WOOL_PTS.map((q) => add(body, add(q, P(0, 0, q.f * pitch * 0.05)))), add(body, P(-19, 0, 4))],
-      [...WOOL_R, 5.5], C.wool, { lineColor: C.woolLine }));
+    // corps en laine (un seul nuage) et queue qui remue
+    const wool = WOOL_PTS.map((q) => add(body, P(q.f * (1 - squash * 0.5), q.s * (1 - squash * 0.5), q.z * (1 + squash) + q.f * pitch * 0.05)));
+    out.push(Blob([...wool, add(body, P(-19, 2.5 * Math.sin(2 * ph), 4 + lag * 0.6))], [...WOOL_R, 5.5], C.wool, { lineColor: C.woolLine }));
     // tête
-    const head = P(18 + push, 0, 22 + bob + pitch);
+    const head = P(18 + push, 0, 22 + bob + pitch + lag * 0.5);
     out.push(S(head, 11.5, C.face));
     out.push(S(add(head, P(8, 0, -4.5)), 6.5, Rig.light(C.face, 0.18), { bias: 0.5 })); // museau
     for (const s of [-1, 1]) {
-      out.push(S(add(head, P(8, s * 5.4, 2.5)), 3.9, '#ffffff', { line: 1, lineColor: '#22293a', hi: 0.05, bias: 1 }));
-      out.push(S(add(head, P(11.2, s * 5.1, 2.3)), 2.1, '#14181f', { line: 0, bias: 2 }));
-      out.push(S(add(head, P(10.4, s * 5.8, 3.6)), 0.8, '#ffffff', { line: 0, bias: 3 })); // reflet
-      out.push(S(add(head, P(14.3, s * 2, -5)), 0.9, '#2b3446', { line: 0, bias: 2 })); // narines
-      // cornes enroulées vers le bas, sur les côtés du crâne
-      for (let k = 0; k < 9; k++) {
-        const a = k / 8, ang = a * 1.6 * Math.PI, rho = 6 * (1 - a * 0.5);
-        out.push(S(add(head, P(-5 + rho * Math.sin(ang), s * (10 + a * 2.5), 4 + rho * Math.cos(ang))), 3.1 * (1 - a * 0.4), C.horn, { line: 1, lineColor: Rig.dark(C.horn, 0.5) }));
-      }
+      out.push(S(add(head, P(8, s * 5.4, 2.5)), 3.9 * eye, '#ffffff', { line: 1, lineColor: '#22293a', hi: 0, bias: 1 }));
+      out.push(S(add(head, P(8 + 3.2 * eye, s * 5.1, 2.3)), 2.1 * eye, '#14181f', { line: 0, bias: 2 }));
+      out.push(S(add(head, P(8 + 2.4 * eye, s * 5.8, 3.6)), 0.8 * eye, '#ffffff', { line: 0, bias: 3 })); // reflet
+      out.push(S(add(head, P(14.3, s * 2, -5)), 0.9, Rig.dark(C.face, 0.5), { line: 0, bias: 2 })); // narines
+      if (o.horns !== false) {
+        // cornes enroulées vers le bas, sur les côtés du crâne
+        for (let k = 0; k < 9; k++) {
+          const a = k / 8, ang = a * 1.6 * Math.PI, rho = 6 * (1 - a * 0.5);
+          out.push(S(add(head, P(-5 + rho * Math.sin(ang), s * (10 + a * 2.5), 4 + rho * Math.cos(ang))), 3.1 * (1 - a * 0.4), C.horn, { line: 1, lineColor: Rig.dark(C.horn, 0.5) }));
+        }
+      } else out.push(S(add(head, P(-4, s * 8.5, 7)), 2.4, C.horn, { line: 1 })); // petites bosses
     }
-    // mèche de laine sur le front
-    out.push(Blob(TUFT_PTS.map((q) => add(head, q)), TUFT_R, C.wool, { lineColor: C.woolLine, bias: 1 }));
+    if (o.collar) {
+      // collier : moitié avant devant le cou, moitié arrière derrière
+      for (const front of [false, true]) {
+        const pts = [];
+        for (let k = 0; k <= 12; k++) { const a = (front ? -0.5 : 0.5) * Math.PI + (k / 12) * Math.PI; pts.push(add(head, P(-6 + Math.cos(a) * 9, Math.sin(a) * 9, -7))); }
+        out.push(Curve(pts, 2.6, o.collar, front ? { line: 1, bias: 3, normal: { f: 1, s: 0 }, minFacing: -0.9 } : { line: 1, bias: -0.5 }));
+      }
+      out.push(S(add(head, P(3, 0, -10)), 2.6, o.collar, { line: 1, bias: 3.5, normal: { f: 1, s: 0 } })); // grelot
+    }
+    // mèche de laine sur le front, qui rebondit
+    out.push(Blob(TUFT_PTS.map((q) => add(head, add(q, P(0, 0, lag * 0.8)))), TUFT_R, C.wool, { lineColor: C.woolLine, bias: 1 }));
     return out;
   }
+  const BOUFTON_NOIR = { wool: '#55555f', woolLine: '#22222a', face: '#c9b49a', horn: '#9a8a74', hoof: '#2a2a30' };
   const bouftou = (t) => bouftouModel(t, { pal: BOUFTOU });
   const bouftouAttack = (t) => bouftouModel(t, { pal: BOUFTOU, attack: true });
-  const royal = (t) => Rig.scale(bouftouModel(t, { pal: ROYAL }), 1.75);
-  const royalAttack = (t) => Rig.scale(bouftouModel(t, { pal: ROYAL, attack: true }), 1.75);
+  const royal = (t) => Rig.scale(bouftouModel(t, { pal: ROYAL, collar: '#e8b830' }), 1.75);
+  const royalAttack = (t) => Rig.scale(bouftouModel(t, { pal: ROYAL, collar: '#e8b830', attack: true }), 1.75);
+  const boufton = (t) => Rig.scale(bouftouModel(t, { pal: BOUFTON_NOIR, horns: false, eye: 1.2 }), 0.8);
+  const bouftonAttack = (t) => Rig.scale(bouftouModel(t, { pal: BOUFTON_NOIR, horns: false, eye: 1.2, attack: true }), 0.8);
 
   // ---------------------------------------------------------------- Tofu, Piou
   const TOFU = { body: '#ffd23f', belly: '#fff3b0', beak: '#f08a1f', tuft: '#f08a1f', wing: '#f2b51f' };
@@ -90,8 +107,10 @@ const MODELS = (() => {
     let hop = 7 * Math.abs(Math.sin(Math.PI * t)), squash = 1 - 0.12 * Math.max(0, Math.cos(TAU * t)), push = 0, tilt = 0;
     let flap = Math.sin(TAU * t * 2);
     if (o.attack) { const l = lunge(t); push = l * 10; tilt = Math.max(0, l) * 5; hop = Math.max(0, -l) * 3; squash = 1; flap = Math.sin(TAU * t * 4); }
+    // étirement en l'air, écrasement à l'atterrissage ; houppette et queue suivent avec retard
+    const stretch = o.attack ? 0 : 0.08 * Math.sin(Math.PI * t) - 0.06 * Math.max(0, Math.cos(TAU * t)), lag = o.attack ? -push * 0.2 : -Math.cos(TAU * t) * 1.5;
     const c = P(push, 0, 13 * squash + hop);
-    out.push(S(c, 12, C.body));
+    out.push(S(c, 12 * (1 + stretch * 0.3), C.body));
     out.push(S(add(c, P(5.5, 0, -2.5)), 7.5, C.belly, { line: 0, bias: 0.5 })); // ventre
     for (const s of [-1, 1]) {
       // ailes
@@ -107,11 +126,11 @@ const MODELS = (() => {
     out.push(S(add(c, P(11.6, 0, -0.5 - tilt * 0.6)), 3.4, C.beak, { line: 1, bias: 2 }));
     out.push(S(add(c, P(14.4, 0, -1 - tilt)), 2.1, C.beak, { line: 1, bias: 2.5 }));
     // houppette et queue
-    out.push(S(add(c, P(-1, 0, 13)), 3.2, C.tuft));
-    out.push(S(add(c, P(-4, -2.4, 12)), 2.5, C.tuft));
-    out.push(S(add(c, P(-4, 2.4, 12)), 2.5, C.tuft));
-    out.push(S(add(c, P(-12.5, 0, 3)), 3.2, C.tuft));
-    out.push(S(add(c, P(-14.5, 0, 6)), 2.4, C.tuft));
+    out.push(S(add(c, P(-1 + lag * 0.4, 0, 13 + lag)), 3.4, C.tuft));
+    out.push(S(add(c, P(-4 + lag * 0.5, -2.4, 12 + lag * 0.8)), 2.6, C.tuft));
+    out.push(S(add(c, P(-4 + lag * 0.5, 2.4, 12 + lag * 0.8)), 2.6, C.tuft));
+    out.push(S(add(c, P(-12.5, 0, 3 - lag * 0.6)), 3.2, C.tuft));
+    out.push(S(add(c, P(-14.5, 0, 6 - lag)), 2.4, C.tuft));
     return out;
   }
   const tofu = (t) => birdModel(t, { pal: TOFU });
@@ -436,15 +455,17 @@ const MODELS = (() => {
 
   // fit : rayon (en pixels de case) qui correspond au rayon r du monstre dans le jeu.
   return {
-    bouftou:  { frameW: 95, frameH: 75, frames: 18, fps: 24, anchorX: 0.5, anchorY: 0.82, fit: 17.5, model: bouftou },
-    bouftou_attack: { frameW: 100, frameH: 76, frames: 31, fps: 50, anchorX: 0.5, anchorY: 0.8, fit: 17.5, model: bouftouAttack },
-    bouftou_royal: { frameW: 167, frameH: 150, frames: 30, fps: 24, anchorX: 0.5, anchorY: 0.84, fit: 30.6, model: royal },
-    bouftou_royal_attack: { frameW: 166, frameH: 167, frames: 25, fps: 40, anchorX: 0.5, anchorY: 0.82, fit: 30.6, model: royalAttack },
-    tofu: { frameW: 50, frameH: 52, frames: 12, fps: 24, anchorX: 0.5, anchorY: 0.86, fit: 10, model: tofu },
-    tofu_attack: { frameW: 157, frameH: 114, frames: 32, fps: 52, anchorX: 0.5, anchorY: 0.75, fit: 10, model: tofuAttack },
-    tofu_royal: { frameW: 180, frameH: 171, frames: 27, fps: 24, anchorX: 0.5, anchorY: 0.82, fit: 31, model: tofuRoyal },
-    piou: { frameW: 44, frameH: 37, frames: 8, fps: 24, anchorX: 0.5, anchorY: 0.86, fit: 8.2, model: piou },
-    piou_attack: { frameW: 50, frameH: 42, frames: 21, fps: 35, anchorX: 0.5, anchorY: 0.68, fit: 8.2, model: piouAttack },
+    bouftou:  { res: 2, frameW: 95, frameH: 75, frames: 18, fps: 24, anchorX: 0.5, anchorY: 0.82, fit: 17.5, model: bouftou },
+    bouftou_attack: { res: 2, frameW: 100, frameH: 76, frames: 31, fps: 50, anchorX: 0.5, anchorY: 0.76, fit: 17.5, model: bouftouAttack },
+    bouftou_royal: { res: 2, frameW: 167, frameH: 150, frames: 30, fps: 24, anchorX: 0.5, anchorY: 0.84, fit: 30.6, model: royal },
+    bouftou_royal_attack: { res: 2, frameW: 166, frameH: 167, frames: 25, fps: 40, anchorX: 0.5, anchorY: 0.82, fit: 30.6, model: royalAttack },
+    boufton_noir: { res: 2, frameW: 80, frameH: 64, frames: 18, fps: 26, anchorX: 0.5, anchorY: 0.8, fit: 14, model: boufton },
+    boufton_noir_attack: { res: 2, frameW: 86, frameH: 66, frames: 31, fps: 50, anchorX: 0.5, anchorY: 0.78, fit: 14, model: bouftonAttack },
+    tofu: { res: 2, frameW: 50, frameH: 52, frames: 12, fps: 24, anchorX: 0.5, anchorY: 0.86, fit: 10, model: tofu },
+    tofu_attack: { res: 2, frameW: 157, frameH: 114, frames: 32, fps: 52, anchorX: 0.5, anchorY: 0.75, fit: 10, model: tofuAttack },
+    tofu_royal: { res: 2, frameW: 180, frameH: 171, frames: 27, fps: 24, anchorX: 0.5, anchorY: 0.82, fit: 31, model: tofuRoyal },
+    piou: { res: 2, frameW: 44, frameH: 37, frames: 8, fps: 24, anchorX: 0.5, anchorY: 0.86, fit: 8.2, model: piou },
+    piou_attack: { res: 2, frameW: 50, frameH: 42, frames: 21, fps: 35, anchorX: 0.5, anchorY: 0.68, fit: 8.2, model: piouAttack },
     larve_bleue: { frameW: 59, frameH: 39, frames: 16, fps: 24, anchorX: 0.5, anchorY: 0.72, fit: 14, model: larve },
     larve_bleue_attack: { frameW: 66, frameH: 54, frames: 27, fps: 45, anchorX: 0.5, anchorY: 0.7, fit: 14, model: larveAttack },
     ...CLASS_SHEETS,

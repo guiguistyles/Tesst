@@ -1,13 +1,14 @@
 'use strict';
 // Généré par tools/sprites/build.js — ne pas modifier à la main.
 // Lignes : 8 directions (0 = est, puis sens horaire ; 2 = vers le bas de l'écran).
-// fit : rayon (pixels de case) qui correspond au rayon r d'un monstre dans le jeu.
+// fit : rayon (unités de dessin) qui correspond au rayon r d'un monstre ; res : planche dessinée res fois plus fine.
 const SPRITE_SHEETS = {
   "bouftou": {
     "src": "assets/sprites/bouftou.webp",
     "directions": 8,
-    "frameW": 95,
-    "frameH": 75,
+    "res": 2,
+    "frameW": 190,
+    "frameH": 150,
     "frames": 18,
     "fps": 24,
     "anchorX": 0.5,
@@ -17,19 +18,21 @@ const SPRITE_SHEETS = {
   "bouftou_attack": {
     "src": "assets/sprites/bouftou_attack.webp",
     "directions": 8,
-    "frameW": 100,
-    "frameH": 76,
+    "res": 2,
+    "frameW": 200,
+    "frameH": 152,
     "frames": 31,
     "fps": 50,
     "anchorX": 0.5,
-    "anchorY": 0.8,
+    "anchorY": 0.76,
     "fit": 17.5
   },
   "bouftou_royal": {
     "src": "assets/sprites/bouftou_royal.webp",
     "directions": 8,
-    "frameW": 167,
-    "frameH": 150,
+    "res": 2,
+    "frameW": 334,
+    "frameH": 300,
     "frames": 30,
     "fps": 24,
     "anchorX": 0.5,
@@ -39,19 +42,45 @@ const SPRITE_SHEETS = {
   "bouftou_royal_attack": {
     "src": "assets/sprites/bouftou_royal_attack.webp",
     "directions": 8,
-    "frameW": 166,
-    "frameH": 167,
+    "res": 2,
+    "frameW": 332,
+    "frameH": 334,
     "frames": 25,
     "fps": 40,
     "anchorX": 0.5,
     "anchorY": 0.82,
     "fit": 30.6
   },
+  "boufton_noir": {
+    "src": "assets/sprites/boufton_noir.webp",
+    "directions": 8,
+    "res": 2,
+    "frameW": 160,
+    "frameH": 128,
+    "frames": 18,
+    "fps": 26,
+    "anchorX": 0.5,
+    "anchorY": 0.8,
+    "fit": 14
+  },
+  "boufton_noir_attack": {
+    "src": "assets/sprites/boufton_noir_attack.webp",
+    "directions": 8,
+    "res": 2,
+    "frameW": 172,
+    "frameH": 132,
+    "frames": 31,
+    "fps": 50,
+    "anchorX": 0.5,
+    "anchorY": 0.78,
+    "fit": 14
+  },
   "tofu": {
     "src": "assets/sprites/tofu.webp",
     "directions": 8,
-    "frameW": 50,
-    "frameH": 52,
+    "res": 2,
+    "frameW": 100,
+    "frameH": 104,
     "frames": 12,
     "fps": 24,
     "anchorX": 0.5,
@@ -61,8 +90,9 @@ const SPRITE_SHEETS = {
   "tofu_attack": {
     "src": "assets/sprites/tofu_attack.webp",
     "directions": 8,
-    "frameW": 157,
-    "frameH": 114,
+    "res": 2,
+    "frameW": 314,
+    "frameH": 228,
     "frames": 32,
     "fps": 52,
     "anchorX": 0.5,
@@ -72,8 +102,9 @@ const SPRITE_SHEETS = {
   "tofu_royal": {
     "src": "assets/sprites/tofu_royal.webp",
     "directions": 8,
-    "frameW": 180,
-    "frameH": 171,
+    "res": 2,
+    "frameW": 360,
+    "frameH": 342,
     "frames": 27,
     "fps": 24,
     "anchorX": 0.5,
@@ -83,8 +114,9 @@ const SPRITE_SHEETS = {
   "piou": {
     "src": "assets/sprites/piou.webp",
     "directions": 8,
-    "frameW": 44,
-    "frameH": 37,
+    "res": 2,
+    "frameW": 88,
+    "frameH": 74,
     "frames": 8,
     "fps": 24,
     "anchorX": 0.5,
@@ -94,8 +126,9 @@ const SPRITE_SHEETS = {
   "piou_attack": {
     "src": "assets/sprites/piou_attack.webp",
     "directions": 8,
-    "frameW": 50,
-    "frameH": 42,
+    "res": 2,
+    "frameW": 100,
+    "frameH": 84,
     "frames": 21,
     "fps": 35,
     "anchorX": 0.5,
