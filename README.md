@@ -15,8 +15,10 @@ Ajoutez `?debug` à l'URL pour jouer en mode invincible pendant les tests.
 
 ## Contenu
 
-- **10 classes** : Iop, Crâ, Féca, Eniripsa, Sram, Xélor, Osamodas, plus Sacrieur, Enutrof et Roublard à débloquer avec des kamas. Chaque classe a 4 sorts propres, améliorables jusqu'au niveau 5.
-- **10 caractéristiques** à choisir en montant de niveau : Vitalité, Force, Agilité, Intelligence, Sagesse, Chance, Prospection, PA, Résistance, Soins.
+- **10 classes** : Iop, Crâ, Féca, Eniripsa, Sram, Xélor, Osamodas, plus Sacrieur, Enutrof et Roublard à débloquer avec des kamas. Chaque classe a **8 sorts** tirés de son kit Dofus 2 (Pression, Bond, Colère de Iop…), améliorables jusqu'au niveau 5. Le premier est connu d'entrée, les autres arrivent par les cartes de niveau.
+- **Cartes de niveau** façon ZaapRush : à chaque niveau, 3 cartes de natures différentes (améliorer un sort, nouveau sort, caractéristique), une carte conseillée, *Relancer* (×2) et *Bannir* (×1) par partie. Raccourcis 1/2/3, R et B.
+- **XP directe** : chaque monstre tué donne son expérience tout de suite, sans rien à ramasser.
+- **10 caractéristiques** proposées par les cartes : Vitalité, Force, Agilité, Intelligence, Sagesse, Chance, Prospection, PA, Résistance, Soins.
 - **5 zaaps / zones** à débloquer l'une après l'autre : Astrub, Amakna, Forêt des Abraknydes, Montagne des Craqueleurs, Frigost. Chacune a ses monstres, deux boss intermédiaires (3:00 et 6:00) et un gardien (8:00).
 - **10 Dofus** à récolter sur les gardiens. Chacun donne un bonus permanent.
 - **Boutique** d'améliorations permanentes payées en kamas, et Résurrection.
@@ -35,15 +37,15 @@ Ajoutez `?debug` à l'URL pour jouer en mode invincible pendant les tests.
 
 ## Sprites
 
-Le Bouftou et le Crâ utilisent des planches de sprites animées en 8 directions, générées en code par `tools/sprites/` (aucun asset Ankama) :
+Les 10 classes et les monstres d'Astrub (Bouftou, Tofu, Piou, Larve Bleue, Tofu Royal, Bouftou Royal) utilisent des planches de sprites animées en 8 directions, générées en code par `tools/sprites/` (aucun asset Ankama). Chaque classe a une course, une attente et une attaque (coup d'arme, tir à l'arc ou incantation selon la classe) ; chaque monstre a une marche et une attaque, jouée au contact. Les formats de case reprennent ceux de ZaapRush.
 
 | Fichier | Rôle |
 |---|---|
 | `tools/sprites/rig.js` | Mini moteur de « poupées » 3D : sphères, membres, nuages de laine, projetés en vue isométrique avec ombrage et contours |
-| `tools/sprites/models.js` | Les modèles et leurs animations (marche du Bouftou, course et attente du Crâ) |
+| `tools/sprites/models.js` | Les modèles et leurs animations : monstres, et un aventurier générique habillé par classe (`LOOKS` : tenue, coiffe, arme, type d'attaque) |
 | `tools/sprites/generate.html` | Aperçu des planches dans le navigateur |
-| `tools/sprites/build.js` | Exporte les PNG dans `assets/sprites/` et écrit `js/sprites.js` (`node tools/sprites/build.js`, nécessite Playwright) |
+| `tools/sprites/build.js` | Exporte les planches en WebP dans `assets/sprites/` et écrit `js/sprites.js` ; signale les images coupées par le bord de leur case (`node tools/sprites/build.js [nom…]`, nécessite Playwright) |
 
-Un monstre utilise une planche avec `sprite: '<nom>'` dans `js/data.js` ; une classe, via `SPRITE_CLASSES` dans `js/game.js`. Sans planche chargée, le dessin vectoriel sert de repli. Aperçu : `docs/sprites-planches.png` et `docs/sprites-avant-apres.png`.
+Un monstre utilise une planche avec `sprite: '<nom>'` dans `js/data.js` (et `<nom>_attack` si elle existe) ; les classes via `SPRITE_CLASSES` dans `js/game.js`. Les planches se chargent à la demande ; sans planche chargée, le dessin vectoriel sert de repli. Aperçus : `docs/sprites-classes.png` et `docs/sprites-monstres.png`.
 
-Pour équilibrer ou ajouter du contenu, modifiez `js/data.js` : un sort se décrit par un `type` (projectile, melee, nova, aura, orbit, strike, summon, trap, glyph, heal, shield), des stats de `base` et 4 améliorations `up`.
+Pour équilibrer ou ajouter du contenu, modifiez `js/data.js` : un sort se décrit par un `type` (projectile, melee, nova, aura, orbit, strike, summon, trap, glyph, heal, shield, buff, dash), des stats de `base` et 4 améliorations `up`.

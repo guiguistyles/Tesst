@@ -587,7 +587,7 @@ const SPELLS = {
   dissolution: { name: 'Dissolution', icon: 'Di', color: '#ff5a5a', type: 'aura', desc: 'Votre sang ronge les ennemis proches.', base: { dmg: 5, tick: 0.5, radius: 75, slow: 0.1, rage: 1 }, up: UP.aura },
   folie_sanguinaire: { name: 'Folie Sanguinaire', icon: 'FS', color: '#ff2a2a', type: 'buff', desc: 'Rage : +dégâts et +vitesse.', base: { pow: 0.3, spd: 0.1, dur: 5, cd: 14 }, up: UP.buff },
   // Enutrof
-  lancer_pelle: { name: 'Lancer de Pelle', icon: 'LP', color: '#c8a060', type: 'projectile', desc: 'Pelle lancée qui traverse les ennemis.', base: { dmg: 18, cd: 1.6, count: 1, pierce: 4, speed: 420, range: 460, size: 8, knock: 40 }, up: UP.projectile },
+  lancer_pelle: { name: 'Lancer de Pelle', icon: 'Pl', color: '#c8a060', type: 'projectile', desc: 'Pelle lancée qui traverse les ennemis.', base: { dmg: 18, cd: 1.6, count: 1, pierce: 4, speed: 420, range: 460, size: 8, knock: 40 }, up: UP.projectile },
   pelle_fantomatique: { name: 'Pelle Fantomatique', icon: 'PF', color: '#cfe7ff', type: 'orbit', desc: 'Des pelles spectrales tournent autour de vous.', base: { dmg: 11, count: 2, radius: 80, speed: 2.8, size: 12 }, up: UP.orbit },
   remblai: { name: 'Remblai', icon: 'Re', color: '#a8865a', type: 'nova', desc: 'Soulève la terre tout autour.', base: { dmg: 22, cd: 3.4, radius: 95, knock: 50 }, up: UP.nova },
   force_age: { name: 'Force de l’Âge', icon: 'FA', color: '#e6d39a', type: 'buff', desc: 'L’expérience parle : +dégâts temporaires.', base: { pow: 0.35, dur: 5, cd: 14 }, up: UP.buff },
@@ -617,11 +617,11 @@ const PASSIVES = {
 const MONSTERS = {
   // Astrub
   bouftou:      { name: 'Bouftou', hp: 10, speed: 60, dmg: 5, xp: 1, r: 14, shape: 'sheep', body: '#f2efe6', detail: '#6b4a2a', sprite: 'bouftou' },
-  tofu:         { name: 'Tofu', hp: 6, speed: 105, dmg: 4, xp: 1, r: 9, shape: 'bird', body: '#ffd23f', detail: '#e07a1f' },
-  piou:         { name: 'Piou Rouge', hp: 7, speed: 90, dmg: 4, xp: 1, r: 9, shape: 'bird', body: '#ff5b5b', detail: '#ffcc33' },
-  larve_bleue:  { name: 'Larve Bleue', hp: 18, speed: 45, dmg: 6, xp: 2, r: 13, shape: 'larva', body: '#4fa3ff', detail: '#1f5fa8' },
-  tofu_royal:   { name: 'Tofu Royal', hp: 380, speed: 95, dmg: 12, xp: 30, r: 26, shape: 'bird', body: '#ffcc00', detail: '#d06010', boss: 1 },
-  bouftou_royal:{ name: 'Bouftou Royal', hp: 1100, speed: 75, dmg: 18, xp: 80, r: 36, shape: 'sheep', body: '#fffbe8', detail: '#4a2f1a', boss: 2 },
+  tofu:         { name: 'Tofu', hp: 6, speed: 105, dmg: 4, xp: 1, r: 9, shape: 'bird', body: '#ffd23f', detail: '#e07a1f', sprite: 'tofu' },
+  piou:         { name: 'Piou Rouge', hp: 7, speed: 90, dmg: 4, xp: 1, r: 9, shape: 'bird', body: '#ff5b5b', detail: '#ffcc33', sprite: 'piou' },
+  larve_bleue:  { name: 'Larve Bleue', hp: 18, speed: 45, dmg: 6, xp: 2, r: 13, shape: 'larva', body: '#4fa3ff', detail: '#1f5fa8', sprite: 'larve_bleue' },
+  tofu_royal:   { name: 'Tofu Royal', hp: 380, speed: 95, dmg: 12, xp: 30, r: 26, shape: 'bird', body: '#ffcc00', detail: '#d06010', boss: 1, sprite: 'tofu_royal' },
+  bouftou_royal:{ name: 'Bouftou Royal', hp: 1100, speed: 75, dmg: 18, xp: 80, r: 36, shape: 'sheep', body: '#fffbe8', detail: '#4a2f1a', boss: 2, sprite: 'bouftou_royal' },
   // Amakna
   sanglier:     { name: 'Sanglier', hp: 22, speed: 70, dmg: 8, xp: 2, r: 15, shape: 'boar', body: '#7a5236', detail: '#f0e6d0' },
   arakne:       { name: 'Arakne', hp: 12, speed: 100, dmg: 6, xp: 1, r: 11, shape: 'spider', body: '#3a3a3a', detail: '#d33' },

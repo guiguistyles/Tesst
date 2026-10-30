@@ -105,7 +105,10 @@ const Rig = (() => {
 
   // Dessine un modèle (liste de primitives) tourné de th, ancré en (ox, oy).
   function draw(ctx, prims, th, ox, oy) {
-    const items = prims.map((p) => {
+    // o.normal = direction locale {f, s} vers laquelle l'élément est tourné : il n'est dessiné
+    // que s'il fait face à la caméra (au-delà de o.minFacing, -0.3 par défaut).
+    const visible = (o) => !o.normal || o.normal.f * Math.sin(th) + o.normal.s * Math.cos(th) >= (o.minFacing ?? -0.3);
+    const items = prims.filter((p) => visible(p.o || {})).map((p) => {
       const o = p.o || {};
       if (p.t === 'sphere') { const q = project(p.c, th, ox, oy); return { d: q.d + (o.bias || 0), run: () => sphere(ctx, q, p.r, p.col, o) }; }
       if (p.t === 'limb') {
@@ -150,5 +153,20 @@ const Rig = (() => {
   const Curve = (pts, w, col, o) => ({ t: 'curve', pts, w, col, o });
   const Blob = (pts, rs, col, o) => ({ t: 'blob', pts, rs, col, o });
 
-  return { sheet, draw, mix, light, dark, P, add, S, L, Poly, Curve, Blob, DIRS };
+  // Agrandit tout un modèle (positions, rayons, épaisseurs) d'un facteur k.
+  function scale(prims, k) {
+    const sp = (p) => P(p.f * k, p.s * k, p.z * k);
+    return prims.map((p) => {
+      const q = { ...p, o: p.o && { ...p.o, bias: (p.o.bias || 0) * k } };
+      if (p.c) q.c = sp(p.c);
+      if (p.a) { q.a = sp(p.a); q.b = sp(p.b); }
+      if (p.pts) q.pts = p.pts.map(sp);
+      if (p.r) q.r = p.r * k;
+      if (p.w) q.w = p.w * k;
+      if (p.rs) q.rs = p.rs.map((r) => r * k);
+      return q;
+    });
+  }
+
+  return { sheet, draw, mix, light, dark, P, add, S, L, Poly, Curve, Blob, scale, DIRS };
 })();

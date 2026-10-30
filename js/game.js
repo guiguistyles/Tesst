@@ -11,7 +11,11 @@ const Game = (() => {
 
   const MAX_ENEMIES = 380;
   // Classes dessinées avec des planches de sprites (k = échelle d'affichage).
-  const SPRITE_CLASSES = { cra: { run: 'cra_run', idle: 'cra_idle', k: 0.8 } };
+  // Classes dessinées avec des planches de sprites (course, attente, attaque ; k = échelle d'affichage).
+  const SPRITE_CLASSES = Object.fromEntries(Object.keys(CLASSES).map((id) =>
+    [id, { run: id + '_run', idle: id + '_idle', attack: id + '_attack', k: 0.8 }]));
+  // Sorts qui déclenchent l'animation d'attaque du personnage.
+  const ATTACK_TYPES = new Set(['projectile', 'melee', 'nova', 'strike', 'trap', 'glyph', 'dash']);
   const GOD_MODE = /[?&]debug\b/.test(location.search); // invincibilité pour les tests
   const BOSS_TIMES = [
     { t: 180, kind: 'mini', hp: 1 },
@@ -35,7 +39,6 @@ const Game = (() => {
     canvas = c;
     ctx = c.getContext('2d');
     cb = callbacks;
-    loadSprites();
     resize();
     addEventListener('resize', resize);
     addEventListener('keydown', (e) => {
@@ -65,19 +68,31 @@ const Game = (() => {
   // ------------------------------------------------------------ Sprites
   // Planches générées par tools/sprites (js/sprites.js). Tant qu'une planche n'est pas chargée,
   // le dessin vectoriel d'origine sert de repli.
-  const sheets = {};
-  function loadSprites() {
-    if (typeof SPRITE_SHEETS === 'undefined') return;
-    for (const [name, m] of Object.entries(SPRITE_SHEETS)) {
-      const img = new Image();
+  const sheets = {}, loading = {};
+  // Renvoie la planche si elle est chargée ; sinon lance son chargement et renvoie null.
+  function sheet(name) {
+    if (sheets[name]) return sheets[name];
+    if (!loading[name] && typeof SPRITE_SHEETS !== 'undefined' && SPRITE_SHEETS[name]) {
+      loading[name] = true;
+      const m = SPRITE_SHEETS[name], img = new Image();
       img.onload = () => { sheets[name] = { ...m, img }; };
       img.src = m.src;
     }
+    return null;
+  }
+
+  // Précharge les planches utiles à une partie (monstres de la zone, classe jouée).
+  function preloadSprites(zone, clsId) {
+    const names = [...zone.monsters, zone.mini, zone.boss].map((id) => MONSTERS[id].sprite).filter(Boolean);
+    const c = SPRITE_CLASSES[clsId];
+    if (c) names.push(c.run, c.idle, c.attack);
+    for (const n of names) { sheet(n); sheet(n + '_attack'); }
+    if (c) sheet(c.attack);
   }
 
   // angle : direction regardée (repère écran), time : secondes d'animation, k : échelle d'affichage.
   function drawSprite(name, x, y, angle, time, k, flash) {
-    const s = sheets[name];
+    const s = sheet(name);
     if (!s) return false;
     const row = ((Math.round(angle / (Math.PI / 4)) % 8) + 8) % 8;
     const col = Math.floor(time * s.fps) % s.frames;
@@ -175,6 +190,7 @@ const Game = (() => {
       found: [], over: false, endTimer: -1, victory: false, grid: new Map(),
     };
     recomputeStats();
+    preloadSprites(S.zone, clsId);
     S.p.hp = S.p.maxHp;
     addSpell(cls.spells[0]);
     paused = false;
@@ -469,8 +485,19 @@ const Game = (() => {
       sp.timer -= dt;
       if (sp.timer > 0) continue;
       if (def.type === 'aura') { sp.timer = s.tick; auraTick(sp); continue; }
-      sp.timer = cast(sp, def, s) ? s.cd * S.stats.cd : 0.15;
+      const ok = cast(sp, def, s);
+      if (ok && ATTACK_TYPES.has(def.type)) attackAnim();
+      sp.timer = ok ? s.cd * S.stats.cd : 0.15;
     }
+  }
+
+  // Lance l'animation d'attaque du personnage vers l'ennemi le plus proche (au plus une à la fois).
+  function attackAnim() {
+    const p = S.p, c = SPRITE_CLASSES[S.cls], a = c && sheet(c.attack);
+    if (!a || S.t - (p.atkT0 ?? -9) < a.frames / a.fps) return;
+    const t = nearest(p.x, p.y, 700, 1)[0];
+    p.atkT0 = S.t;
+    p.atkAng = t ? Math.atan2(t.y - p.y, t.x - p.x) : Math.atan2(p.dirY, p.dirX);
   }
 
   function cast(sp, def, s) {
@@ -679,6 +706,7 @@ const Game = (() => {
       const decay = Math.exp(-10 * dt);
       e.kvx *= decay; e.kvy *= decay;
 
+      if (dist < e.r + p.r + 12 && !(S.t - (e.atkAnim ?? -9) < 0.9)) e.atkAnim = S.t; // animation d'attaque
       if (dist < e.r + p.r && e.atk <= 0 && p.inv <= 0) {
         e.atk = 0.8;
         p.inv = 0.3; // courte invincibilité après un coup au contact
@@ -1285,9 +1313,11 @@ const Game = (() => {
     const hurt = p.hurt > 0;
     const sprite = SPRITE_CLASSES[S.cls];
     if (sprite) {
-      const angle = Math.atan2(p.dirY, p.dirX);
-      if (p.moving ? drawSprite(sprite.run, x, y + 1, angle, p.walk / 10, sprite.k, hurt)
-                   : drawSprite(sprite.idle, x, y + 1, angle, S.t, sprite.k, hurt)) return;
+      const angle = Math.atan2(p.dirY, p.dirX), atk = sheet(sprite.attack), since = S.t - (p.atkT0 ?? -9);
+      if (atk && since < atk.frames / atk.fps) {
+        if (drawSprite(sprite.attack, x, y + 1, p.atkAng, since, sprite.k, hurt)) return;
+      } else if (p.moving ? drawSprite(sprite.run, x, y + 1, angle, p.walk / 10, sprite.k, hurt)
+                          : drawSprite(sprite.idle, x, y + 1, angle, S.t, sprite.k, hurt)) return;
     }
     const by = y - bob;
     // jambes
@@ -1402,8 +1432,15 @@ const Game = (() => {
     const body = flash ? '#ffffff' : d.body, det = flash ? '#ffffff' : d.detail;
     shadow(x, y, r);
     const cy = y - r + bob;
-    const sprited = d.sprite && !friendly &&
-      drawSprite(d.sprite, x, y + 1, Math.atan2(S.p.y - y, S.p.x - x), t, r * 0.057, flash);
+    let sprited = false;
+    const walk = d.sprite && !friendly && sheet(d.sprite);
+    if (walk) {
+      const ang = Math.atan2(S.p.y - y, S.p.x - x), k = r / walk.fit;
+      const atk = sheet(d.sprite + '_attack'), since = S.t - (e.atkAnim ?? -9);
+      sprited = atk && since < atk.frames / atk.fps
+        ? drawSprite(d.sprite + '_attack', x, y + 1, ang, since, k, flash)
+        : drawSprite(d.sprite, x, y + 1, ang, t, k, flash);
+    }
     if (!sprited) switch (d.shape) {
       case 'sheep': {
         ctx.fillStyle = body;

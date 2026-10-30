@@ -15,7 +15,8 @@
   <script src="models.js"></script>
   <script>
     window.SHEETS = {};
-    for (const [name, spec] of Object.entries(MODELS)) {
+    const preview = !location.search.includes("noview");
+    for (const [name, spec] of preview ? Object.entries(MODELS) : []) {
       const cv = Rig.sheet(spec);
       SHEETS[name] = cv;
       const h = document.createElement('h3'); h.textContent = `${name} — ${spec.frameW}×${spec.frameH}, ${spec.frames} images`;
