@@ -18,12 +18,15 @@ const Game = (() => {
   const ATTACK_TYPES = new Set(['projectile', 'melee', 'nova', 'strike', 'trap', 'glyph', 'dash']);
   const GOD_MODE = /[?&]debug\b/.test(location.search); // invincibilité pour les tests
   // ?debug&wave=N : commence la partie à la vague N (tests du boss final)
+  // ?debug&speed=N : accélère le temps de jeu (tests)
+  const SPEED = GOD_MODE ? Math.max(1, +(location.search.match(/[?&]speed=(\d+)/) || [])[1] || 1) : 1;
   const START_WAVE = GOD_MODE ? Math.max(1, +(location.search.match(/[?&]wave=(\d+)/) || [])[1] || 1) : 1;
-  // Rythme façon ZaapRush : une vague toutes les 22 s, boss intermédiaires aux vagues 14 et 27,
-  // boss final à la vague 40 puis toutes les 15 vagues (+15 % de PV à chaque retour).
+  // Vagues courtes : la vague N compte waveSize(N) monstres (5 au début, ~130 à la vague 40). La suivante
+  // arrive quand 80 % de la vague est vaincue, ou au bout de 6 à 12 s. Boss intermédiaires aux vagues
+  // 14 et 27, boss final à la vague 40 puis toutes les 15 vagues (+15 % de PV à chaque retour).
   // Arène bornée (comme les cartes de ZaapRush) : le joueur ne peut pas en sortir, la caméra s'arrête au bord.
   const ARENA_W = 1800, ARENA_H = 1250, BORDER = 170, GROUND_RES = 1.25;
-  const WAVE_LEN = 22, FINAL_WAVE = 40, BOSS_RETURN = 15, BOSS_HP_STEP = 0.15;
+  const WAVE_PAUSE = 1, FINAL_WAVE = 40, BOSS_RETURN = 15, BOSS_HP_STEP = 0.15;
   const MINI_WAVES = [{ wave: 14, hp: 1 }, { wave: 27, hp: 1.8 }];
   const DOFUS_CHANCE = [0.01, 0.005]; // 1 % + 0,5 % par boss final battu sans le Dofus
 
@@ -273,7 +276,7 @@ const Game = (() => {
       meta: metaStats(save), stats: null, passives: {}, spells: [],
       enemies: [], projs: [], eprojs: [], gems: [], fx: [], texts: [], traps: [], glyphs: [], strikes: [],
       buffs: [], items: {}, rerolls: 2, bans: 1, banned: new Set(),
-      spawnAcc: 0, nextHorde: 60, wave: 1, miniIdx: 0, nextFinal: FINAL_WAVE, bossKills: 0, boss: null, pending: 0, choosing: false,
+      spawnAcc: 0, wave: 0, waveQueue: 0, waveEnd: 0, nextWave: 0.5, miniIdx: 0, nextFinal: FINAL_WAVE, bossKills: 0, boss: null, pending: 0, choosing: false,
       found: [], over: false, endTimer: -1, victory: false, grid: new Map(),
     };
     S.arena = { x0: -ARENA_W / 2, x1: ARENA_W / 2, y0: -ARENA_H / 2, y1: ARENA_H / 2 };
@@ -281,7 +284,7 @@ const Game = (() => {
     S.groundCv = buildGround(S.zone, zoneIdx);
     S.cam = { x: 0, y: 0 };
     if (START_WAVE > 1) {
-      S.t = (START_WAVE - 1) * WAVE_LEN; S.wave = START_WAVE; S.nextHorde = S.t + 60;
+      S.wave = START_WAVE - 1;
       S.miniIdx = MINI_WAVES.filter((m) => m.wave < START_WAVE).length;
     }
     recomputeStats();
@@ -307,7 +310,7 @@ const Game = (() => {
     lastT = now;
     if (dt > 0.05) dt = 0.05;
     if (!S) return;
-    if (!paused && !S.choosing) update(dt);
+    if (!paused && !S.choosing) for (let i = 0; i < SPEED && !S.choosing; i++) update(dt);
     render();
     hudTimer -= dt;
     if (hudTimer <= 0) { hudTimer = 0.1; cb.onHud(hudData()); }
@@ -316,7 +319,7 @@ const Game = (() => {
   function hudData() {
     return {
       hp: S.p.hp, maxHp: S.p.maxHp, shield: S.p.shield, xp: S.xp, xpNext: S.xpNext, level: S.level,
-      t: S.t, wave: S.wave, kills: S.kills, kamas: Math.floor(S.kamas), spells: S.spells, passives: S.passives, items: S.items,
+      t: S.t, wave: Math.max(1, S.wave), left: S.waveLeft || 0, kills: S.kills, kamas: Math.floor(S.kamas), spells: S.spells, passives: S.passives, items: S.items,
       boss: S.boss && !S.boss.dead ? { name: S.boss.def.name, hp: S.boss.hp, maxHp: S.boss.maxHp } : null,
     };
   }
@@ -599,13 +602,13 @@ const Game = (() => {
 
   function spawnEnemy(id, x, y, hpMul = 1) {
     const def = MONSTERS[id], z = S.zone;
-    const scale = def.boss ? 1 : 1 + S.t / 300;
+    const w = Math.max(0, S.wave - 1), scale = def.boss ? 1 : 1 + w * 0.06;
     if (x === undefined) ({ x, y } = spawnPoint());
     else ({ x, y } = clampArena(x, y, 30));
     const hp = def.hp * z.hpMul * scale * hpMul;
     const e = {
       id, def, x, y, r: def.r, hp, maxHp: hp, speed: def.speed * rand(0.9, 1.1),
-      dmg: def.dmg * z.dmgMul * (1 + S.t / 550), xp: def.xp, boss: def.boss || 0,
+      dmg: def.dmg * z.dmgMul * (1 + w * 0.04), xp: def.xp * (1 + w * 0.025), wave: S.wave, boss: def.boss || 0,
       kvx: 0, kvy: 0, slow: 0, slowT: 0, poison: 0, poisonT: 0, poisonAcc: 0, atk: 0, flash: 0,
       seed: Math.random() * 10, shot: rand(1, 2), hitT: {}, ab: 3, charge: 0, cx: 0, cy: 0,
     };
@@ -613,39 +616,57 @@ const Game = (() => {
     return e;
   }
 
-  function spawn(dt) {
-    if (S.over) return;
-    const z = S.zone, t = S.t;
-    const wave = 1 + Math.floor(t / WAVE_LEN);
-    if (wave !== S.wave) S.wave = wave;
-    const avail = z.monsters.slice(0, Math.min(z.monsters.length, 1 + Math.floor(t / 40)));
-    // le boss final arrive presque seul : les apparitions ralentissent tant qu'il est en vie
-    const finalAlive = S.boss && !S.boss.dead && S.boss.kind === 'boss';
-    const rate = (0.9 + t / 45) * (finalAlive ? 0.3 : 1);
-    S.spawnAcc += rate * dt;
-    while (S.spawnAcc >= 1) {
-      S.spawnAcc -= 1;
-      if (S.enemies.length < MAX_ENEMIES) spawnEnemy(pick(avail));
-    }
-    if (t >= S.nextHorde && !finalAlive) {
-      S.nextHorde += 60;
-      const id = pick(avail), n = Math.floor(14 + t / 25), R = viewRadius() - 20;
-      for (let i = 0; i < n && S.enemies.length < MAX_ENEMIES + 40; i++) {
+  function waveSize(w) { return 4 + Math.floor(w * 1.3 + w * w * 0.045); }
+
+  function startWave() {
+    const z = S.zone, w = ++S.wave;
+    S.waveQueue = waveSize(w);
+    S.waveSize = S.waveQueue;
+    S.waveEnd = S.t + 6 + w * 0.15; // 6 s au début, 12 s à la vague 40
+    S.nextWave = Infinity;
+    const avail = z.monsters.slice(0, Math.min(z.monsters.length, 1 + Math.floor((w - 1) / 4)));
+    S.waveAvail = avail;
+    // toutes les 5 vagues, une partie de la vague arrive en cercle autour du joueur
+    if (w % 5 === 0 && w !== FINAL_WAVE) {
+      const id = pick(avail), n = Math.floor(S.waveQueue / 2), R = viewRadius() - 20;
+      for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2;
         spawnEnemy(id, S.p.x + Math.cos(a) * R, S.p.y + Math.sin(a) * R);
       }
-      cb.onBanner('Une horde approche !', '');
+      S.waveQueue -= n;
     }
     const mini = MINI_WAVES[S.miniIdx];
-    if (mini && wave >= mini.wave && !(S.boss && !S.boss.dead)) {
+    if (mini && w >= mini.wave && !(S.boss && !S.boss.dead)) {
       S.miniIdx++;
-      spawnBoss(z.mini, 'mini', mini.hp, 'Un boss apparaît !');
-    }
-    if (wave >= S.nextFinal && !(S.boss && !S.boss.dead)) {
+      spawnBoss(z.mini, 'mini', mini.hp, `Vague ${w} : un boss apparaît !`);
+    } else if (w >= S.nextFinal && !(S.boss && !S.boss.dead)) {
       S.nextFinal += BOSS_RETURN;
       const hp = 1.6 * (1 + BOSS_HP_STEP * S.bossKills);
-      spawnBoss(z.boss, 'boss', hp, S.bossKills ? `Il revient, plus fort (vague ${wave})` : `Le boss final de la zone (vague ${wave}) !`);
+      S.waveQueue = Math.floor(S.waveQueue / 3); // le boss final arrive presque seul
+      spawnBoss(z.boss, 'boss', hp, S.bossKills ? `Il revient, plus fort (vague ${w})` : `Le boss final de la zone (vague ${w}) !`);
+    } else if (w % 5 === 0) cb.onBanner(`Vague ${w}`, 'Une horde approche !');
+  }
+
+  function spawn(dt) {
+    if (S.over) return;
+    if (S.t >= S.nextWave) startWave();
+    // la vague sort en quelques secondes plutôt que d'un bloc
+    if (S.waveQueue > 0) {
+      S.spawnAcc += (3 + S.wave * 0.6) * dt;
+      while (S.spawnAcc >= 1 && S.waveQueue > 0) {
+        S.spawnAcc -= 1;
+        S.waveQueue--;
+        if (S.enemies.length < MAX_ENEMIES) spawnEnemy(pick(S.waveAvail));
+      }
     }
+    const bossAlive = S.boss && !S.boss.dead;
+    if (S.nextWave === Infinity && S.waveQueue <= 0) {
+      const left = S.enemies.reduce((n, e) => n + (e.dead ? 0 : 1), 0);
+      // vague presque vaincue (80 %), ou trop longue ; pendant un boss, on attend sa mort
+      const done = bossAlive ? left === 0 : left <= Math.floor(S.waveSize * 0.2);
+      if (done || (S.t >= S.waveEnd && !bossAlive)) S.nextWave = S.t + (left === 0 ? WAVE_PAUSE : 0);
+    }
+    S.waveLeft = S.waveQueue + S.enemies.reduce((n, e) => n + (e.dead ? 0 : 1), 0);
   }
 
   function spawnBoss(id, kind, hp, sub) {

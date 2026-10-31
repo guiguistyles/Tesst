@@ -541,7 +541,7 @@ function onHud(h) {
   $('#hp-txt').textContent = Math.ceil(Math.max(0, h.hp)) + ' / ' + h.maxHp;
   $('#xp-fill').style.width = (100 * h.xp / h.xpNext) + '%';
   $('#lvl').textContent = 'Niv. ' + h.level;
-  $('#timer').textContent = 'Vague ' + h.wave;
+  $('#timer').textContent = 'Vague ' + h.wave + (h.left ? ' · ' + h.left + ' ☠' : '');
   $('#timer').title = fmtTime(h.t);
   $('#kills').textContent = h.kills;
   $('#hud-kamas').textContent = h.kamas;
