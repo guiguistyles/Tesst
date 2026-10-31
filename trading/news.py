@@ -9,18 +9,45 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 
+from . import config
+
 FEEDS = [
     "https://www.coindesk.com/arc/outboundfeeds/rss/",
     "https://cointelegraph.com/rss",
     "https://decrypt.co/feed",
+    "https://www.cnbc.com/id/100003114/device/rss/rss.html",   # marchés et entreprises
+    "https://www.cnbc.com/id/10000664/device/rss/rss.html",    # finance
+    "https://oilprice.com/rss/main",                            # pétrole et énergie
 ]
 
 KEYWORDS = {
     "BTC": ["bitcoin", "btc"],
     "ETH": ["ethereum", "ether", "eth"],
     "SOL": ["solana", "sol"],
+    "XRP": ["xrp", "ripple"],
+    "ADA": ["cardano", "ada"],
+    "DOGE": ["dogecoin", "doge"],
+    "DOT": ["polkadot", "dot"],
+    "LINK": ["chainlink"],
+    "AVAX": ["avalanche", "avax"],
+    "SPY": ["s&p 500", "s&p", "sp500", "wall street", "stocks", "dow"],
+    "QQQ": ["nasdaq", "tech stocks"],
+    "AAPL": ["apple", "iphone", "aapl"],
+    "NVDA": ["nvidia", "nvda"],
+    "MSFT": ["microsoft", "msft"],
+    "TSLA": ["tesla", "tsla", "elon musk"],
+    "WTI": ["oil", "crude", "wti", "opec"],
+    "BRENT": ["oil", "crude", "brent", "opec"],
+    "OR": ["gold", "bullion"],
+    "ARGENT": ["silver"],
 }
-GENERIC = ["crypto", "cryptocurrency", "market", "markets", "sec", "fed", "etf"]
+# Actu générale d'une équipe : compte à moitié pour tous ses marchés
+GENERIC = {
+    "crypto": ["crypto", "cryptocurrency", "cryptocurrencies"],
+    "altcoins": ["altcoin", "altcoins", "crypto", "cryptocurrency"],
+    "actions": ["stocks", "equities", "earnings", "fed", "interest rates"],
+    "matieres": ["commodities", "commodity", "energy", "metals"],
+}
 
 POSITIVE = {
     "surge", "surges", "soar", "soars", "rally", "rallies", "gain", "gains", "jump", "jumps",
@@ -91,14 +118,16 @@ def gather(log=print, max_age_h=24):
             s = score_text(text)
             touched = []
             for asset, kws in KEYWORDS.items():
-                if any(re.search(rf"\b{k}\b", low) for k in kws):
+                if any(re.search(rf"(?<![a-z]){re.escape(k)}(?![a-z])", low) for k in kws):
                     sums[asset] += s
                     weights[asset] += 1.0
                     touched.append(asset)
-            if not touched and any(re.search(rf"\b{k}\b", low) for k in GENERIC):
-                for asset in KEYWORDS:  # actu générale : compte à moitié pour tous
-                    sums[asset] += 0.5 * s
-                    weights[asset] += 0.5
+            if not touched:
+                for group, kws in GENERIC.items():
+                    if any(re.search(rf"(?<![a-z]){re.escape(k)}(?![a-z])", low) for k in kws):
+                        for asset in config.assets_of(group):
+                            sums[asset] += 0.5 * s
+                            weights[asset] += 0.5
             headlines.append({"title": title[:160], "score": round(s, 2), "assets": touched, "link": link})
     scores = {a: round(sums[a] / weights[a], 3) if weights[a] else 0.0 for a in KEYWORDS}
     headlines.sort(key=lambda h: abs(h["score"]), reverse=True)

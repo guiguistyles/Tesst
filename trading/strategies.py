@@ -215,39 +215,43 @@ BOUNDS = {
 
 # ---------------------------------------------------------------- population de départ
 
-INITIAL = [
-    ("hold", "BTC", {}, 1.0, None),
-    ("hold", "SOL", {}, 1.0, None),
-    ("random", "BTC", {"switch": 0.04}, 1.0, None),
-    ("random", "ETH", {"switch": 0.04}, 1.0, None),
-    ("sma_cross", "BTC", {"fast": 10, "slow": 50}, 0.05, None),
-    ("sma_cross", "ETH", {"fast": 20, "slow": 100}, 0.06, None),
-    ("sma_cross", "SOL", {"fast": 24, "slow": 168}, 0.08, None),
-    ("ema_cross", "BTC", {"fast": 12, "slow": 26}, 0.04, None),
-    ("ema_cross", "SOL", {"fast": 8, "slow": 34}, 0.06, None),
-    ("rsi_reversion", "BTC", {"period": 14, "low": 30, "high": 70}, 0.05, None),
-    ("rsi_reversion", "ETH", {"period": 14, "low": 25, "high": 65}, 0.06, None),
-    ("rsi_reversion", "SOL", {"period": 7, "low": 20, "high": 75}, 0.08, None),
-    ("bb_reversion", "BTC", {"period": 20, "k": 2.0}, 0.05, None),
-    ("bb_reversion", "ETH", {"period": 48, "k": 2.5}, 0.07, None),
-    ("bb_breakout", "BTC", {"period": 20, "k": 2.0}, 0.04, 0.08),
-    ("bb_breakout", "SOL", {"period": 30, "k": 1.5}, 0.06, 0.12),
-    ("donchian", "BTC", {"entry": 48, "exit": 24}, 0.06, None),
-    ("donchian", "ETH", {"entry": 120, "exit": 48}, 0.08, None),
-    ("macd", "BTC", {"fast": 12, "slow": 26, "signal": 9}, 0.05, None),
-    ("macd", "ETH", {"fast": 24, "slow": 52, "signal": 18}, 0.06, None),
-    ("momentum", "BTC", {"lookback": 24, "thr": 0.02}, 0.04, None),
-    ("momentum", "SOL", {"lookback": 12, "thr": 0.03}, 0.06, 0.10),
-    ("dip_buyer", "BTC", {"lookback": 48, "drop": 0.04, "gain": 0.03}, 0.06, None),
-    ("dip_buyer", "ETH", {"lookback": 72, "drop": 0.06, "gain": 0.04}, 0.08, None),
-    ("dip_buyer", "SOL", {"lookback": 48, "drop": 0.08, "gain": 0.05}, 0.10, None),
-    ("trend_rsi", "BTC", {"trend": 200, "period": 14, "low": 35, "high": 70}, 0.04, None),
-    ("trend_rsi", "ETH", {"trend": 100, "period": 10, "low": 30, "high": 65}, 0.05, None),
-    ("zscore", "ETH", {"period": 48, "z": 2.0}, 0.06, None),
-    ("vol_breakout", "SOL", {"period": 24, "k": 2.0}, 0.05, 0.08),
-    ("news", "BTC", {"thr": 0.15}, 0.05, None),
-    ("news_trend", "ETH", {"thr": 0.10, "trend": 100}, 0.05, None),
+# Les 14 stratégies « joueuses » : (stratégie, réglages, stop-loss de base, prise de bénéfice)
+TEMPLATES = [
+    ("sma_cross", {"fast": 10, "slow": 50}, 0.05, None),
+    ("ema_cross", {"fast": 12, "slow": 26}, 0.04, None),
+    ("rsi_reversion", {"period": 14, "low": 30, "high": 70}, 0.05, None),
+    ("bb_reversion", {"period": 20, "k": 2.0}, 0.05, None),
+    ("bb_breakout", {"period": 20, "k": 2.0}, 0.04, 0.08),
+    ("donchian", {"entry": 48, "exit": 24}, 0.06, None),
+    ("macd", {"fast": 12, "slow": 26, "signal": 9}, 0.05, None),
+    ("momentum", {"lookback": 24, "thr": 0.02}, 0.04, None),
+    ("dip_buyer", {"lookback": 48, "drop": 0.04, "gain": 0.03}, 0.06, None),
+    ("trend_rsi", {"trend": 200, "period": 14, "low": 35, "high": 70}, 0.04, None),
+    ("zscore", {"period": 48, "z": 2.0}, 0.06, None),
+    ("vol_breakout", {"period": 24, "k": 2.0}, 0.05, 0.08),
+    ("news", {"thr": 0.15}, 0.05, None),
+    ("news_trend", {"thr": 0.10, "trend": 100}, 0.05, None),
 ]
+
+# Les marchés ne bougent pas autant : le stop-loss et les seuils s'adaptent à chaque équipe.
+RISK_SCALE = {"crypto": 1.0, "altcoins": 1.5, "actions": 0.6, "matieres": 0.7}
+
+
+def initial_population(groups):
+    """groups : {équipe: [marchés]}. Renvoie [(équipe, stratégie, marché, réglages, stop, tp)]."""
+    out = []
+    for group, assets in groups.items():
+        k = RISK_SCALE[group]
+        out.append((group, "hold", assets[0], {}, 1.0, None))
+        out.append((group, "random", assets[min(1, len(assets) - 1)], {"switch": 0.04}, 1.0, None))
+        for i, (strat, params, sl, tp) in enumerate(TEMPLATES):
+            p = dict(params)
+            for key in ("thr", "drop", "gain"):
+                if key in p and strat not in ("news", "news_trend"):
+                    p[key] = round(p[key] * k, 4)
+            out.append((group, strat, assets[i % len(assets)], p,
+                        round(sl * k, 4), None if tp is None else round(tp * k, 4)))
+    return out
 
 
 def mutate(params, stop_loss, take_profit, asset, rng, assets):

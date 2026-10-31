@@ -42,7 +42,8 @@ def _row(rank, b):
     tag = ' <span class="tag">témoin</span>' if b["control"] else ""
     pos = "investi" if b["qty"] > 0 else "en euros"
     params = ", ".join(f"{k}={v}" for k, v in b["params"].items()) or "-"
-    return (f'<tr><td>{rank}</td><td><b>{e(b["name"])}</b>{tag}<div class="sub">{e(params)} · '
+    team = config.GROUPS.get(b.get("group") or config.group_of(b["asset"]), "")
+    return (f'<tr><td>{rank}</td><td><b>{e(b["name"])}</b>{tag}<div class="sub">{e(team)} · {e(params)} · '
             f'stop {b["stop_loss"] * 100:.0f} % · gén. {b["generation"]}</div></td>'
             f'<td class="num"><b>{b["equity"]:.2f} €</b><div class="sub {"up" if gain >= 0 else "down"}">{_pct(gain)}</div></td>'
             f'<td>{_spark(b["equity_hist"])}</td>'
@@ -103,7 +104,8 @@ def render(state, title="Arène des bots", subtitle="Simulation en argent virtue
             if not m:
                 continue
             cls = "up" if m["chg_24h"] >= 0 else "down"
-            out.append(f'<div class="card"><div class="sub">{a}/EUR · tendance {m["trend"]}</div><div class="big">{m["price"]:,.2f} €</div>'
+            cur = "€" if config.MARKETS.get(a, ("", "", "", "", "EUR"))[4] == "EUR" else "$"
+            out.append(f'<div class="card"><div class="sub">{e(config.MARKETS[a][3]) if a in config.MARKETS else a} · tendance {m["trend"]}</div><div class="big">{m["price"]:,.4g} {cur}</div>'
                        f'<div class="sub"><span class="{cls}">{_pct(m["chg_24h"])} 24 h</span> · {_pct(m["chg_7d"])} 7 j · volatilité {m["vol_daily"] * 100:.1f} %/j</div></div>')
         out.append("</div>")
 
@@ -156,11 +158,12 @@ def render(state, title="Arène des bots", subtitle="Simulation en argent virtue
 def render_md(state, title):
     bots = ranking(state)
     lines = [f"# {title}", "", f"_Mis à jour le {_dt(state['last_tick_ts'])} UTC · {config.CAPITAL:.0f} € virtuels par bot · argent fictif_", "",
-             "| # | Bot | Capital | Gain | PV | Trades | Pire chute | Statut |", "|---|---|---:|---:|---:|---:|---:|---|"]
+             "| # | Bot | Équipe | Capital | Gain | PV | Trades | Pire chute | Statut |", "|---|---|---|---:|---:|---:|---:|---:|---|"]
     for i, b in enumerate(bots, 1):
         status = "vivant" if b["alive"] else f"☠ {b['death_cause']}"
         hp = "∞" if b["control"] else f"{max(0, b['hp']):.0f}"
-        lines.append(f"| {i} | {b['name']}{' (témoin)' if b['control'] else ''} | {b['equity']:.2f} € | {_pct(b['equity'] / config.CAPITAL - 1)} | "
+        team = config.GROUPS.get(b.get("group") or config.group_of(b["asset"]), "")
+        lines.append(f"| {i} | {b['name']}{' (témoin)' if b['control'] else ''} | {team} | {b['equity']:.2f} € | {_pct(b['equity'] / config.CAPITAL - 1)} | "
                      f"{hp} | {b['stats']['trades']} | {b['max_drawdown'] * 100:.1f} % | {status} |")
     lines += ["", "## Derniers événements", ""] + [f"- {_dt(ev['ts'])} · {ev['msg']}" for ev in reversed(state["events"][-15:])]
     return "\n".join(lines) + "\n"

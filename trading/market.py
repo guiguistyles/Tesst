@@ -34,11 +34,32 @@ def fetch_coinbase(product):
     return sorted(out, key=lambda c: c["t"])
 
 
+def fetch_yahoo(ticker, rng="6mo"):
+    """Bougies d'1 h d'une action, d'un ETF ou d'une matière première (Yahoo Finance)."""
+    from urllib.parse import quote
+    data = _get_json(f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(ticker)}?interval=1h&range={rng}")
+    res = (data.get("chart") or {}).get("result")
+    if not res:
+        raise RuntimeError(f"Yahoo: {(data.get('chart') or {}).get('error')}")
+    r = res[0]
+    q = r["indicators"]["quote"][0]
+    now = time.time()
+    out = []
+    for i, t in enumerate(r.get("timestamp") or []):
+        o, h, l, c = q["open"][i], q["high"][i], q["low"][i], q["close"][i]
+        if None in (o, h, l, c) or t + 3600 > now:
+            continue  # trou dans les données, ou bougie pas encore fermée
+        out.append({"t": int(t), "o": float(o), "h": float(h), "l": float(l), "c": float(c),
+                    "v": float(q["volume"][i] or 0)})
+    return out
+
+
 def synthetic(asset, n=720, end_ts=None, seed=None):
     """Prix inventés (marche aléatoire) pour tester sans internet."""
     rng = random.Random(seed if seed is not None else asset)
-    start = {"BTC": 60000.0, "ETH": 2500.0, "SOL": 140.0}.get(asset, 100.0)
-    vol = {"BTC": 0.006, "ETH": 0.008, "SOL": 0.011}.get(asset, 0.01)
+    start = {"BTC": 60000.0, "ETH": 2500.0, "SOL": 140.0, "DOGE": 0.15, "XRP": 0.5}.get(asset, 100.0)
+    group = config.group_of(asset)
+    vol = {"crypto": 0.007, "altcoins": 0.011, "actions": 0.004, "matieres": 0.005}[group]
     end_ts = end_ts or int(time.time()) // 3600 * 3600 - 3600
     price, out = start, []
     drift = rng.uniform(-0.0003, 0.0003)
@@ -55,29 +76,43 @@ def synthetic(asset, n=720, end_ts=None, seed=None):
 
 def load_all(use_synthetic=False, log=print):
     data = {}
-    for asset, pair in config.ASSETS.items():
+    for asset, (group, source, code, _, _) in config.MARKETS.items():
         if use_synthetic:
             data[asset] = synthetic(asset)
             continue
         try:
-            data[asset] = fetch_kraken(pair)
+            data[asset] = fetch_kraken(code) if source == "kraken" else fetch_yahoo(code)
         except Exception as e:  # noqa: BLE001
+            if asset not in config.COINBASE_PAIRS:
+                log(f"[Analyste] Aucune donnée pour {asset} ({e})")
+                continue
             log(f"[Analyste] Kraken indisponible pour {asset} ({e}), essai Coinbase")
             try:
                 data[asset] = fetch_coinbase(config.COINBASE_PAIRS[asset])
             except Exception as e2:  # noqa: BLE001
                 log(f"[Analyste] Aucune donnée pour {asset} ({e2})")
+        time.sleep(0.3)  # politesse envers les serveurs
     return data
 
 
 def analyze(candles):
-    """Résumé lisible de l'état d'un marché."""
+    """Résumé lisible de l'état d'un marché (variations calculées sur la durée réelle,
+    car une action n'a que ~7 bougies par jour de bourse)."""
     if len(candles) < 200:
         return {}
+    from bisect import bisect_right
     closes = [c["c"] for c in candles]
-    last = closes[-1]
-    rets = [closes[i] / closes[i - 1] - 1 for i in range(len(closes) - 168, len(closes))]
-    vol = (sum(r * r for r in rets) / len(rets)) ** 0.5 * math.sqrt(24)
+    times = [c["t"] for c in candles]
+    last, last_t = closes[-1], times[-1]
+
+    def close_at(ts):
+        i = bisect_right(times, ts) - 1
+        return closes[max(0, i)]
+
+    j = max(1, bisect_right(times, last_t - 7 * 86400))
+    rets = [closes[i] / closes[i - 1] - 1 for i in range(j, len(closes))] or [0.0]
+    per_day = max(1.0, len(rets) / 7)
+    vol = (sum(r * r for r in rets) / len(rets)) ** 0.5 * math.sqrt(per_day)
     sma50 = sum(closes[-50:]) / 50
     sma200 = sum(closes[-200:]) / 200
     if last > sma50 > sma200:
@@ -88,9 +123,9 @@ def analyze(candles):
         trend = "indécise"
     return {
         "price": last,
-        "chg_24h": last / closes[-25] - 1,
-        "chg_7d": last / closes[-169] - 1,
+        "chg_24h": last / close_at(last_t - 86400) - 1,
+        "chg_7d": last / close_at(last_t - 7 * 86400) - 1,
         "vol_daily": vol,
         "trend": trend,
-        "last_ts": candles[-1]["t"],
+        "last_ts": last_t,
     }

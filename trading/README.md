@@ -1,16 +1,31 @@
 # Arène des bots de trading (simulation)
 
-31 bots reçoivent chacun **50 € virtuels** et tradent du Bitcoin, de l'Ethereum et du Solana
-sur les **vrais prix du marché**, sans jamais toucher de vrai argent. Chaque bot a sa propre stratégie.
+64 bots répartis en **4 équipes** reçoivent chacun **50 € virtuels** et tradent sur les **vrais prix du marché**,
+sans jamais toucher de vrai argent. Dans chaque équipe, 14 stratégies différentes et 2 témoins.
 Ceux qui perdent meurent, ceux qui gagnent se clonent. Au bout de 30 jours, on regarde qui a gagné.
+
+## Les équipes
+
+| Équipe | Marchés | Source des prix |
+|---|---|---|
+| Cryptos principales | Bitcoin, Ethereum, Solana | Kraken (en euros) |
+| Altcoins | XRP, Cardano, Dogecoin, Polkadot, Chainlink, Avalanche | Kraken (en euros) |
+| Actions | S&P 500 (SPY), Nasdaq 100 (QQQ), Apple, Nvidia, Microsoft, Tesla | Yahoo Finance (en dollars) |
+| Matières premières | Pétrole WTI, pétrole Brent, or, argent | Yahoo Finance (en dollars) |
+
+- Le stop-loss et les seuils s'adaptent à l'équipe : plus larges pour les altcoins, qui bougent beaucoup, plus serrés pour les actions.
+- Un clone ou un remplaçant reste **dans l'équipe** de son parent, et peut changer de marché à l'intérieur de l'équipe.
+- Une équipe compte au plus 18 bots.
+- Pour les marchés en dollars, on raisonne en pourcentage et on ignore le taux de change.
+- Les actions et matières premières ne cotent qu'aux heures de bourse : leurs bots ne bougent ni la nuit ni le week-end.
 
 ## L'équipe
 
 | Bot | Fichier | Rôle |
 |---|---|---|
-| 📈 L'Analyste | `market.py` | Récupère les prix toutes les heures (Kraken, avec Coinbase en secours) et résume la tendance |
-| 📰 La Veille | `news.py` | Lit l'actualité crypto (CoinDesk, Cointelegraph, Decrypt) et note l'humeur de -1 à +1 |
-| 💱 Les Traders | `strategies.py` + `engine.py` | 31 stratégies différentes qui achètent et vendent en argent virtuel |
+| 📈 L'Analyste | `market.py` | Récupère les prix toutes les heures (Kraken et Yahoo Finance, Coinbase en secours) et résume la tendance |
+| 📰 La Veille | `news.py` | Lit l'actualité (CoinDesk, Cointelegraph, Decrypt, CNBC, OilPrice) et note l'humeur de chaque marché de -1 à +1 |
+| 💱 Les Traders | `strategies.py` + `engine.py` | 64 bots en 4 équipes qui achètent et vendent en argent virtuel |
 | 🛡 Le Gardien | `guardian.py` | Stop-loss, pause en cas de grosse perte, blocage si les données sont douteuses, arrêt d'urgence |
 
 ## Les règles de vie
@@ -21,7 +36,8 @@ Ceux qui perdent meurent, ceux qui gagnent se clonent. Au bout de 30 jours, on r
 - Perte de plus de 10 % en 24 h : le Gardien vend tout, **-10 PV**, et pause de 24 h.
 - **0 PV**, le bot meurt, sauf s'il est en bénéfice. **Moins de 35 €**, il est éliminé (ruiné).
 - **200 PV**, il se clone : l'enfant reprend ses réglages, légèrement modifiés.
-- Chaque mort est remplacée : 70 % du temps par un descendant d'un des 5 meilleurs, 30 % du temps par une stratégie neuve.
+- Chaque mort est remplacée dans son équipe : 70 % du temps par un descendant d'un des 5 meilleurs de l'équipe
+  (ayant au moins un trade terminé), 30 % du temps par une stratégie neuve.
 - Les **témoins** (« Acheter et garder » et « Pile ou face ») sont immortels. Ils servent de référence :
   un bot qui ne bat pas le hasard n'a aucun talent.
 
