@@ -19,7 +19,7 @@ def market_status(data, now_ts, live):
         candles = data.get(asset) or []
         if len(candles) < 200:
             status[asset] = (False, "pas assez de données")
-        elif live and now_ts - (candles[-1]["t"] + 3600) > config.MAX_DATA_AGE_H[config.group_of(asset)] * 3600:
+        elif live and now_ts - (candles[-1]["t"] + config.CANDLE) > config.MAX_DATA_AGE_H[config.group_of(asset)] * 3600:
             status[asset] = (False, "données trop anciennes")
         else:
             status[asset] = (True, "ok")

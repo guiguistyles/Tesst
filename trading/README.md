@@ -46,20 +46,20 @@ Le réalisme est intégré : 0,4 % de frais et 0,1 % d'écart de prix sur chaque
 ## Où voir les résultats
 
 - `dashboard/RESULTATS.md` : le classement en direct, lisible directement sur GitHub.
-- `dashboard/backtest/RESULTATS.md` : le rejeu des ~3 dernières semaines (limite de l’historique gratuit de Kraken).
+- `dashboard/backtest/RESULTATS.md` : le rejeu des 5 derniers jours (Kraken ne donne que 720 bougies de 15 minutes).
 - `dashboard/index.html` : le tableau de bord complet, avec graphiques, cimetière et actus. À télécharger et ouvrir dans un navigateur.
 
 ## Comment ça tourne
 
-GitHub Actions lance un passage **toutes les heures** (`.github/workflows/trading-bots.yml`).
-Chaque passage traite toutes les bougies d'1 h manquées et enregistre l'état dans `state/arena.json`.
+GitHub Actions lance un passage **toutes les 15 minutes** (`.github/workflows/trading-bots.yml`).
+Les bots décident sur des **bougies de 15 minutes**. Chaque passage traite toutes les bougies manquées et enregistre l'état dans `state/arena.json`.
 
 > ⚠️ GitHub n'exécute les tâches programmées que sur la **branche principale** (`main`).
 > Une fois ce code fusionné dans `main`, l'arène tourne seule. Avant ça, elle ne fait qu'un passage à chaque push.
 
 Commandes manuelles (onglet **Actions**, puis **Arène des bots**, puis **Run workflow**) :
 - `tick` : un passage normal
-- `backtest` : rejouer les ~3 dernières semaines
+- `backtest` : rejouer les 5 derniers jours
 - `reset` : tout recommencer à zéro
 
 **Arrêt d'urgence** : créer un fichier `state/STOP`. Le Gardien vend tout et bloque les achats.

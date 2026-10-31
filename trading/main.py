@@ -39,7 +39,7 @@ def tick(synthetic=False):
         return 1
     state = load_state()
     if state is not None and state.get("version", 1) < engine.STATE_VERSION:
-        print("Ancienne arène (sans équipes) : on repart de zéro avec les équipes.")
+        print("Ancienne version de l'arène : on repart de zéro avec les nouvelles règles.")
         state = None
     if state is None:
         state = engine.init_state(ts)
@@ -68,14 +68,14 @@ def tick(synthetic=False):
     return 0
 
 
-def backtest(synthetic=False, days=21, step_h=2):
+def backtest(synthetic=False, days=5, step_h=1):
     """Rejoue les `days` derniers jours. Les stratégies utilisent l'historique d'avant pour s'échauffer."""
     data = {a: c for a, c in market.load_all(synthetic).items() if len(c) >= 250}
     if not data:
         print("Pas assez d'historique pour rejouer le passé.")
         return 1
     end_ts = max(c[-1]["t"] for c in data.values())
-    # Kraken donne 30 jours d'historique : 21 jours de rejeu laissent ~9 jours d'échauffement.
+    # Kraken donne 720 bougies (7,5 jours en 15 min) : 5 jours de rejeu laissent ~2,5 jours d'échauffement.
     start_ts = end_ts - days * 86400
     state = engine.init_state(start_ts)
     series = engine._series(data)
@@ -107,7 +107,7 @@ def main():
     ap = argparse.ArgumentParser(description="Arène de bots de trading (simulation)")
     ap.add_argument("mode", choices=["tick", "backtest", "reset"])
     ap.add_argument("--synthetic", action="store_true", help="prix inventés, sans internet")
-    ap.add_argument("--days", type=int, default=21)
+    ap.add_argument("--days", type=int, default=5)
     a = ap.parse_args()
     if a.mode == "reset":
         if config.STATE_PATH.exists():
