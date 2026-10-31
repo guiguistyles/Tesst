@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Artifact",
-      "ArtifactData"
+      "ArtifactData",
+      "mcp__github",
+      "Bash(git *)"
     ]
   }
 }
