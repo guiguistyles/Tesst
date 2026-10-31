@@ -600,14 +600,24 @@ const Game = (() => {
     }
   }
 
+  // PV des monstres selon la vague, sur le modèle de ZaapRush (PV fixes au début, hausse linéaire,
+  // puis ×1,035 par vague après la 25e). Ici la hausse commence dès la vague 3 et elle est plus raide,
+  // pour compenser des vagues bien moins peuplées : ×1,3 à la vague 3, ×3,4 à la 10e, ×21 à la 40e.
+  function waveHp(wave) {
+    return (1 + Math.max(0, wave - 2) * 0.3) * Math.pow(1.035, Math.max(0, wave - 25));
+  }
+
   function spawnEnemy(id, x, y, hpMul = 1) {
     const def = MONSTERS[id], z = S.zone;
-    const w = Math.max(0, S.wave - 1), scale = def.boss ? 1 : 1 + w * 0.06;
+    const w = Math.max(0, S.wave - 1);
+    // à partir de la vague 4, certains monstres sont plus gros et plus solides (×1,1 ou ×1,2), comme dans ZaapRush
+    const big = def.boss || S.wave < 4 ? 1 : pick([1, 1.1, 1.2]);
+    const scale = def.boss ? 1 : waveHp(S.wave) * big;
     if (x === undefined) ({ x, y } = spawnPoint());
     else ({ x, y } = clampArena(x, y, 30));
     const hp = def.hp * z.hpMul * scale * hpMul;
     const e = {
-      id, def, x, y, r: def.r, hp, maxHp: hp, speed: def.speed * rand(0.9, 1.1),
+      id, def, x, y, r: def.r * big, hp, maxHp: hp, speed: def.speed * rand(0.9, 1.1) * (def.boss ? 1 : Math.min(1.32, 1 + 0.008 * w)),
       dmg: def.dmg * z.dmgMul * (1 + w * 0.04), xp: def.xp * (1 + w * 0.025), wave: S.wave, boss: def.boss || 0,
       kvx: 0, kvy: 0, slow: 0, slowT: 0, poison: 0, poisonT: 0, poisonAcc: 0, atk: 0, flash: 0,
       seed: Math.random() * 10, shot: rand(1, 2), hitT: {}, ab: 3, charge: 0, cx: 0, cy: 0,
