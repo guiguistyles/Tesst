@@ -2,7 +2,7 @@ name: Arène des bots (simulation)
 
 on:
   schedule:
-    - cron: "23 */2 * * *"   # toutes les 2 heures
+    - cron: "23 * * * *"   # toutes les heures (les bots décident sur des bougies d'1 h)
   workflow_dispatch:
     inputs:
       mode:
