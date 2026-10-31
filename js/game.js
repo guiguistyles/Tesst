@@ -444,6 +444,23 @@ const Game = (() => {
     return out;
   }
 
+  // n emplacements tirés au hasard dans un disque autour de (x, y). Le disque grandit avec n ; on cherche d'abord
+  // des glyphes bien espacés, puis on tolère qu'ils se chevauchent un peu, puis complètement, dans un disque plus large.
+  function scatterSpots(x, y, r, n) {
+    const gap = r * 1.4, R = Math.max(200, gap * 0.8 * Math.sqrt(n)), out = [];
+    for (const [space, rad] of [[1, R], [0.6, R * 1.25], [0, R * 1.5]]) {
+      for (let tries = 0; out.length < n && tries < 30 + 20 * n; tries++) {
+        const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * rad;
+        const at = clampArena(x + Math.cos(a) * d, y + Math.sin(a) * d, 20);
+        if (blocked(at.x, at.y, 10)) continue;
+        if (space && out.some((o) => d2(o.x, o.y, at.x, at.y) < (gap * space) ** 2)) continue;
+        out.push(at);
+      }
+    }
+    if (!out.length) out.push({ x, y });
+    return out;
+  }
+
   function nearest(x, y, range, n) {
     const out = [];
     const r2 = range * range;
@@ -902,15 +919,10 @@ const Game = (() => {
         const want = Math.round(s.count || 1) + (stack ? sp.stacks || 0 : 0);
         const extra = stack ? Math.max(0, want - STACK_MAX) : 0;
         const r = s.radius * area * (1 + Math.min(0.4, 0.02 * extra)), dmg = s.dmg * (1 + 0.08 * extra);
-        const n = Math.min(want, STACK_MAX), range = s.range || 260;
-        const spots = crowdSpots(p.x, p.y, range, r, n);
+        const n = Math.min(want, STACK_MAX);
+        // Glyphe Agressif : semé au hasard autour du Féca (comme dans ZaapRush) ; les autres glyphes visent les groupes d'ennemis
+        const spots = sp.id === 'glyphe_agressif' ? scatterSpots(p.x, p.y, r, n) : crowdSpots(p.x, p.y, s.range || 260, r, n);
         if (!spots.length) return false;
-        // pas assez de groupes d'ennemis : le reste est réparti autour du personnage
-        for (let tries = 0; spots.length < n && tries < n * 12; tries++) {
-          const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * range;
-          const at = clampArena(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 20);
-          if (spots.every((o) => d2(o.x, o.y, at.x, at.y) > r * r * 0.8)) spots.push(at);
-        }
         if (stack) S.glyphs.forEach((g) => { if (g.src === sp && g.life > 0.4) g.life = 0.4; }); // les anciens s'effacent
         for (const at of spots) {
           S.glyphs.push({ src: sp, fx: sp.fx, x: at.x, y: at.y, r, dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
