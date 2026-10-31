@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1b1430">
+  <meta name="description" content="Jeu de survie gratuit dans l'univers de Dofus 2 : choisissez votre classe, affrontez des hordes de monstres et récoltez les Dofus.">
+  <title>ZaapSurvie 2.0</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- ===== Menu principal ===== -->
+  <section id="screen-menu" class="screen active">
+    <div class="topbar"><span class="kamas-pill"><b class="k">K</b> <span data-kamas>0</span></span></div>
+    <div class="menu-box">
+      <h1 class="logo">Zaap<span>Survie</span> <em>2.0</em></h1>
+      <p class="tagline">Survie dans le Monde des Douze</p>
+      <div class="menu-buttons">
+        <button class="btn primary big" data-go="class">Jouer</button>
+        <button class="btn" data-go="shop">Boutique</button>
+        <button class="btn" data-go="dofus">Mes Dofus</button>
+        <button class="btn" data-go="help">Comment jouer</button>
+      </div>
+      <p class="disclaimer">Jeu de fan non officiel, sans lien avec Ankama. DOFUS est une marque d’Ankama.</p>
+    </div>
+  </section>
+
+  <!-- ===== Choix de classe ===== -->
+  <section id="screen-class" class="screen">
+    <div class="topbar">
+      <button class="btn small" data-go="menu">← Retour</button>
+      <h2>Choisis ta classe</h2>
+      <span class="kamas-pill"><b class="k">K</b> <span data-kamas>0</span></span>
+    </div>
+    <div id="class-grid" class="grid"></div>
+  </section>
+
+  <!-- ===== Choix du zaap ===== -->
+  <section id="screen-zaap" class="screen">
+    <div class="topbar">
+      <button class="btn small" data-go="class">← Retour</button>
+      <h2>Choisis ton zaap</h2>
+      <span></span>
+    </div>
+    <div id="zaap-list" class="zaap-list"></div>
+  </section>
+
+  <!-- ===== Boutique ===== -->
+  <section id="screen-shop" class="screen">
+    <div class="topbar">
+      <button class="btn small" data-go="menu">← Retour</button>
+      <h2>Boutique</h2>
+      <span class="kamas-pill"><b class="k">K</b> <span data-kamas>0</span></span>
+    </div>
+    <p class="hint">Améliorations permanentes, conservées d’une partie à l’autre.</p>
+    <div id="shop-grid" class="grid"></div>
+  </section>
+
+  <!-- ===== Collection de Dofus ===== -->
+  <section id="screen-dofus" class="screen">
+    <div class="topbar">
+      <button class="btn small" data-go="menu">← Retour</button>
+      <h2>Mes Dofus</h2>
+      <span></span>
+    </div>
+    <p class="hint">Battez le gardien d’une zone pour obtenir un de ses Dofus. Chaque Dofus donne un bonus permanent.</p>
+    <div id="dofus-grid" class="grid"></div>
+  </section>
+
+  <!-- ===== Aide ===== -->
+  <section id="screen-help" class="screen">
+    <div class="topbar">
+      <button class="btn small" data-go="menu">← Retour</button>
+      <h2>Comment jouer</h2>
+      <span></span>
+    </div>
+    <div class="help">
+      <p><b>Déplacement</b> : ZQSD, WASD ou flèches. Sur mobile, posez le doigt n’importe où et glissez.</p>
+      <p><b>Attaque</b> : vos sorts se lancent tout seuls. Concentrez-vous sur l’esquive !</p>
+      <p><b>Expérience</b> : ramassez les cristaux lâchés par les monstres pour monter de niveau et choisir un nouveau sort ou une caractéristique.</p>
+      <p><b>Boss</b> : un boss apparaît à 3:00 et 6:00 et lâche un coffre. Le gardien de la zone arrive à 8:00 : battez-le pour gagner la partie, débloquer le zaap suivant et obtenir un Dofus.</p>
+      <p><b>Kamas</b> : dépensez-les à la boutique ou pour débloquer de nouvelles classes.</p>
+      <p><b>Pause</b> : Échap ou P.</p>
+    </div>
+  </section>
+
+  <!-- ===== HUD ===== -->
+  <div id="hud" class="hidden">
+    <div class="hud-top">
+      <div class="xpbar"><div id="xp-fill"></div><span id="lvl">Niv. 1</span></div>
+      <div class="hud-row">
+        <div class="hpbar"><div id="hp-fill"></div><div id="sh-fill"></div><span id="hp-txt">100 / 100</span></div>
+        <div class="hud-stats">
+          <span id="timer">0:00</span>
+          <span>☠ <b id="kills">0</b></span>
+          <span><b class="k">K</b> <b id="hud-kamas">0</b></span>
+          <button id="btn-pause" class="btn small icon" aria-label="Pause">❚❚</button>
+        </div>
+      </div>
+      <div id="boss-bar" class="hidden"><span id="boss-name"></span><div><div id="boss-fill"></div></div></div>
+    </div>
+    <div id="hud-spells"></div>
+  </div>
+
+  <div id="banner" class="hidden"><div id="banner-title"></div><div id="banner-sub"></div></div>
+
+  <!-- ===== Overlays ===== -->
+  <div id="ov-levelup" class="overlay hidden">
+    <div class="panel">
+      <h2>Niveau supérieur !</h2>
+      <div id="choices"></div>
+    </div>
+  </div>
+
+  <div id="ov-pause" class="overlay hidden">
+    <div class="panel">
+      <h2>Pause</h2>
+      <div id="pause-build"></div>
+      <div class="menu-buttons">
+        <button class="btn primary" id="btn-resume">Reprendre</button>
+        <button class="btn danger" id="btn-quit">Abandonner</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ov-end" class="overlay hidden">
+    <div class="panel">
+      <h2 id="end-title">Victoire !</h2>
+      <div id="end-stats"></div>
+      <div class="menu-buttons">
+        <button class="btn primary" id="btn-again">Rejouer</button>
+        <button class="btn" id="btn-menu">Menu principal</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>

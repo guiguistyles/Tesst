@@ -1,0 +1,61 @@
+name: Arène des bots (simulation)
+
+on:
+  schedule:
+    - cron: "23 */2 * * *"   # toutes les 2 heures
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "tick = passage normal, backtest = rejouer les ~3 dernières semaines, reset = tout recommencer"
+        type: choice
+        options: [tick, backtest, reset]
+        default: tick
+  push:
+    paths:
+      - "trading/**"
+      - ".github/workflows/trading-bots.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: trading-arena-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Faire travailler les bots
+        env:
+          MODE: ${{ inputs.mode || 'tick' }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "push" ]; then
+            python -m trading.main backtest
+            python -m trading.main tick
+          else
+            python -m trading.main "$MODE"
+          fi
+
+      - name: Enregistrer les résultats
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          git config user.name "arena-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "Rien de nouveau"; exit 0; fi
+          git commit -m "Arène : mise à jour $(date -u +'%Y-%m-%d %H:%M') UTC"
+          for i in 1 2 3; do
+            git pull --rebase origin "$BRANCH" && git push origin "HEAD:$BRANCH" && exit 0
+            sleep 5
+          done
+          exit 1

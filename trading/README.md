@@ -1,0 +1,63 @@
+# Arène des bots de trading (simulation)
+
+31 bots reçoivent chacun **50 € virtuels** et tradent du Bitcoin, de l'Ethereum et du Solana
+sur les **vrais prix du marché**, sans jamais toucher de vrai argent. Chaque bot a sa propre stratégie.
+Ceux qui perdent meurent, ceux qui gagnent se clonent. Au bout de 30 jours, on regarde qui a gagné.
+
+## L'équipe
+
+| Bot | Fichier | Rôle |
+|---|---|---|
+| 📈 L'Analyste | `market.py` | Récupère les prix toutes les heures (Kraken, avec Coinbase en secours) et résume la tendance |
+| 📰 La Veille | `news.py` | Lit l'actualité crypto (CoinDesk, Cointelegraph, Decrypt) et note l'humeur de -1 à +1 |
+| 💱 Les Traders | `strategies.py` + `engine.py` | 31 stratégies différentes qui achètent et vendent en argent virtuel |
+| 🛡 Le Gardien | `guardian.py` | Stop-loss, pause en cas de grosse perte, blocage si les données sont douteuses, arrêt d'urgence |
+
+## Les règles de vie
+
+- Chaque bot démarre avec **100 PV** et **50 €**.
+- Vente avec profit : **+10 PV par euro gagné**. Vente à perte : **-20 PV par euro perdu**.
+- Stop-loss déclenché : **-5 PV** de plus et 6 h de pause.
+- Perte de plus de 10 % en 24 h : le Gardien vend tout, **-10 PV**, et pause de 24 h.
+- **0 PV**, le bot meurt, sauf s'il est en bénéfice. **Moins de 35 €**, il est éliminé (ruiné).
+- **200 PV**, il se clone : l'enfant reprend ses réglages, légèrement modifiés.
+- Chaque mort est remplacée : 70 % du temps par un descendant d'un des 5 meilleurs, 30 % du temps par une stratégie neuve.
+- Les **témoins** (« Acheter et garder » et « Pile ou face ») sont immortels. Ils servent de référence :
+  un bot qui ne bat pas le hasard n'a aucun talent.
+
+Le réalisme est intégré : 0,4 % de frais et 0,1 % d'écart de prix sur chaque ordre, pas de levier, pas de vente à découvert.
+
+## Où voir les résultats
+
+- `dashboard/RESULTATS.md` : le classement en direct, lisible directement sur GitHub.
+- `dashboard/backtest/RESULTATS.md` : le rejeu des ~3 dernières semaines (limite de l’historique gratuit de Kraken).
+- `dashboard/index.html` : le tableau de bord complet, avec graphiques, cimetière et actus. À télécharger et ouvrir dans un navigateur.
+
+## Comment ça tourne
+
+GitHub Actions lance un passage **toutes les 2 heures** (`.github/workflows/trading-bots.yml`).
+Chaque passage traite toutes les bougies d'1 h manquées et enregistre l'état dans `state/arena.json`.
+
+> ⚠️ GitHub n'exécute les tâches programmées que sur la **branche principale** (`main`).
+> Une fois ce code fusionné dans `main`, l'arène tourne seule. Avant ça, elle ne fait qu'un passage à chaque push.
+
+Commandes manuelles (onglet **Actions**, puis **Arène des bots**, puis **Run workflow**) :
+- `tick` : un passage normal
+- `backtest` : rejouer les ~3 dernières semaines
+- `reset` : tout recommencer à zéro
+
+**Arrêt d'urgence** : créer un fichier `state/STOP`. Le Gardien vend tout et bloque les achats.
+
+En local (Python 3.10+, aucune dépendance) :
+
+```bash
+python -m trading.main backtest              # rejeu du passé
+python -m trading.main tick                  # un passage en direct
+python -m trading.main backtest --synthetic  # test avec des prix inventés, sans internet
+```
+
+## À savoir avant de mettre du vrai argent
+
+- Un bon résultat sur 30 jours peut être de la **chance**. Il faut comparer aux témoins et regarder la « pire chute ».
+- Les bots « actus » ne peuvent pas être testés sur le passé (il n'y a pas d'historique des actus). Ils ne se jugent qu'en direct.
+- Passer en réel demanderait un compte sur une plateforme autorisée en France et une clé d'API. C'est volontairement **non branché**.
