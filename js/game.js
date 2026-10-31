@@ -28,6 +28,7 @@ const Game = (() => {
   const ARENA_W = 1800, ARENA_H = 1250, BORDER = 170, GROUND_RES = 1.25;
   const WAVE_PAUSE = 1, FINAL_WAVE = 40, BOSS_RETURN = 15, BOSS_HP_STEP = 0.15;
   const MINI_WAVES = [{ wave: 14, hp: 1 }, { wave: 27, hp: 1.8 }];
+  const STACK_MAX = 14; // glyphes d'Accumulation posés à la fois
   const DOFUS_CHANCE = [0.01, 0.005]; // 1 % + 0,5 % par boss final battu sans le Dofus
 
   const rand = (a, b) => a + Math.random() * (b - a);
@@ -386,7 +387,7 @@ const Game = (() => {
     }
     if (d <= 0) return;
     let lost = 0;
-    for (const g of S.glyphs) if (g.stack && lost < 3) { g.life = 0; lost++; }
+    for (const g of S.glyphs) if (g.stack && !g.leaving && lost < 3) { g.leaving = true; g.life = 0.4; lost++; }
     p.hp -= d;
     p.hurt = 0.15;
     if (p.hp <= 0) {
@@ -898,15 +899,23 @@ const Game = (() => {
         const r = s.radius * area, spots = crowdSpots(p.x, p.y, s.range || 260, r, Math.round(s.count || 1));
         if (!spots.length) return false;
         const stack = sp.fx === 'stack';
+        let boosted = false;
         for (const at of spots) {
-          const mine = S.glyphs.filter((g) => g.src === sp && g.stack);
-          if (stack && mine.length >= 14) {
-            // Accumulation pleine : chaque lancer renforce tous les glyphes
-            sp.stackBonus = (sp.stackBonus || 0) + 1;
-            addText(p.x, p.y - 44, 'Glyphes +' + sp.stackBonus, def.color);
-            break;
+          if (stack) {
+            const mine = S.glyphs.filter((g) => g.src === sp && g.stack && !g.leaving);
+            if (mine.length >= STACK_MAX) {
+              // Accumulation pleine : le plus ancien glyphe s'efface et le nouveau prend la taille et les
+              // dommages actuels du sort ; chaque lancer renforce aussi tous les glyphes.
+              mine[0].leaving = true; mine[0].life = 0.4;
+              if (!boosted) {
+                boosted = true;
+                sp.stackBonus = (sp.stackBonus || 0) + 1;
+                addText(p.x, p.y - 44, 'Glyphes +' + sp.stackBonus, def.color);
+              }
+            }
           }
-          S.glyphs.push({ src: sp, stack, fx: sp.fx, x: at.x, y: at.y, r, dmg: s.dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
+          const life = stack ? Infinity : s.duration;
+          S.glyphs.push({ src: sp, stack, fx: sp.fx, x: at.x, y: at.y, r, dmg: s.dmg, tick: s.tick, tt: 0, life, max: life, color: def.color });
           S.fx.push({ type: 'ring', x: at.x, y: at.y, r, t: 0, life: 0.35, color: def.color });
         }
         if (sp.fx === 'follow') S.glyphs.push({ src: sp, follow: true, x: p.x, y: p.y, r: r * 0.6, dmg: s.dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
@@ -1113,7 +1122,7 @@ const Game = (() => {
 
   function updateZones(dt) {
     for (const g of S.glyphs) {
-      if (!g.stack) g.life -= dt; // Accumulation : les glyphes restent
+      if (!g.stack || g.leaving) g.life -= dt; // Accumulation : les glyphes restent jusqu'à être remplacés
       g.tt -= dt;
       if (g.follow) { g.x = S.p.x; g.y = S.p.y; }
       // Accumulation pleine : +8 % de dommages et +2 % de taille par lancer (taille +40 % au plus)
@@ -2003,5 +2012,7 @@ const Game = (() => {
     }
   }
 
-  return { init, start, stop, setPaused, choose, reroll, ban };
+  // ?debug : état de la partie lisible depuis la console (tests)
+  const debugState = () => (GOD_MODE ? S : null);
+  return { init, start, stop, setPaused, choose, reroll, ban, debugState };
 })();
