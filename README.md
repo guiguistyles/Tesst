@@ -34,3 +34,7 @@ Ajoutez `?debug` à l'URL pour jouer en mode invincible pendant les tests.
 | `js/ui.js` | Menus, sauvegarde, HUD, liaison avec le moteur |
 
 Pour équilibrer ou ajouter du contenu, modifiez `js/data.js` : un sort se décrit par un `type` (projectile, melee, nova, aura, orbit, strike, summon, trap, glyph, heal, shield), des stats de `base` et 4 améliorations `up`.
+
+## Arène des bots de trading
+
+Le dossier [`trading/`](trading/README.md) contient aussi une simulation : 31 bots de trading crypto avec 50 € virtuels chacun, qui s'affrontent avec un système de points de vie. Les résultats sont dans [`dashboard/RESULTATS.md`](dashboard/RESULTATS.md).
