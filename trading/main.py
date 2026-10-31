@@ -27,7 +27,7 @@ def save_state(state):
 
 def _latest_ts(data):
     ts = [c[-1]["t"] for c in data.values() if c]
-    return min(ts) if ts else None  # on avance au rythme du marché le moins à jour
+    return max(ts) if ts else None  # chaque bot ne traite que les bougies de son propre marché
 
 
 def tick(synthetic=False):
@@ -38,6 +38,9 @@ def tick(synthetic=False):
         print("[Gardien] Aucune donnée de marché : on ne fait rien ce passage.")
         return 1
     state = load_state()
+    if state is not None and state.get("version", 1) < engine.STATE_VERSION:
+        print("Ancienne arène (sans équipes) : on repart de zéro avec les équipes.")
+        state = None
     if state is None:
         state = engine.init_state(ts)
         print(f"Arène créée : {len(state['bots'])} bots. La simulation commence maintenant.")
@@ -65,31 +68,38 @@ def tick(synthetic=False):
     return 0
 
 
-def backtest(synthetic=False, days=None, step_h=2):
-    data = market.load_all(synthetic)
-    if not data or any(len(c) < 300 for c in data.values()):
+def backtest(synthetic=False, days=21, step_h=2):
+    """Rejoue les `days` derniers jours. Les stratégies utilisent l'historique d'avant pour s'échauffer."""
+    data = {a: c for a, c in market.load_all(synthetic).items() if len(c) >= 250}
+    if not data:
         print("Pas assez d'historique pour rejouer le passé.")
         return 1
-    n = min(len(c) for c in data.values())
-    data = {a: c[-n:] for a, c in data.items()}
-    warmup = 200 if days is None else max(200, n - days * 24)  # les stratégies ont besoin d'historique
-    start_ts = data["BTC"][warmup - 1]["t"]
+    end_ts = max(c[-1]["t"] for c in data.values())
+    # Kraken donne 30 jours d'historique : 21 jours de rejeu laissent ~9 jours d'échauffement.
+    start_ts = end_ts - days * 86400
     state = engine.init_state(start_ts)
     series = engine._series(data)
-    status = {a: (True, "ok") for a in data}
-    neutral = {a: 0.0 for a in data}
-    times = [c["t"] for c in data["BTC"]]
-    for i in range(warmup, n, step_h):
-        engine.run_until(state, data, times[min(i + step_h - 1, n - 1)], neutral, status, series=series)
+    status = {a: (a in data, "ok" if a in data else "pas de données") for a in config.ASSETS}
+    neutral = {a: 0.0 for a in config.ASSETS}
+    ts = start_ts
+    while ts < end_ts:
+        ts = min(end_ts, ts + step_h * 3600)
+        engine.run_until(state, data, ts, neutral, status, series=series)
     state["market"] = {a: market.analyze(c) for a, c in data.items()}
-    state["guardian"] = {"messages": ["Rejeu du passé : les bots « actus » n'ont pas d'actualités historiques, ils restent neutres."]}
+    missing = [a for a in config.ASSETS if a not in data]
+    msgs = ["Rejeu du passé : les bots « actus » n'ont pas d'actualités historiques, ils restent neutres."]
+    if missing:
+        msgs.append(f"Marchés sans historique, bots inactifs : {', '.join(missing)}")
+    state["guardian"] = {"messages": msgs}
     config.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     (config.STATE_PATH.parent / "backtest.json").write_text(
         json.dumps(state, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     out = config.DASHBOARD_DIR / "backtest"
-    sub = f"Rejeu des {(n - warmup) / 24:.0f} derniers jours{' (prix inventés)' if synthetic else ''}"
+    sub = f"Rejeu des {(end_ts - start_ts) / 86400:.0f} derniers jours{' (prix inventés)' if synthetic else ''}"
     dashboard.write(state, out, "Arène des bots : rejeu du passé", sub)
     print(dashboard.render_md(state, "Rejeu du passé"))
+    for m in msgs[1:]:
+        print("[Gardien]", m)
     return 0
 
 
@@ -97,7 +107,7 @@ def main():
     ap = argparse.ArgumentParser(description="Arène de bots de trading (simulation)")
     ap.add_argument("mode", choices=["tick", "backtest", "reset"])
     ap.add_argument("--synthetic", action="store_true", help="prix inventés, sans internet")
-    ap.add_argument("--days", type=int, default=None)
+    ap.add_argument("--days", type=int, default=21)
     a = ap.parse_args()
     if a.mode == "reset":
         if config.STATE_PATH.exists():

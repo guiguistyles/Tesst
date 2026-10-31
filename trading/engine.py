@@ -3,17 +3,25 @@ import random
 from bisect import bisect_right
 
 from . import config, guardian
-from .strategies import CONTROLS, INITIAL, STRATEGIES, min_history, mutate
+from .strategies import CONTROLS, STRATEGIES, initial_population, min_history, mutate
 
 
 # ---------------------------------------------------------------- création
 
+STATE_VERSION = 2
+
+
+def team_assets():
+    return {g: config.assets_of(g) for g in config.GROUPS}
+
+
 def init_state(ts, seed=42):
-    state = {"version": 1, "created_ts": ts, "last_tick_ts": ts, "seed": seed, "next_id": 0,
+    state = {"version": STATE_VERSION, "created_ts": ts, "last_tick_ts": ts, "seed": seed, "next_id": 0,
              "bots": [], "events": [], "market": {}, "news": {}, "guardian": {}}
-    for strat, asset, params, sl, tp in INITIAL:
+    for group, strat, asset, params, sl, tp in initial_population(team_assets()):
         new_bot(state, strat, asset, dict(params), sl, tp, ts)
-    log_event(state, ts, "start", None, f"{len(state['bots'])} bots créés avec {config.CAPITAL:.0f} € virtuels chacun")
+    log_event(state, ts, "start", None,
+              f"{len(state['bots'])} bots créés en {len(config.GROUPS)} équipes, avec {config.CAPITAL:.0f} € virtuels chacun")
     return state
 
 
@@ -22,7 +30,7 @@ def new_bot(state, strategy, asset, params, stop_loss, take_profit, ts, parent=N
     bid = state["next_id"]
     bot = {
         "id": bid, "name": f"#{bid:02d} {STRATEGIES[strategy][1]} ({asset})",
-        "strategy": strategy, "asset": asset, "params": params,
+        "group": config.group_of(asset), "strategy": strategy, "asset": asset, "params": params,
         "stop_loss": stop_loss, "take_profit": take_profit,
         "control": strategy in CONTROLS, "parent": parent, "generation": generation,
         "alive": True, "born_ts": ts, "died_ts": None, "death_cause": None,
@@ -177,7 +185,7 @@ def _last_price(series, asset, ts):
 
 def _spawn_from(state, parent, ts, rng):
     params, sl, tp, asset = mutate(parent["params"], parent["stop_loss"], parent["take_profit"],
-                                   parent["asset"], rng, config.ASSETS)
+                                   parent["asset"], rng, config.assets_of(parent["group"]))
     child = new_bot(state, parent["strategy"], asset, params, sl, tp, ts,
                     parent=parent["id"], generation=parent["generation"] + 1)
     parent["children"] += 1
@@ -198,26 +206,35 @@ def lifecycle(state, data, ts, log=print, series=None):
                 continue
             kill(state, bot, ts, price, "points de vie à zéro")
 
-    alive = lambda: [b for b in state["bots"] if b["alive"]]  # noqa: E731
-    for bot in sorted(alive(), key=lambda b: -b["hp"]):
-        if not bot["control"] and bot["hp"] >= config.HP_CLONE and len(alive()) < config.MAX_POPULATION:
+    def alive(group):
+        return [b for b in state["bots"] if b["alive"] and b["group"] == group]
+
+    for bot in sorted([b for b in state["bots"] if b["alive"]], key=lambda b: -b["hp"]):
+        if (not bot["control"] and bot["hp"] >= config.HP_CLONE
+                and len(alive(bot["group"])) < config.MAX_PER_GROUP):
             bot["hp"] = config.HP_AFTER_CLONE
             child = _spawn_from(state, bot, ts, rng)
             log_event(state, ts, "clone", bot, f"🧬 {bot['name']} a atteint {config.HP_CLONE} PV et se clone : {child['name']}")
 
+    templates = initial_population(team_assets())
     for dead in [b for b in state["bots"] if not b["alive"] and not b.get("replaced")]:
         dead["replaced"] = True
-        if len(alive()) >= config.MAX_POPULATION:
+        group = dead["group"]
+        if len(alive(group)) >= config.MAX_PER_GROUP:
             continue
-        # 70 % : descendant d'un des 5 meilleurs (exploitation) ; 30 % : stratégie neuve (exploration)
-        top = sorted([b for b in alive() if not b["control"]], key=lambda b: (b["equity"], b["hp"]), reverse=True)[:5]
+        # Le remplaçant reste dans l'équipe du mort.
+        # 70 % : descendant d'un des 5 meilleurs de l'équipe ; 30 % : stratégie neuve (exploration)
+        # Seuls les bots qui ont fait leurs preuves (au moins un trade terminé) ont des descendants.
+        top = sorted([b for b in alive(group) if not b["control"] and b["stats"]["trades"] > 0],
+                     key=lambda b: (b["equity"], b["hp"]), reverse=True)[:5]
         if top and rng.random() < 0.7:
             parent = rng.choice(top)
             child = _spawn_from(state, parent, ts, rng)
             log_event(state, ts, "naissance", child,
-                      f"🐣 {child['name']} remplace {dead['name']} (descendant de {parent['name']}, un des meilleurs)")
+                      f"🐣 {child['name']} remplace {dead['name']} (descendant de {parent['name']}, un des meilleurs de l'équipe)")
         else:
-            strat, asset, params, sl, tp = rng.choice([t for t in INITIAL if t[0] not in CONTROLS])
+            _, strat, asset, params, sl, tp = rng.choice(
+                [t for t in templates if t[0] == group and t[1] not in CONTROLS])
             child = new_bot(state, strat, asset, dict(params), sl, tp, ts)
             log_event(state, ts, "naissance", child, f"🐣 {child['name']} remplace {dead['name']}")
 

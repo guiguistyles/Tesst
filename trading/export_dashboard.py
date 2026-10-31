@@ -14,17 +14,22 @@ from . import config
 from .strategies import STRATEGIES
 
 RUNS = {"direct": config.STATE_PATH, "rejeu": config.STATE_PATH.parent / "backtest.json"}
-MAX_POINTS = 120
+MAX_POINTS = 90
 
 
 def iso(ts):
     return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if ts else None
 
 
+def _group(b):
+    return b.get("group") or config.group_of(b["asset"])
+
+
 def bot_row(run, b):
     st = b["stats"]
     return {
-        "run": run, "bot_id": b["id"], "name": b["name"], "strategy": STRATEGIES[b["strategy"]][1],
+        "run": run, "bot_id": b["id"], "name": b["name"], "group": _group(b),
+        "group_label": config.GROUPS[_group(b)], "strategy": STRATEGIES[b["strategy"]][1],
         "asset": b["asset"], "status": "vivant" if b["alive"] else "mort",
         "control": b["control"], "equity": round(b["equity"], 2),
         "gain_pct": round(b["equity"] / config.CAPITAL - 1, 4),
@@ -54,17 +59,22 @@ def export(out_dir):
             sample = pts[::step]
             if sample[-1] != pts[-1]:
                 sample.append(pts[-1])
-            equity += [{"run": run, "bot_id": b["id"], "name": b["name"], "at": iso(t), "equity": e} for t, e in sample]
+            equity += [{"run": run, "bot_id": b["id"], "group": _group(b), "at": iso(t), "equity": e} for t, e in sample]
         news = (s.get("news") or {}).get("scores", {})
         for asset, m in (s.get("market") or {}).items():
-            if m:
-                market.append({"run": run, "asset": asset, "price": round(m["price"], 4),
+            if m and asset in config.MARKETS:
+                group, _, _, label, currency = config.MARKETS[asset]
+                market.append({"run": run, "asset": asset, "label": label, "group": group,
+                               "group_label": config.GROUPS[group], "currency": currency,
+                               "price": round(m["price"], 6),
                                "chg_24h": round(m["chg_24h"], 4), "chg_7d": round(m["chg_7d"], 4),
                                "vol_daily": round(m["vol_daily"], 4), "trend": m["trend"],
                                "sentiment": news.get(asset) if run == "direct" and s.get("news", {}).get("ok") else None,
                                "updated_at": iso(s["last_tick_ts"]), "started_at": iso(s["created_ts"])})
-        for i, ev in enumerate(reversed(s["events"][-40:])):
-            events.append({"run": run, "n": i, "at": iso(ev["ts"]), "type": ev["type"], "message": ev["msg"]})
+        groups = {b["id"]: _group(b) for b in s["bots"]}
+        for i, ev in enumerate(reversed(s["events"][-60:])):
+            events.append({"run": run, "n": i, "at": iso(ev["ts"]), "type": ev["type"],
+                           "group": groups.get(ev["bot"]), "message": ev["msg"]})
     for name, rows in (("bots", bots), ("equity", equity), ("market", market), ("events", events)):
         (out_dir / f"{name}.json").write_text(json.dumps(rows, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         print(f"{name}.json : {len(rows)} lignes")
