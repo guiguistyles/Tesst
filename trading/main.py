@@ -83,6 +83,9 @@ def backtest(synthetic=False, days=None, step_h=2):
         engine.run_until(state, data, times[min(i + step_h - 1, n - 1)], neutral, status, series=series)
     state["market"] = {a: market.analyze(c) for a, c in data.items()}
     state["guardian"] = {"messages": ["Rejeu du passé : les bots « actus » n'ont pas d'actualités historiques, ils restent neutres."]}
+    config.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    (config.STATE_PATH.parent / "backtest.json").write_text(
+        json.dumps(state, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     out = config.DASHBOARD_DIR / "backtest"
     sub = f"Rejeu des {(n - warmup) / 24:.0f} derniers jours{' (prix inventés)' if synthetic else ''}"
     dashboard.write(state, out, "Arène des bots : rejeu du passé", sub)
