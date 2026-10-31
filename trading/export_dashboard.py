@@ -63,7 +63,8 @@ def export(out_dir):
             equity += [{"run": run, "bot_id": b["id"], "group": _group(b), "at": iso(t), "equity": e} for t, e in sample]
         run_trades = []
         for b in s["bots"]:
-            base = {"run": run, "bot_id": b["id"], "name": b["name"], "group": _group(b), "asset": b["asset"]}
+            base = {"run": run, "bot_id": b["id"], "name": b["name"], "group": _group(b), "asset": b["asset"],
+                    "currency": config.MARKETS[b["asset"]][4]}
             for t in b["trades"]:
                 cost = t.get("cost") or config.CAPITAL
                 run_trades.append({**base, "trade_id": f"{b['id']}-{t['in']}", "status": "fermé",
