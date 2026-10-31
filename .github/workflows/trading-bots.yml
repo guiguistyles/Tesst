@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "tick = passage normal, backtest = rejouer les 30 derniers jours, reset = tout recommencer"
+        description: "tick = passage normal, backtest = rejouer les ~3 dernières semaines, reset = tout recommencer"
         type: choice
         options: [tick, backtest, reset]
         default: tick

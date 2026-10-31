@@ -30,7 +30,7 @@ Le réalisme est intégré : 0,4 % de frais et 0,1 % d'écart de prix sur chaque
 ## Où voir les résultats
 
 - `dashboard/RESULTATS.md` : le classement en direct, lisible directement sur GitHub.
-- `dashboard/backtest/RESULTATS.md` : le rejeu des 30 derniers jours.
+- `dashboard/backtest/RESULTATS.md` : le rejeu des ~3 dernières semaines (limite de l’historique gratuit de Kraken).
 - `dashboard/index.html` : le tableau de bord complet, avec graphiques, cimetière et actus. À télécharger et ouvrir dans un navigateur.
 
 ## Comment ça tourne
@@ -43,7 +43,7 @@ Chaque passage traite toutes les bougies d'1 h manquées et enregistre l'état d
 
 Commandes manuelles (onglet **Actions**, puis **Arène des bots**, puis **Run workflow**) :
 - `tick` : un passage normal
-- `backtest` : rejouer les 30 derniers jours
+- `backtest` : rejouer les ~3 dernières semaines
 - `reset` : tout recommencer à zéro
 
 **Arrêt d'urgence** : créer un fichier `state/STOP`. Le Gardien vend tout et bloque les achats.
