@@ -1,6 +1,6 @@
 # Arène des bots
 
-_Mis à jour le 31/10 11:45 UTC · 50 € virtuels par bot · argent fictif_
+_Mis à jour le 31/10 12:15 UTC · 50 € virtuels par bot · argent fictif_
 
 | # | Bot | Équipe | Capital | Gain | PV | Trades | Pire chute | Statut |
 |---|---|---|---:|---:|---:|---:|---:|---|
@@ -62,12 +62,12 @@ _Mis à jour le 31/10 11:45 UTC · 50 € virtuels par bot · argent fictif_
 | 56 | #62 Explosion de volatilité (ARGENT) | Matières premières | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
 | 57 | #63 Lecteur d'actus (WTI) | Matières premières | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
 | 58 | #64 Actus + tendance (BRENT) | Matières premières | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
-| 59 | #04 Croisement EMA (ETH) | Cryptos principales | 49.75 € | -0.5 % | 100 | 0 | 0.5 % | vivant |
-| 60 | #17 Acheter et garder (XRP) (témoin) | Altcoins | 49.75 € | -0.5 % | ∞ | 0 | 0.5 % | vivant |
-| 61 | #25 MACD (XRP) | Altcoins | 49.75 € | -0.5 % | 100 | 0 | 0.5 % | vivant |
-| 62 | #01 Acheter et garder (BTC) (témoin) | Cryptos principales | 49.75 € | -0.5 % | ∞ | 0 | 0.5 % | vivant |
-| 63 | #03 Croisement de moyennes (BTC) | Cryptos principales | 49.75 € | -0.5 % | 100 | 0 | 0.5 % | vivant |
-| 64 | #09 MACD (BTC) | Cryptos principales | 49.75 € | -0.5 % | 100 | 0 | 0.5 % | vivant |
+| 59 | #04 Croisement EMA (ETH) | Cryptos principales | 49.77 € | -0.5 % | 100 | 0 | 0.5 % | vivant |
+| 60 | #17 Acheter et garder (XRP) (témoin) | Altcoins | 49.74 € | -0.5 % | ∞ | 0 | 0.5 % | vivant |
+| 61 | #25 MACD (XRP) | Altcoins | 49.74 € | -0.5 % | 100 | 0 | 0.5 % | vivant |
+| 62 | #01 Acheter et garder (BTC) (témoin) | Cryptos principales | 49.72 € | -0.6 % | ∞ | 0 | 0.6 % | vivant |
+| 63 | #03 Croisement de moyennes (BTC) | Cryptos principales | 49.72 € | -0.6 % | 100 | 0 | 0.6 % | vivant |
+| 64 | #09 MACD (BTC) | Cryptos principales | 49.72 € | -0.6 % | 100 | 0 | 0.6 % | vivant |
 
 ## Derniers événements
 
