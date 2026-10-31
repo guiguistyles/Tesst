@@ -278,7 +278,7 @@ const Game = (() => {
       enemies: [], projs: [], eprojs: [], gems: [], fx: [], texts: [], traps: [], glyphs: [], strikes: [],
       buffs: [], items: {}, rerolls: 2, bans: 1, banned: new Set(),
       spawnAcc: 0, wave: 0, waveQueue: 0, waveEnd: 0, nextWave: 0.5, miniIdx: 0, nextFinal: FINAL_WAVE, bossKills: 0, boss: null, pending: 0, choosing: false,
-      found: [], over: false, endTimer: -1, victory: false, grid: new Map(),
+      later: [], lastHealT: -9, found: [], over: false, endTimer: -1, victory: false, grid: new Map(),
     };
     S.arena = { x0: -ARENA_W / 2, x1: ARENA_W / 2, y0: -ARENA_H / 2, y1: ARENA_H / 2 };
     S.obstacles = makeObstacles(S.zone, zoneIdx);
@@ -327,6 +327,11 @@ const Game = (() => {
 
   function update(dt) {
     S.t += dt;
+    // actions différées (second impact, réplique…)
+    if (S.later.length) {
+      const due = S.later.filter((l) => l.t <= S.t);
+      if (due.length) { S.later = S.later.filter((l) => l.t > S.t); for (const l of due) l.fn(); }
+    }
     updatePlayer(dt);
     buildGrid();
     spawn(dt);
@@ -731,10 +736,20 @@ const Game = (() => {
     e.kvy += (dy / l) * k * 7 * f;
   }
 
+  // Délai sur un ennemi (étourdi, en fuite…) : les boss n'y sont pas sensibles.
+  function stunEnemy(e, t) {
+    if (e.boss || e.dead) return;
+    e.stunT = Math.max(e.stunT || 0, t);
+  }
+
   function hitEnemy(e, base, o) {
     if (e.dead) return;
+    if (o.h) o = Object.assign({}, o, o.h, { h: null }); // effets d'Éveil du sort
     let d = base * S.stats.dmg * (1 + buffPow('pow'));
-    if (o.rage) d *= 1 + (1 - S.p.hp / S.p.maxHp) * 1.5;
+    if (o.rage) d *= 1 + (1 - S.p.hp / S.p.maxHp) * 1.5 * o.rage;
+    if (o.lowHp && e.hp < e.maxHp * 0.5) d *= o.lowHp;
+    if (o.shatter && e.slow > 0) d *= o.shatter;
+    if (o.afterHeal && S.t - S.lastHealT < 3) d *= o.afterHeal;
     const crit = Math.random() < S.stats.crit + (o.crit || 0) + (S.p.shieldCrit && S.p.shield > 0 ? 0.4 : 0);
     if (crit) d *= S.stats.critDmg;
     d *= rand(0.9, 1.1);
@@ -743,8 +758,33 @@ const Game = (() => {
     addText(e.x + rand(-6, 6), e.y - e.r, Math.round(d), crit ? '#ffdd33' : '#ffffff', crit);
     if (o.knock) knock(e, o.sx ?? S.p.x, o.sy ?? S.p.y, o.knock);
     if (o.poison) { e.poison = Math.max(e.poison, o.poison * S.stats.dmg); e.poisonT = Math.max(e.poisonT, o.poisonDur); }
-    if (o.slow) { e.slow = Math.max(e.slow, o.slow); e.slowT = 0.7; }
+    if (o.burn) { e.poison = Math.max(e.poison, d * o.burn.pct); e.poisonT = Math.max(e.poisonT, o.burn.dur); }
+    if (o.spread) e.spread = o.spread;
+    if (o.freeze && e.slow > 0) stunEnemy(e, o.freeze);
+    if (o.slow) { e.slow = Math.max(e.slow, o.slow); e.slowT = Math.max(e.slowT, 0.7); }
+    if (o.slowAdd) { e.slow = Math.max(e.slow, o.slowAdd); e.slowT = Math.max(e.slowT, o.slowDur || 1); }
+    if (o.stun) stunEnemy(e, o.stun);
+    if (o.critStun && crit) stunEnemy(e, o.critStun);
+    if (o.fear && !e.boss) e.fearT = Math.max(e.fearT || 0, o.fear);
     if (o.gold) e.gold = true;
+    if (o.leech) healPlayer(Math.min(3, d * o.leech), true);
+    if (o.healMe) healPlayer(o.healMe, true);
+    // coups secondaires (sans effets d'Éveil, pour éviter les chaînes infinies)
+    if (o.splash) query(e.x, e.y, o.splash.r * S.stats.area, (n) => { if (n !== e) hitEnemy(n, base * o.splash.pct, { sx: e.x, sy: e.y }); });
+    if (o.chain) {
+      let from = e;
+      for (const n of nearest(e.x, e.y, o.chain.r, o.chain.n + 1).filter((n) => n !== e).slice(0, o.chain.n)) {
+        S.fx.push({ type: 'trail', x: from.x, y: from.y, x2: n.x, y2: n.y, t: 0, life: 0.25, color: '#ffffff' });
+        hitEnemy(n, base * o.chain.pct, {});
+        from = n;
+      }
+    }
+    if (o.echoHit) S.later.push({ t: S.t + o.echoHit.delay, fn: () => { if (!e.dead) hitEnemy(e, base * o.echoHit.pct, {}); } });
+    // achèvement : sous un seuil de vie après le coup (jamais les boss)
+    if (e.hp > 0 && !e.boss && ((o.execute && e.hp < e.maxHp * o.execute) || (o.critExec && crit && e.hp < e.maxHp * o.critExec))) {
+      addText(e.x, e.y - e.r - 10, 'Achevé', '#ff6b6b');
+      e.hp = 0;
+    }
     if (e.hp <= 0) {
       kill(e);
       if (o.glyph && o.glyph.fx === 'imprint') {
@@ -764,6 +804,18 @@ const Game = (() => {
     e.dead = true;
     S.kills++;
     const z = S.zone;
+    // Contagion : le poison d'un ennemi qui meurt gagne ses voisins (une seule fois)
+    if (e.spread && e.poisonT > 0) {
+      for (const n of nearest(e.x, e.y, 160, e.spread.n + 1).filter((n) => n !== e).slice(0, e.spread.n)) {
+        n.poison = Math.max(n.poison, e.poison * e.spread.mul); n.poisonT = Math.max(n.poisonT, 3);
+        S.fx.push({ type: 'trail', x: e.x, y: e.y, x2: n.x, y2: n.y, t: 0, life: 0.3, color: '#7dff6a' });
+      }
+    }
+    for (const b of S.buffs) {
+      if (b.fx === 'killKeep') b.t = Math.max(b.t, b.p.min);
+      if (b.fx === 'killAdd') b.t = Math.min(b.p.max, b.t + b.p.add);
+      if (b.fx === 'goldBuff') e.gold = true;
+    }
     gainXp(e.x, e.y, e.xp);
     dropItems(e);
     if (e.gold || Math.random() < 0.07) {
@@ -803,6 +855,30 @@ const Game = (() => {
     if (S.fx.length < 220) S.fx.push({ type: 'xpfly', x, y, sx: x, sy: y, t: 0, life: 0.45 });
   }
 
+  // Recharge accélérée par les bonus actifs (Élan, Rafale…)
+  function later(p, fn) { S.later.push({ t: S.t + (p.delay || 0), fn }); }
+
+  function pierceBonus() {
+    let n = 0;
+    for (const b of S.buffs) if (b.fx === 'pierceBuff') n += b.p.n;
+    return n;
+  }
+
+  function hasteMul() {
+    let m = 1;
+    for (const b of S.buffs) if (b.fx === 'haste') m *= b.p.cd;
+    return m;
+  }
+
+  function healPlayer(v, quiet) {
+    const p = S.p, h = Math.min(v, p.maxHp - p.hp);
+    if (h <= 0) return 0;
+    p.hp += h;
+    S.lastHealT = S.t;
+    if (!quiet || h >= 3) addText(p.x, p.y - 30, '+' + Math.round(h), '#7dff9a', !quiet);
+    return h;
+  }
+
   // Somme des bonus temporaires actifs (sorts de type buff) pour une clé (pow ou spd).
   function buffPow(k) {
     let v = 0;
@@ -827,7 +903,9 @@ const Game = (() => {
       if (def.type === 'aura') { sp.timer = s.tick; auraTick(sp); continue; }
       const ok = cast(sp, def, s);
       if (ok && ATTACK_TYPES.has(def.type)) attackAnim();
-      sp.timer = ok ? s.cd * S.stats.cd : 0.15;
+      sp.timer = ok ? s.cd * S.stats.cd * hasteMul() : 0.15;
+      // Deux charges : le sort repart aussitôt une seconde fois, puis se recharge
+      if (ok && sp.fx === 'charges') { sp.charged = !sp.charged; if (sp.charged) sp.timer = 0.3; }
     }
   }
 
@@ -858,9 +936,10 @@ const Game = (() => {
           }
           S.projs.push({
             x: p.x, y: p.y - 6, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed,
-            life: s.range / s.speed + 0.1, size: s.size, dmg: s.dmg, pierce: Math.round(s.pierce || 0),
+            life: s.range / s.speed + 0.1, size: s.size, dmg: s.dmg,
             explode: s.explode ? s.explode * area : 0, knock: s.knock || 0, poison: s.poison || 0,
-            poisonDur: s.poisonDur || 0, slow: s.slow || 0, crit: s.crit || 0, fx: sp.fx, gold: s.gold, color: def.color, hit: new Set(),
+            poisonDur: s.poisonDur || 0, slow: s.slow || 0, crit: s.crit || 0, fx: sp.fx, fxp: sp.fxp, h: sp.h, gold: s.gold, color: def.color, hit: new Set(),
+            pierce: Math.round(s.pierce || 0) + pierceBonus(),
           });
         }
         return true;
@@ -871,21 +950,34 @@ const Game = (() => {
         if (!t) return false;
         const a = Math.atan2(t.y - p.y, t.x - p.x);
         const dirs = s.double ? [a, a + Math.PI] : [a];
+        const arc = sp.fx === 'full' ? Math.PI * 2 : s.arc; // tout autour du personnage
         for (const da of dirs) {
           query(p.x, p.y, range, (e) => {
             let diff = Math.atan2(e.y - p.y, e.x - p.x) - da;
             diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-            if (Math.abs(diff) <= s.arc / 2 + 0.25) hitEnemy(e, s.dmg, { knock: s.knock, crit: s.crit, rage: s.rage });
+            if (Math.abs(diff) <= arc / 2 + 0.25) hitEnemy(e, s.dmg, { knock: s.knock, crit: s.crit, rage: s.rage, h: sp.h });
           });
-          S.fx.push({ type: 'arc', x: p.x, y: p.y, a: da, arc: s.arc, r: range, t: 0, life: 0.2, color: def.color });
+          S.fx.push({ type: 'arc', x: p.x, y: p.y, a: da, arc, r: range, t: 0, life: 0.2, color: def.color });
         }
         return true;
       }
       case 'nova': {
         const r = s.radius * area;
         if (!nearest(p.x, p.y, r * 1.3, 1).length) return false;
-        query(p.x, p.y, r, (e) => hitEnemy(e, s.dmg, { knock: s.knock, rage: s.rage }));
+        query(p.x, p.y, r, (e) => hitEnemy(e, s.dmg, { knock: s.knock, rage: s.rage, h: sp.h }));
         S.fx.push({ type: 'ring', x: p.x, y: p.y, r, t: 0, life: 0.4, color: def.color, fill: true });
+        if (sp.fx === 'echo') {
+          const q = sp.fxp;
+          later(q, () => {
+            query(S.p.x, S.p.y, r, (e) => hitEnemy(e, s.dmg * q.pct, { knock: q.knock ?? s.knock, rage: s.rage }));
+            S.fx.push({ type: 'ring', x: S.p.x, y: S.p.y, r, t: 0, life: 0.4, color: def.color, fill: true });
+          });
+        }
+        if (sp.fx === 'castShield') p.shield = Math.max(p.shield, sp.fxp.shield); // Cri de garde
+        if (sp.fx === 'linger') {
+          const q = sp.fxp;
+          S.glyphs.push({ src: sp, x: p.x, y: p.y, r, dmg: s.dmg * q.pct, tick: 0.5, tt: 0.3, life: q.dur, max: q.dur, color: def.color, h: { slowAdd: q.slow, slowDur: 0.6 } });
+        }
         return true;
       }
       case 'strike': {
@@ -895,7 +987,8 @@ const Game = (() => {
         for (let i = 0; i < n; i++) {
           // la première frappe vise le boss s’il est à portée
           const e = i === 0 && S.boss && cands.includes(S.boss) ? S.boss : pick(cands);
-          S.strikes.push({ x: e.x, y: e.y, r: s.radius * area, dmg: s.dmg, rage: s.rage, fx: sp.fx, t: s.delay, life: s.delay, color: def.color });
+          S.strikes.push({ x: e.x, y: e.y, r: s.radius * area, dmg: s.dmg, rage: s.rage, fx: sp.fx, h: sp.h, t: s.delay, life: s.delay, color: def.color });
+          if (sp.fx === 'echo') S.strikes.push({ x: e.x, y: e.y, r: s.radius * area, dmg: s.dmg * sp.fxp.pct, rage: s.rage, t: s.delay + sp.fxp.delay, life: s.delay + sp.fxp.delay, color: def.color });
         }
         return true;
       }
@@ -907,7 +1000,9 @@ const Game = (() => {
           const t = nearest(p.x, p.y, 260, 1)[0];
           if (t) { x = t.x + rand(-15, 15); y = t.y + rand(-15, 15); }
         }
-        S.traps.push({ src: sp, x, y, r: s.radius * area, dmg: s.dmg, life: s.life, arm: 0.3, fuse: s.fuse, color: def.color });
+        // Mine : explose d'elle-même après un délai, sans attendre le contact
+        const fuse = s.fuse || (sp.fx === 'trapMine' ? 1 : 0), life = sp.fx === 'trapMine' ? sp.fxp.delay : s.life;
+        S.traps.push({ src: sp, x, y, r: s.radius * area, dmg: s.dmg, life, arm: 0.3, fuse, fx: sp.fx, h: sp.h, uses: sp.fx === 'trapRearm' ? 2 : 1, color: def.color });
         return true;
       }
       case 'glyph': {
@@ -925,7 +1020,7 @@ const Game = (() => {
         if (!spots.length) return false;
         if (stack) S.glyphs.forEach((g) => { if (g.src === sp && g.life > 0.4) g.life = 0.4; }); // les anciens s'effacent
         for (const at of spots) {
-          S.glyphs.push({ src: sp, fx: sp.fx, x: at.x, y: at.y, r, dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
+          S.glyphs.push({ src: sp, fx: sp.fx, h: sp.h, x: at.x, y: at.y, r, dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
           S.fx.push({ type: 'ring', x: at.x, y: at.y, r, t: 0, life: 0.35, color: def.color });
         }
         if (stack) {
@@ -936,10 +1031,12 @@ const Game = (() => {
         return true;
       }
       case 'heal': {
-        const h = Math.min(s.heal, p.maxHp - p.hp);
-        if (h <= 0) return false;
-        p.hp += h;
-        addText(p.x, p.y - 30, '+' + Math.round(h), '#7dff9a', true);
+        // Soin éclatant / Drain : blesse aussi autour, même à pleine vie
+        const nova = sp.fx === 'healNova' && nearest(p.x, p.y, sp.fxp.r * area, 1).length;
+        if (p.hp >= p.maxHp && !nova) return false;
+        healPlayer(s.heal);
+        if (sp.fx === 'healShield') p.shield = Math.max(p.shield, s.heal);
+        if (nova) aoe(p.x, p.y, sp.fxp.r * area, s.heal * sp.fxp.pct, { knock: 30 }, def.color);
         S.fx.push({ type: 'ring', x: p.x, y: p.y, r: 40, t: 0, life: 0.4, color: '#7dff9a' });
         return true;
       }
@@ -952,7 +1049,12 @@ const Game = (() => {
       case 'buff': {
         // ne se lance qu'en combat
         if (!nearest(p.x, p.y, 360, 1).length) return false;
-        S.buffs.push({ pow: s.pow || 0, spd: s.spd || 0, t: s.dur, color: def.color });
+        S.buffs.push({ pow: s.pow || 0, spd: s.spd || 0, t: s.dur, color: def.color, fx: sp.fx, p: sp.fxp || {} });
+        if (sp.fx === 'buffHeal') healPlayer(p.maxHp * sp.fxp.pct);
+        if (sp.fx === 'buffNova') {
+          query(p.x, p.y, sp.fxp.r, (e) => stunEnemy(e, sp.fxp.stun));
+          S.fx.push({ type: 'ring', x: p.x, y: p.y, r: sp.fxp.r, t: 0, life: 0.5, color: def.color });
+        }
         S.fx.push({ type: 'ring', x: p.x, y: p.y, r: 46, t: 0, life: 0.5, color: def.color, fill: true });
         addText(p.x, p.y - 44, def.name, def.color, true);
         return true;
@@ -964,9 +1066,9 @@ const Game = (() => {
         S.fx.push({ type: 'trail', x: p.x, y: p.y, x2: p.x + (dx / l) * go, y2: p.y + (dy / l) * go, t: 0, life: 0.3, color: def.color });
         p.x += (dx / l) * go; p.y += (dy / l) * go;
         p.dirX = dx / l; p.dirY = dy / l;
-        p.inv = Math.max(p.inv, 0.35);
+        p.inv = Math.max(p.inv, sp.fx === 'invuln' ? sp.fxp.dur : 0.35);
         const r = s.radius * area;
-        query(p.x, p.y, r, (e) => hitEnemy(e, s.dmg, { knock: s.knock }));
+        query(p.x, p.y, r, (e) => hitEnemy(e, s.dmg, { knock: s.knock, h: sp.h }));
         S.fx.push({ type: 'ring', x: p.x, y: p.y, r, t: 0, life: 0.4, color: def.color, fill: true });
         return true;
       }
@@ -976,7 +1078,7 @@ const Game = (() => {
 
   function auraTick(sp) {
     const s = sp.s, p = S.p;
-    query(p.x, p.y, s.radius * S.stats.area, (e) => hitEnemy(e, s.dmg, { slow: s.slow, rage: s.rage }));
+    query(p.x, p.y, s.radius * S.stats.area, (e) => hitEnemy(e, s.dmg, { slow: s.slow, rage: s.rage, h: sp.h }));
   }
 
   function updateOrbit(sp, dt) {
@@ -988,7 +1090,7 @@ const Game = (() => {
       query(x, y, s.size, (e) => {
         if ((e.hitT[sp.id] || 0) > S.t) return;
         e.hitT[sp.id] = S.t + 0.45;
-        hitEnemy(e, s.dmg, { knock: 25, sx: p.x, sy: p.y });
+        hitEnemy(e, s.dmg, { knock: 25, sx: p.x, sy: p.y, h: sp.h });
       });
     }
   }
@@ -1011,8 +1113,9 @@ const Game = (() => {
         m.face = dx > 0 ? 1 : -1; m.walk += dt * 10;
       }
       if (t && m.atk <= 0 && l < s.size + t.r + 4) {
-        m.atk = 0.55;
-        hitEnemy(t, s.dmg, { knock: 30, sx: m.x, sy: m.y });
+        m.atk = (s.atkCd || 0.55) * (S.spells.some((o) => o.fx === 'frenzy') ? 0.7 : 1);
+        const lead = S.spells.some((o) => o.fx === 'leader') ? 1.3 : 1;
+        hitEnemy(t, s.dmg * lead, { knock: 30, sx: m.x, sy: m.y, h: sp.h });
       }
     });
   }
@@ -1033,10 +1136,13 @@ const Game = (() => {
         if (e.hp <= 0) { kill(e); continue; }
       }
       const dx = p.x - e.x, dy = p.y - e.y, dist = Math.hypot(dx, dy) || 1;
-      const ux = dx / dist, uy = dy / dist;
+      let ux = dx / dist, uy = dy / dist;
       let sp = e.speed * (1 - Math.min(0.8, e.slow));
+      if (e.fearT > 0) { e.fearT -= dt; ux = -ux; uy = -uy; } // en fuite
+      const stunned = e.stunT > 0;
+      if (stunned) { e.stunT -= dt; sp = 0; }
 
-      if (e.boss) {
+      if (e.boss && !stunned) {
         e.ab -= dt;
         if (e.charge > 0) {
           e.charge -= dt;
@@ -1072,7 +1178,7 @@ const Game = (() => {
       e.kvx *= decay; e.kvy *= decay;
 
       if (dist < e.r + p.r + 12 && !(S.t - (e.atkAnim ?? -9) < 0.9)) e.atkAnim = S.t; // animation d'attaque
-      if (dist < e.r + p.r && e.atk <= 0 && p.inv <= 0) {
+      if (dist < e.r + p.r && e.atk <= 0 && p.inv <= 0 && !stunned && !(e.fearT > 0)) {
         e.atk = 0.8;
         p.inv = 0.3; // courte invincibilité après un coup au contact
         damagePlayer(e.dmg);
@@ -1101,12 +1207,18 @@ const Game = (() => {
   function updateProjectiles(dt) {
     for (const pr of S.projs) {
       pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.life -= dt;
+      // Boomerang : en bout de course, revient vers le joueur et peut retoucher chaque ennemi
+      if (pr.life <= 0 && pr.fx === 'boomerang' && !pr.back) {
+        pr.back = true; pr.hit = new Set(); pr.pierce = 99;
+        const dx = S.p.x - pr.x, dy = S.p.y - pr.y, l = Math.hypot(dx, dy) || 1, v = Math.hypot(pr.vx, pr.vy);
+        pr.vx = (dx / l) * v; pr.vy = (dy / l) * v; pr.life = l / v;
+      }
       if (pr.life <= 0) { if (pr.explode) explodeProj(pr); continue; }
       query(pr.x, pr.y, pr.size, (e) => {
         if (pr.life <= 0 || pr.hit.has(e)) return;
         if (pr.explode) { explodeProj(pr); return; }
         pr.hit.add(e);
-        hitEnemy(e, pr.dmg, { knock: pr.knock, poison: pr.poison, poisonDur: pr.poisonDur, slow: pr.slow, crit: pr.crit, gold: pr.gold, sx: pr.x - pr.vx, sy: pr.y - pr.vy });
+        hitEnemy(e, pr.dmg, { knock: pr.knock, poison: pr.poison, poisonDur: pr.poisonDur, slow: pr.slow, crit: pr.crit, gold: pr.gold, h: pr.h, sx: pr.x - pr.vx, sy: pr.y - pr.vy });
         if (--pr.pierce < 0) pr.life = 0;
       });
     }
@@ -1123,13 +1235,41 @@ const Game = (() => {
   function explodeProj(pr) {
     pr.life = 0;
     // Aspiration : l'explosion attire vers son centre au lieu de repousser
-    aoe(pr.x, pr.y, pr.explode, pr.dmg, { knock: pr.fx === 'pull' ? -70 : 20, gold: pr.gold }, pr.color);
+    aoe(pr.x, pr.y, pr.explode, pr.dmg, { knock: pr.fx === 'pull' ? -70 : 20, gold: pr.gold, h: pr.h }, pr.color);
+    if (pr.child) return;
+    if (pr.fx === 'echo') later(pr.fxp, () => aoe(pr.x, pr.y, pr.explode, pr.dmg * pr.fxp.pct, { knock: 20 }, pr.color));
+    if (pr.fx === 'split3') {
+      // Fragmentation : trois explosions plus petites autour du point d'impact
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2 + Math.random(), d = pr.explode * 0.9;
+        later({ delay: 0.15 + i * 0.08 }, () => aoe(pr.x + Math.cos(a) * d, pr.y + Math.sin(a) * d, pr.explode * 0.6, pr.dmg * 0.6, { knock: 15 }, pr.color));
+      }
+    }
     if (pr.fx === 'split' && !pr.child) {
       // Ricochet : 3 petites bulles partent vers de nouvelles cibles
       for (const t of nearest(pr.x, pr.y, 300, 4).slice(1, 4)) {
         const a = Math.atan2(t.y - pr.y, t.x - pr.x), sp = 340;
         S.projs.push({ ...pr, child: true, x: pr.x, y: pr.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 1,
           size: pr.size * 0.6, dmg: pr.dmg * 0.5, explode: pr.explode * 0.6, hit: new Set() });
+      }
+    }
+  }
+
+  function blowTrap(t) {
+    aoe(t.x, t.y, t.r, t.dmg, { knock: t.fuse ? 40 : 30, h: t.h }, t.color);
+    // Réarmement : une seconde explosion possible
+    if (--t.uses > 0) { t.arm = 0.6; if (t.fuse) t.life = 1; return; }
+    t.done = true;
+    // Réseau / réaction en chaîne : les pièges voisins sautent aussi
+    if (t.fx === 'trapChain') {
+      for (const o of S.traps) if (!o.done && o !== t && d2(o.x, o.y, t.x, t.y) < (t.r * 2) ** 2) later({ delay: 0.12 }, () => { if (!o.done) blowTrap(o); });
+    }
+    // Champ de mines : 4 petits pièges restent autour
+    if (t.fx === 'minefield' && !t.small) {
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + Math.random() * 0.5;
+        S.traps.push({ small: true, x: t.x + Math.cos(a) * t.r * 0.7, y: t.y + Math.sin(a) * t.r * 0.7, r: t.r * 0.5, dmg: t.dmg * 0.5,
+          life: 8, arm: 0.4, uses: 1, color: t.color });
       }
     }
   }
@@ -1145,7 +1285,7 @@ const Game = (() => {
         query(g.x, g.y, r, (e) => {
           // Foyer : moitié intérieure du glyphe à dommages doublés
           const core = g.fx === 'core' && d2(e.x, e.y, g.x, g.y) < (r / 2) * (r / 2);
-          hitEnemy(e, core ? dmg * 2 : dmg, { glyph: g });
+          hitEnemy(e, core ? dmg * 2 : dmg, { glyph: g, h: g.h });
         });
       }
       // Détonation : le glyphe explose à la fin de sa durée
@@ -1155,11 +1295,12 @@ const Game = (() => {
 
     for (const t of S.traps) {
       t.life -= dt; t.arm -= dt;
-      if (t.fuse) { if (t.life <= 0) { aoe(t.x, t.y, t.r, t.dmg, { knock: 40 }, t.color); t.done = true; } continue; }
+      if (t.done) continue;
+      if (t.fuse) { if (t.life <= 0) blowTrap(t); continue; }
       if (t.arm <= 0) {
         let trig = false;
         query(t.x, t.y, t.r * 0.35, () => { trig = true; });
-        if (trig) { aoe(t.x, t.y, t.r, t.dmg, { knock: 30 }, t.color); t.done = true; }
+        if (trig) blowTrap(t);
       }
     }
     S.traps = S.traps.filter((t) => !t.done && t.life > 0);
@@ -1167,7 +1308,7 @@ const Game = (() => {
     for (const s of S.strikes) {
       s.t -= dt;
       if (s.t <= 0) {
-        aoe(s.x, s.y, s.r, s.dmg, { knock: 30, rage: s.rage }, s.color); s.done = true;
+        aoe(s.x, s.y, s.r, s.dmg, { knock: 30, rage: s.rage, h: s.h }, s.color); s.done = true;
         if (s.fx === 'chain') {
           // Chaîne : la foudre rebondit sur 3 ennemis proches
           for (const t of nearest(s.x, s.y, 220, 4).slice(0, 3)) {
@@ -1301,7 +1442,8 @@ const Game = (() => {
     if (c.kind === 'branch') {
       const own = S.spells.find((s) => s.id === c.id);
       own.branch = c.branch; own.lvl = AWAKEN_RANK + 1; own.s = spellStats(own);
-      own.fx = (branchesOf(SPELLS[c.id]).find((b) => b.key === c.branch) || {}).fx || null;
+      const br = branchesOf(SPELLS[c.id]).find((b) => b.key === c.branch) || {};
+      own.fx = br.fx || null; own.fxp = br.p || {}; own.h = br.h || null;
       banner(SPELLS[c.id].name + ' s’éveille', c.name + ' : ' + c.desc, true);
     } else if (c.kind === 'spell') {
       const own = S.spells.find((s) => s.id === c.id);

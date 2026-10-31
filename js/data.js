@@ -481,6 +481,393 @@ const SPELLS = {
 };
 
 // ---------------------------------------------------------------- Caractéristiques (passifs de partie)
+// Éveils propres à chaque sort (classes autres que le Féca, qui a les siens dans SPELLS). Les mécaniques
+// reprennent celles des Éveils de ZaapRush quand le sort y existe, les autres suivent le même esprit.
+// m / a : multiplie / ajoute aux valeurs du sort ; h : effets sur chaque coup ; fx + p : effet spécial du sort.
+const AWAKENINGS = {
+  // ---- Féca (les autres sorts du Féca ont leurs Éveils dans SPELLS)
+  attaque_naturelle: [
+    { key: 'floraison', name: 'Floraison', desc: '+2 pétales.', a: { count: 2 } },
+    { key: 'lourds', name: 'Pétales lourds', desc: 'Explosion 50 % plus large, dommages +20 %.', m: { explode: 1.5, dmg: 1.2 } },
+    { key: 'epines', name: 'Pétales épineux', desc: 'Ralentit de 30 % pendant 1,5 s.', h: { slowAdd: 0.3, slowDur: 1.5 } },
+  ],
+  flamiche: [
+    { key: 'flammeches', name: 'Flammèches', desc: '+2 flammes.', a: { count: 2 } },
+    { key: 'braise', name: 'Braise', desc: 'Les ennemis touchés brûlent 2 s.', h: { burn: { pct: 0.5, dur: 2 } } },
+    { key: 'vif', name: 'Feu vif', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+  ],
+  // ---- Iop
+  pression: [
+    { key: 'ecrasement', name: 'Écrasement', desc: 'Dommages +60 %.', m: { dmg: 1.6 } },
+    { key: 'onde', name: 'Onde de choc', desc: 'Chaque ennemi touché blesse ses voisins à 50 %.', h: { splash: { pct: 0.5, r: 70 } } },
+    { key: 'projection', name: 'Projection', desc: 'Repousse les ennemis trois fois plus loin.', m: { knock: 3 } },
+  ],
+  epee_celeste: [
+    { key: 'voute', name: 'Voûte céleste', desc: 'Zone +60 %.', m: { radius: 1.6 } },
+    { key: 'second', name: 'Second éclair', desc: 'La zone est frappée une seconde fois juste après.', fx: 'echo', p: { delay: 0.6, pct: 1 } },
+    { key: 'sideration', name: 'Sidération', desc: 'Étourdit 1,5 s les ennemis frappés (sauf les boss).', h: { stun: 1.5 } },
+  ],
+  colere_iop: [
+    { key: 'rancune', name: 'Rancune', desc: 'Achève les ennemis qui restent sous 25 % de vie (sauf les boss).', h: { execute: 0.25 } },
+    { key: 'grondement', name: 'Grondement', desc: 'Une seconde colère retombe au même endroit (60 %).', fx: 'echo', p: { delay: 0.8, pct: 0.6 } },
+    { key: 'eclats', name: 'Colère éclatée', desc: '+2 frappes par lancer, à 70 % des dommages.', a: { count: 2 }, m: { dmg: 0.7 } },
+  ],
+  epee_jugement: [
+    { key: 'lourde', name: 'Lame lourde', desc: 'Dommages +60 %, lames 30 % plus grandes.', m: { dmg: 1.6, size: 1.3 } },
+    { key: 'tribunal', name: 'Tribunal', desc: '+2 épées.', a: { count: 2 } },
+    { key: 'verdict', name: 'Verdict', desc: 'Achève les ennemis sous 20 % de vie (sauf les boss).', h: { execute: 0.2 } },
+  ],
+  bond: [
+    { key: 'geant', name: 'Bond de géant', desc: 'Portée doublée, impact 30 % plus large.', m: { range: 2, radius: 1.3 } },
+    { key: 'intouchable', name: 'Intouchable', desc: 'Invulnérable 2 s après chaque Bond.', fx: 'invuln', p: { dur: 2 } },
+    { key: 'impetueux', name: 'Impétueux', desc: 'Recharge −60 %.', m: { cd: 0.4 } },
+  ],
+  puissance: [
+    { key: 'absolue', name: 'Puissance absolue', desc: 'Bonus de dommages ×2,5.', m: { pow: 2.5 } },
+    { key: 'elan', name: 'Élan', desc: 'Pendant Puissance, vos sorts se rechargent 40 % plus vite.', fx: 'haste', p: { cd: 0.6 } },
+    { key: 'enchainement', name: 'Enchaînement', desc: 'Chaque ennemi tué sous Puissance garde au moins 1,5 s d’effet.', fx: 'killKeep', p: { min: 1.5 } },
+  ],
+  intimidation: [
+    { key: 'cercle', name: 'Grand cercle', desc: 'Zone +60 %.', m: { radius: 1.6 } },
+    { key: 'lancer', name: 'Lancer', desc: 'Repousse deux fois et demie plus loin.', m: { knock: 2.5 } },
+    { key: 'choc', name: 'Choc', desc: 'Dommages +50 % et étourdit 1 s.', m: { dmg: 1.5 }, h: { stun: 1 } },
+  ],
+  tempete_puissance: [
+    { key: 'orage', name: 'Orage', desc: '+3 éclairs par lancer.', a: { count: 3 } },
+    { key: 'arc', name: 'Arc électrique', desc: 'Chaque éclair rebondit sur 3 ennemis proches (50 %).', fx: 'chain' },
+    { key: 'surtension', name: 'Surtension', desc: 'Dommages +30 % et étourdit 0,6 s.', m: { dmg: 1.3 }, h: { stun: 0.6 } },
+  ],
+  // ---- Crâ
+  fleche_magique: [
+    { key: 'percante', name: 'Flèche perçante', desc: 'Traverse 2 ennemis de plus.', a: { pierce: 2 } },
+    { key: 'double', name: 'Double tir', desc: '+1 flèche par tir.', a: { count: 1 } },
+    { key: 'precise', name: 'Œil de lynx', desc: '+30 % de chance de critique.', a: { crit: 0.3 } },
+  ],
+  fleche_explosive: [
+    { key: 'fragments', name: 'Fragmentation', desc: 'L’explosion se divise en trois explosions plus petites autour.', fx: 'split3' },
+    { key: 'charge', name: 'Charge lourde', desc: 'Explosion 50 % plus large.', m: { explode: 1.5 } },
+    { key: 'replique', name: 'Réplique', desc: 'Explose une seconde fois peu après (60 %).', fx: 'echo', p: { delay: 0.5, pct: 0.6 } },
+  ],
+  fleche_recul: [
+    { key: 'percussion', name: 'Percussion', desc: 'Dommages +50 % et la cible est étourdie 1 s.', m: { dmg: 1.5 }, h: { stun: 1 } },
+    { key: 'ligne', name: 'Flèche de ligne', desc: 'Traverse toute la ligne et projette chaque ennemi.', a: { pierce: 99 } },
+    { key: 'sonne', name: 'Sonné', desc: 'La cible reste étourdie 2 s.', h: { stun: 2 } },
+  ],
+  fleche_dispersion: [
+    { key: 'carquois', name: 'Double carquois', desc: 'Deux charges : le sort repart aussitôt une seconde fois, puis se recharge.', fx: 'charges' },
+    { key: 'large', name: 'Large dispersion', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'engourdi', name: 'Engourdissement', desc: 'Les ennemis touchés sont ralentis de 40 % pendant 2 s.', h: { slowAdd: 0.4, slowDur: 2 } },
+  ],
+  fleche_glacee: [
+    { key: 'gel', name: 'Gel', desc: 'Gèle 1 s les ennemis déjà ralentis.', h: { freeze: 1 } },
+    { key: 'blizzard', name: 'Blizzard', desc: '+2 flèches.', a: { count: 2 } },
+    { key: 'bris', name: 'Bris de glace', desc: 'Dommages doublés sur les ennemis ralentis.', h: { shatter: 2 } },
+  ],
+  fleche_empoisonnee: [
+    { key: 'contagion', name: 'Contagion', desc: 'À la mort d’un empoisonné, le poison gagne 2 ennemis proches.', h: { spread: { n: 2, mul: 1 } } },
+    { key: 'virulence', name: 'Virulence', desc: 'À la mort d’un empoisonné, le poison passe à un voisin et gagne 50 %.', h: { spread: { n: 1, mul: 1.5 } } },
+    { key: 'paralysie', name: 'Paralysie', desc: 'Les ennemis empoisonnés sont ralentis de 30 %.', h: { slowAdd: 0.3, slowDur: 3 } },
+  ],
+  tir_puissant: [
+    { key: 'rafale', name: 'Rafale', desc: 'Pendant Tir Puissant, vos sorts se rechargent 33 % plus vite.', fx: 'haste', p: { cd: 0.67 } },
+    { key: 'traque', name: 'Traque', desc: 'Chaque ennemi tué prolonge Tir Puissant de 0,5 s (6 s au plus).', fx: 'killAdd', p: { add: 0.5, max: 6 } },
+    { key: 'transpercer', name: 'Transpercement', desc: 'Pendant Tir Puissant, vos projectiles traversent 2 ennemis de plus.', fx: 'pierceBuff', p: { n: 2 } },
+  ],
+  fleche_harcelante: [
+    { key: 'volee', name: 'Volée', desc: '+2 cibles.', a: { count: 2 } },
+    { key: 'pointe', name: 'Pointe lourde', desc: 'Dommages +60 %.', m: { dmg: 1.6 } },
+    { key: 'bourrasque', name: 'Bourrasque', desc: 'Ralentit les ennemis touchés 1,5 s.', h: { slowAdd: 0.35, slowDur: 1.5 } },
+  ],
+  // ---- Eniripsa
+  mot_blessant: [
+    { key: 'rebond', name: 'Mot rebondissant', desc: 'Rebondit sur 2 ennemis proches (60 %).', h: { chain: { n: 2, pct: 0.6, r: 200 } } },
+    { key: 'cuisant', name: 'Mot cuisant', desc: 'La cible brûle 3 s.', h: { burn: { pct: 0.5, dur: 3 } } },
+    { key: 'vampire', name: 'Mot vampirique', desc: 'Rend 15 % des dommages infligés en vie.', h: { leech: 0.15 } },
+  ],
+  mot_soignant: [
+    { key: 'devouement', name: 'Dévouement', desc: 'Soin doublé, recharge +30 %.', m: { heal: 2, cd: 1.3 } },
+    { key: 'cocon', name: 'Cocon', desc: 'Le soin donne aussi un bouclier de même valeur.', fx: 'healShield' },
+    { key: 'eclat', name: 'Soin éclatant', desc: 'Le soin blesse aussi les ennemis autour (1,5 fois le soin), même quand vous êtes en pleine forme.', fx: 'healNova', p: { pct: 1.5, r: 110 } },
+  ],
+  mot_interdit: [
+    { key: 'eclatement', name: 'Éclatement', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'tabou', name: 'Tabou', desc: 'Dommages +60 %, et +30 % de plus si vous avez été soigné dans les 3 dernières secondes.', m: { dmg: 1.6 }, h: { afterHeal: 1.3 } },
+    { key: 'malediction', name: 'Malédiction', desc: 'Les ennemis touchés brûlent 3 s.', h: { burn: { pct: 0.4, dur: 3 } } },
+  ],
+  mot_frayeur: [
+    { key: 'effroi', name: 'Effroi', desc: 'Les ennemis repoussés fuient pendant 1,5 s.', h: { fear: 1.5 } },
+    { key: 'cri', name: 'Cri perçant', desc: 'Zone +60 %.', m: { radius: 1.6 } },
+    { key: 'fracas', name: 'Fracas', desc: 'Dommages ×3, et les ennemis repoussés restent sonnés 0,6 s.', m: { dmg: 3 }, h: { stun: 0.6 } },
+  ],
+  mot_stimulant: [
+    { key: 'transe', name: 'Transe', desc: 'Durée +60 %.', m: { dur: 1.6 } },
+    { key: 'galvanise', name: 'Galvanisation', desc: 'Pendant l’effet, vos sorts se rechargent 25 % plus vite.', fx: 'haste', p: { cd: 0.75 } },
+    { key: 'souffle', name: 'Second souffle', desc: 'Chaque lancer rend 8 % de votre vie.', fx: 'buffHeal', p: { pct: 0.08 } },
+  ],
+  mot_prevention: [
+    { key: 'durable', name: 'Prévention durable', desc: 'Bouclier doublé.', m: { shield: 2 } },
+    { key: 'vigilance', name: 'Vigilance', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+    { key: 'repousse', name: 'Repousse', desc: 'Le bouclier repousse et blesse les ennemis autour de vous.', fx: 'shieldNova' },
+  ],
+  mot_epine: [
+    { key: 'ronces', name: 'Ronces', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'acerees', name: 'Épines acérées', desc: 'Dommages doublés.', m: { dmg: 2 } },
+    { key: 'collantes', name: 'Ronces collantes', desc: 'Ralentit de 30 %.', a: { slow: 0.3 } },
+  ],
+  mot_amitie: [
+    { key: 'vif', name: 'Compagnon vif', desc: 'Se déplace 30 % plus vite et attaque 30 % plus souvent.', m: { speed: 1.3, atkCd: 0.7 } },
+    { key: 'soigneur', name: 'Compagnon soigneur', desc: 'Chacune de ses attaques vous rend 1 PV.', h: { healMe: 1 } },
+    { key: 'deux', name: 'Second compagnon', desc: '+1 compagnon.', a: { count: 1 } },
+  ],
+  // ---- Sram
+  coup_sournois: [
+    { key: 'dos', name: 'Coup dans le dos', desc: 'Dommages doublés sur les ennemis sous 50 % de vie.', h: { lowHp: 2 } },
+    { key: 'lame', name: 'Lame enduite', desc: 'Empoisonne la cible 3 s.', h: { burn: { pct: 0.5, dur: 3 } } },
+    { key: 'fatal', name: 'Coup fatal', desc: 'Un critique achève les ennemis sous 50 % de vie (sauf les boss).', h: { critExec: 0.5 } },
+  ],
+  piege_sournois: [
+    { key: 'reseau', name: 'Réseau', desc: 'Un piège qui explose fait sauter les pièges voisins.', fx: 'trapChain' },
+    { key: 'semis', name: 'Semis', desc: 'Pose ses pièges dans son sillage, bien plus souvent (+2 pièges, recharge −40 %).', m: { cd: 0.6 }, a: { count: 2 } },
+    { key: 'rearme', name: 'Réarmement', desc: 'Chaque piège se réarme pour une seconde explosion.', fx: 'trapRearm' },
+  ],
+  poison_insidieux: [
+    { key: 'lent', name: 'Poison lent', desc: 'Le poison dure deux fois plus longtemps.', m: { poisonDur: 2 } },
+    { key: 'contagion', name: 'Contagion', desc: 'À la mort d’un empoisonné, le poison gagne 2 ennemis proches.', h: { spread: { n: 2, mul: 0.8 } } },
+    { key: 'paralysant', name: 'Poison paralysant', desc: 'Les ennemis touchés sont ralentis de 30 %.', h: { slowAdd: 0.3, slowDur: 3 } },
+  ],
+  double: [
+    { key: 'parfait', name: 'Double parfait', desc: 'Dommages +60 %.', m: { dmg: 1.6 } },
+    { key: 'doubles', name: 'Dédoublement', desc: '+1 double.', a: { count: 1 } },
+    { key: 'sournois', name: 'Double sournois', desc: 'Dommages doublés sur les ennemis sous 50 % de vie.', h: { lowHp: 2 } },
+  ],
+  piege_masse: [
+    { key: 'fosse', name: 'Fosse', desc: 'Immobilise 2 s les ennemis touchés.', h: { stun: 2 } },
+    { key: 'mine', name: 'Mine', desc: 'Explose 2 s après la pose au lieu du contact, avec 40 % de dommages en plus.', fx: 'trapMine', p: { delay: 2 }, m: { dmg: 1.4 } },
+    { key: 'champ', name: 'Champ de mines', desc: 'Après l’explosion, 4 petits pièges (50 %) restent autour.', fx: 'minefield' },
+  ],
+  piege_empoisonne: [
+    { key: 'paralysie', name: 'Paralysie', desc: 'Ralentit de 40 % les ennemis dans la flaque.', h: { slowAdd: 0.4, slowDur: 1 } },
+    { key: 'propagation', name: 'Propagation', desc: 'Empoisonne ; à la mort d’un empoisonné, le poison gagne 2 ennemis proches.', h: { burn: { pct: 0.5, dur: 3 }, spread: { n: 2, mul: 1 } } },
+    { key: 'detonation', name: 'Détonation', desc: 'À la fin, la flaque explose (4 fois ses dommages).', fx: 'burst' },
+  ],
+  attaque_mortelle: [
+    { key: 'souffle', name: 'Dernier souffle', desc: 'Achève les ennemis qui restent sous 25 % de vie (sauf les boss).', h: { execute: 0.25 } },
+    { key: 'critique', name: 'Critique mortel', desc: '+20 % de critique ; un critique achève sous 50 % de vie (sauf les boss).', h: { crit: 0.2, critExec: 0.5 } },
+    { key: 'differe', name: 'Coup différé', desc: 'Frappe une seconde fois au même endroit après 1 s.', fx: 'echo', p: { delay: 1, pct: 1 } },
+  ],
+  peur: [
+    { key: 'terreur', name: 'Terreur', desc: 'Les ennemis repoussés fuient pendant 2 s.', h: { fear: 2 } },
+    { key: 'panique', name: 'Panique', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'paralysante', name: 'Peur paralysante', desc: 'Étourdit 1 s.', h: { stun: 1 } },
+  ],
+  // ---- Xélor
+  aiguille: [
+    { key: 'aiguilles', name: 'Aiguilles', desc: '+2 aiguilles.', a: { count: 2 } },
+    { key: 'temps', name: 'Aiguille du temps', desc: 'Ralentit de 30 % pendant 1 s.', h: { slowAdd: 0.3, slowDur: 1 } },
+    { key: 'precise', name: 'Aiguille précise', desc: '+30 % de chance de critique.', a: { crit: 0.3 } },
+  ],
+  ralentissement: [
+    { key: 'fige', name: 'Temps figé', desc: 'Ralentit 20 % de plus.', a: { slow: 0.2 } },
+    { key: 'large', name: 'Zone élargie', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'usure', name: 'Usure', desc: 'Dommages ×3.', m: { dmg: 3 } },
+  ],
+  poussiere_temporelle: [
+    { key: 'large', name: 'Nuage', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'persistante', name: 'Poussière persistante', desc: 'La poussière reste 3 s au sol : elle blesse et ralentit.', fx: 'linger', p: { dur: 3, pct: 0.3, slow: 0.4 } },
+    { key: 'dense', name: 'Poussière dense', desc: 'Dommages +60 %.', m: { dmg: 1.6 } },
+  ],
+  frappe_xelor: [
+    { key: 'marteau', name: 'Marteau', desc: 'Frappe aussi les ennemis autour à 50 %.', h: { splash: { pct: 0.5, r: 80 } } },
+    { key: 'precise', name: 'Frappe précise', desc: '+25 % de chance de critique.', h: { crit: 0.25 } },
+    { key: 'arret', name: 'Arrêt du temps', desc: 'La cible est figée 1 s.', h: { stun: 1 } },
+  ],
+  sablier_xelor: [
+    { key: 'second', name: 'Second sablier', desc: '+1 sablier.', a: { count: 1 } },
+    { key: 'eclats', name: 'Éclats', desc: 'Les éclats frappent les ennemis autour à 50 %.', h: { splash: { pct: 0.5, r: 70 } } },
+    { key: 'lourd', name: 'Sable lourd', desc: 'Étourdit 0,5 s.', h: { stun: 0.5 } },
+  ],
+  rayon_obscur: [
+    { key: 'large', name: 'Rayon large', desc: 'Rayon 2,5 fois plus épais.', m: { size: 2.5 } },
+    { key: 'brulant', name: 'Rayon brûlant', desc: 'Les ennemis touchés brûlent 3 s.', h: { burn: { pct: 0.4, dur: 3 } } },
+    { key: 'double', name: 'Double rayon', desc: '+1 rayon.', a: { count: 1 } },
+  ],
+  cadran_xelor: [
+    { key: 'grand', name: 'Grand cadran', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'heure', name: 'Heure figée', desc: 'Ralentit de 50 % les ennemis sur le cadran.', h: { slowAdd: 0.5, slowDur: 0.6 } },
+    { key: 'sonnerie', name: 'Sonnerie', desc: 'À la fin, le cadran explose (4 fois ses dommages).', fx: 'burst' },
+  ],
+  fuite: [
+    { key: 'retour', name: 'Retour en arrière', desc: 'Chaque Fuite rend 15 % de votre vie.', fx: 'buffHeal', p: { pct: 0.15 } },
+    { key: 'echo', name: 'Écho temporel', desc: 'Fige 1 s les ennemis autour de vous au départ.', fx: 'buffNova', p: { stun: 1, r: 140 } },
+    { key: 'eclair', name: 'Fuite éclair', desc: 'Recharge −50 %.', m: { cd: 0.5 } },
+  ],
+  // ---- Osamodas
+  fouet: [
+    { key: 'meneur', name: 'Meneur', desc: 'Effet permanent : vos invocations infligent 30 % de dommages en plus.', fx: 'leader' },
+    { key: 'circulaire', name: 'Fouet circulaire', desc: 'Frappe tout autour de vous, portée +30 %.', fx: 'full', m: { range: 1.3 } },
+    { key: 'frenesie', name: 'Frénésie', desc: 'Effet permanent : vos invocations attaquent 30 % plus vite.', fx: 'frenzy' },
+  ],
+  invoc_bouftou: [
+    { key: 'royal', name: 'Bouftou Royal', desc: 'Plus grand, dommages +60 %.', m: { size: 1.5, dmg: 1.6 } },
+    { key: 'laine', name: 'Laine collante', desc: 'Ses coups ralentissent de 40 % pendant 1,5 s.', h: { slowAdd: 0.4, slowDur: 1.5 } },
+    { key: 'troupeau', name: 'Troupeau', desc: '+1 Bouftou.', a: { count: 1 } },
+  ],
+  invoc_tofu: [
+    { key: 'nuee', name: 'Nuée', desc: '+2 Tofus.', a: { count: 2 } },
+    { key: 'vif', name: 'Tofu vif', desc: 'Vitesse +40 %, attaque 40 % plus souvent.', m: { speed: 1.4, atkCd: 0.6 } },
+    { key: 'chasseur', name: 'Chasseur', desc: 'Dommages doublés sur les ennemis sous 50 % de vie.', h: { lowHp: 2 } },
+  ],
+  corbeau_noir: [
+    { key: 'nuee', name: 'Nuée de corbeaux', desc: '+2 corbeaux.', a: { count: 2 } },
+    { key: 'vorace', name: 'Corbeau vorace', desc: 'Rebondit sur 2 ennemis proches (60 %).', h: { chain: { n: 2, pct: 0.6, r: 200 } } },
+    { key: 'bec', name: 'Bec acéré', desc: 'Dommages +60 %.', m: { dmg: 1.6 } },
+  ],
+  invoc_sanglier: [
+    { key: 'ruee', name: 'Ruée', desc: 'Attaque deux fois plus souvent.', m: { atkCd: 0.5 } },
+    { key: 'defenses', name: 'Défenses', desc: 'Dommages doublés.', m: { dmg: 2 } },
+    { key: 'renverse', name: 'Renversement', desc: 'Les ennemis chargés restent à terre 1,5 s.', h: { stun: 1.5 } },
+  ],
+  invoc_craqueleur: [
+    { key: 'seisme', name: 'Séisme', desc: 'Ses coups frappent aussi autour à 70 %.', h: { splash: { pct: 0.7, r: 90 } } },
+    { key: 'roc', name: 'Roc', desc: 'Dommages +60 %.', m: { dmg: 1.6 } },
+    { key: 'replique', name: 'Réplique', desc: 'Chaque coup frappe une seconde fois 0,5 s plus tard (50 %).', h: { echoHit: { delay: 0.5, pct: 0.5 } } },
+  ],
+  cri_ours: [
+    { key: 'terreur', name: 'Terreur', desc: 'Étourdit 1,5 s.', h: { stun: 1.5 } },
+    { key: 'rugissement', name: 'Rugissement', desc: 'Dommages doublés, zone +30 %.', m: { dmg: 2, radius: 1.3 } },
+    { key: 'garde', name: 'Cri de garde', desc: 'Chaque cri vous donne un bouclier de 15.', fx: 'castShield', p: { shield: 15 } },
+  ],
+  soin_animal: [
+    { key: 'carapace', name: 'Carapace', desc: 'Le soin donne aussi un bouclier de même valeur.', fx: 'healShield' },
+    { key: 'meute', name: 'Soin de meute', desc: 'Soin +60 %.', m: { heal: 1.6 } },
+    { key: 'instinct', name: 'Instinct', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+  ],
+  // ---- Sacrieur
+  pied_sacrieur: [
+    { key: 'circulaire', name: 'Coup circulaire', desc: 'Frappe tout autour de vous.', fx: 'full' },
+    { key: 'sanglant', name: 'Pied sanglant', desc: 'Rend 10 % des dommages infligés en vie.', h: { leech: 0.1 } },
+    { key: 'lourd', name: 'Pied lourd', desc: 'Repousse deux fois plus et sonne 0,5 s.', m: { knock: 2 }, h: { stun: 0.5 } },
+  ],
+  assaut: [
+    { key: 'charges', name: 'Double assaut', desc: 'Deux charges : le sort repart aussitôt une seconde fois, puis se recharge.', fx: 'charges' },
+    { key: 'sonnant', name: 'Assaut sonnant', desc: 'Étourdit 1 s (sauf les boss).', h: { stun: 1 } },
+    { key: 'large', name: 'Assaut large', desc: 'Zone doublée.', m: { radius: 2 } },
+  ],
+  absorption: [
+    { key: 'vampirisme', name: 'Vampirisme', desc: 'Soin doublé.', m: { heal: 2 } },
+    { key: 'drain', name: 'Drain', desc: 'Blesse aussi les ennemis autour (2 fois le soin), même quand vous êtes en pleine forme.', fx: 'healNova', p: { pct: 2, r: 100 } },
+    { key: 'soif', name: 'Soif', desc: 'Recharge −40 %.', m: { cd: 0.6 } },
+  ],
+  attirance: [
+    { key: 'gouffre', name: 'Gouffre', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'etreinte', name: 'Étreinte', desc: 'Les ennemis attirés restent immobilisés 1,5 s.', h: { stun: 1.5 } },
+    { key: 'explosion', name: 'Explosion de sang', desc: 'L’aspiration finit par une explosion autour de vous (3 fois les dommages).', fx: 'echo', p: { delay: 0.4, pct: 3, knock: 60 } },
+  ],
+  epee_volante: [
+    { key: 'lames', name: 'Lames', desc: '+2 épées.', a: { count: 2 } },
+    { key: 'sanglantes', name: 'Lames sanglantes', desc: 'Rend 6 % des dommages infligés en vie.', h: { leech: 0.06 } },
+    { key: 'lourdes', name: 'Lames lourdes', desc: 'Dommages +60 %, épées 30 % plus grandes.', m: { dmg: 1.6, size: 1.3 } },
+  ],
+  punition: [
+    { key: 'sentence', name: 'Sentence', desc: 'Achève les ennemis (hors boss) qui restent sous 25 % de vie.', h: { execute: 0.25 } },
+    { key: 'large', name: 'Châtiment', desc: 'Frappe aussi à 50 % les ennemis autour de la cible.', h: { splash: { pct: 0.5, r: 90 } } },
+    { key: 'martyr', name: 'Martyr', desc: 'Les PV perdus augmentent deux fois plus les dommages.', m: { rage: 2 } },
+  ],
+  dissolution: [
+    { key: 'abime', name: 'Abîme', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'acide', name: 'Sang acide', desc: 'Dommages +60 %.', m: { dmg: 1.6 } },
+    { key: 'sangsue', name: 'Sangsue', desc: 'Rend 10 % des dommages infligés en vie.', h: { leech: 0.1 } },
+  ],
+  folie_sanguinaire: [
+    { key: 'folie', name: 'Démence', desc: 'Bonus de dommages +80 %.', m: { pow: 1.8 } },
+    { key: 'frenesie', name: 'Frénésie', desc: 'Pendant la Folie, vos sorts se rechargent 30 % plus vite.', fx: 'haste', p: { cd: 0.7 } },
+    { key: 'ivresse', name: 'Ivresse de sang', desc: 'Chaque ennemi tué sous Folie garde au moins 1,5 s d’effet.', fx: 'killKeep', p: { min: 1.5 } },
+  ],
+  // ---- Enutrof
+  lancer_pieces: [
+    { key: 'pluie', name: 'Pluie de pièces', desc: '+2 pièces.', a: { count: 2 } },
+    { key: 'lourde', name: 'Pièce lourde', desc: 'Dommages +60 %.', m: { dmg: 1.6 } },
+    { key: 'ricochet', name: 'Ricochet doré', desc: 'Rebondit sur 2 ennemis proches (60 %).', h: { chain: { n: 2, pct: 0.6, r: 200 } } },
+  ],
+  pelle_animee: [
+    { key: 'pelletee', name: 'Pelletée', desc: 'Ses coups frappent aussi autour à 60 %.', h: { splash: { pct: 0.6, r: 70 } } },
+    { key: 'affutee', name: 'Pelle affûtée', desc: 'Dommages +80 %.', m: { dmg: 1.8 } },
+    { key: 'deux', name: 'Deux pelles', desc: '+1 pelle.', a: { count: 1 } },
+  ],
+  pelle_jugement: [
+    { key: 'verdict', name: 'Verdict', desc: '+20 % de critique ; les critiques immobilisent 1 s.', h: { crit: 0.2, critStun: 1 } },
+    { key: 'sentence', name: 'Large sentence', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'dernier', name: 'Jugement dernier', desc: 'Achève les ennemis sous 20 % de vie (sauf les boss).', h: { execute: 0.2 } },
+  ],
+  maladresse_masse: [
+    { key: 'large', name: 'Grande maladresse', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'desarroi', name: 'Désarroi', desc: 'Ralentit 30 % de plus.', a: { slow: 0.3 } },
+    { key: 'brutale', name: 'Maladresse brutale', desc: 'Dommages ×2,5.', m: { dmg: 2.5 } },
+  ],
+  lancer_pelle: [
+    { key: 'boomerang', name: 'Boomerang', desc: 'La pelle revient vers vous et frappe à l’aller et au retour.', fx: 'boomerang' },
+    { key: 'lourde', name: 'Pelle lourde', desc: 'Dommages +60 % et étourdit 0,5 s.', m: { dmg: 1.6 }, h: { stun: 0.5 } },
+    { key: 'tranchante', name: 'Pelle tranchante', desc: 'Traverse 4 ennemis de plus.', a: { pierce: 4 } },
+  ],
+  pelle_fantomatique: [
+    { key: 'exorcisme', name: 'Exorcisme', desc: 'Chaque coup touche aussi les ennemis autour à 50 %.', h: { splash: { pct: 0.5, r: 70 } } },
+    { key: 'spectres', name: 'Spectres', desc: '+2 pelles.', a: { count: 2 } },
+    { key: 'hantise', name: 'Hantise', desc: 'Un spectre refrappe la cible 1 s plus tard (60 %).', h: { echoHit: { delay: 1, pct: 0.6 } } },
+  ],
+  remblai: [
+    { key: 'large', name: 'Grand remblai', desc: 'Zone +50 %.', m: { radius: 1.5 } },
+    { key: 'enterre', name: 'Enterrement', desc: 'Enracine 1,5 s.', h: { stun: 1.5 } },
+    { key: 'gravats', name: 'Gravats', desc: 'Une seconde pelletée retombe 0,8 s plus tard (60 %).', fx: 'echo', p: { delay: 0.8, pct: 0.6 } },
+  ],
+  force_age: [
+    { key: 'sagesse', name: 'Sagesse', desc: 'Durée +60 %.', m: { dur: 1.6 } },
+    { key: 'renard', name: 'Vieux renard', desc: 'Pendant l’effet, vos sorts se rechargent 30 % plus vite.', fx: 'haste', p: { cd: 0.7 } },
+    { key: 'avarice', name: 'Avarice', desc: 'Pendant l’effet, chaque ennemi tué lâche des kamas.', fx: 'goldBuff' },
+  ],
+  // ---- Roublard
+  tromblon: [
+    { key: 'chevrotine', name: 'Chevrotine', desc: '+2 plombs.', a: { count: 2 } },
+    { key: 'scie', name: 'Canon scié', desc: 'Dommages +50 %, portée −20 %.', m: { dmg: 1.5, range: 0.8 } },
+    { key: 'incendiaire', name: 'Balles incendiaires', desc: 'Les ennemis touchés brûlent 2 s.', h: { burn: { pct: 0.4, dur: 2 } } },
+  ],
+  bombe_explosive: [
+    { key: 'grosse', name: 'Grosse bombe', desc: 'Explosion 50 % plus large.', m: { radius: 1.5 } },
+    { key: 'fragmentation', name: 'Fragmentation', desc: 'Après l’explosion, 4 petites charges (50 %) restent autour.', fx: 'minefield' },
+    { key: 'chaine', name: 'Réaction en chaîne', desc: 'Une bombe qui explose fait sauter les bombes voisines.', fx: 'trapChain' },
+  ],
+  pulsar: [
+    { key: 'double', name: 'Pulsar double', desc: 'Une seconde onde suit la première (70 %).', fx: 'echo', p: { delay: 0.5, pct: 0.7 } },
+    { key: 'sonnant', name: 'Pulsar sonnant', desc: 'Étourdit 0,8 s.', h: { stun: 0.8 } },
+    { key: 'geant', name: 'Pulsar géant', desc: 'Zone +60 %.', m: { radius: 1.6 } },
+  ],
+  kaboom: [
+    { key: 'chaine', name: 'Kaboom en chaîne', desc: 'Chaque explosion rebondit sur 3 ennemis proches (50 %).', fx: 'chain' },
+    { key: 'gros', name: 'Gros kaboom', desc: 'Zone +50 %, dommages +30 %.', m: { radius: 1.5, dmg: 1.3 } },
+    { key: 'retarde', name: 'Kaboom retardé', desc: 'Une seconde explosion suit 1 s plus tard (80 %).', fx: 'echo', p: { delay: 1, pct: 0.8 } },
+  ],
+  dagues_boomerang: [
+    { key: 'retour', name: 'Retour', desc: 'Les dagues reviennent vers vous et frappent à l’aller et au retour.', fx: 'boomerang' },
+    { key: 'dagues', name: 'Éventail', desc: '+2 dagues.', a: { count: 2 } },
+    { key: 'poison', name: 'Dagues empoisonnées', desc: 'Empoisonnent 3 s.', h: { burn: { pct: 0.5, dur: 3 } } },
+  ],
+  arquebuse: [
+    { key: 'explosive', name: 'Balle explosive', desc: 'Frappe aussi les ennemis autour de la cible à 60 %.', h: { splash: { pct: 0.6, r: 80 } } },
+    { key: 'grace', name: 'Coup de grâce', desc: 'Achève les ennemis sous 20 % de vie (sauf les boss).', h: { execute: 0.2 } },
+    { key: 'perforant', name: 'Tir perforant', desc: 'Traverse 6 ennemis de plus.', a: { pierce: 6 } },
+  ],
+  roublabot: [
+    { key: 'explosif', name: 'Roublabot explosif', desc: 'Ses coups frappent aussi autour à 50 %.', h: { splash: { pct: 0.5, r: 70 } } },
+    { key: 'deux', name: 'Deux robots', desc: '+1 Roublabot.', a: { count: 1 } },
+    { key: 'lourd', name: 'Robot lourd', desc: 'Dommages +70 %.', m: { dmg: 1.7 } },
+  ],
+  botte: [
+    { key: 'circulaire', name: 'Botte circulaire', desc: 'Frappe tout autour de vous.', fx: 'full' },
+    { key: 'sonnante', name: 'Botte sonnante', desc: 'Étourdit 0,8 s.', h: { stun: 0.8 } },
+    { key: 'lieues', name: 'Botte de sept lieues', desc: 'Repousse deux fois plus, dommages +50 %.', m: { knock: 2, dmg: 1.5 } },
+  ],
+};
+for (const id in AWAKENINGS) if (SPELLS[id]) SPELLS[id].branches = AWAKENINGS[id];
+
 const PASSIVES = {
   vitalite:     { name: 'Vitalité',     icon: '❤', color: '#ff6b6b', desc: '+20% PV max', max: 5 },
   force:        { name: 'Force',        icon: '⚔', color: '#c8763a', desc: '+10% dégâts', max: 5 },
