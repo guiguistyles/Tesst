@@ -1,6 +1,6 @@
 """Point d'entrée.
 
-  python -m trading.main tick        # un passage : prix + actus + décisions des bots (à lancer toutes les 2 h)
+  python -m trading.main tick        # un passage : prix + actus + décisions des bots (à lancer toutes les heures)
   python -m trading.main backtest    # rejoue les 30 derniers jours pour avoir un premier classement
   python -m trading.main reset       # repart de zéro
 Ajouter --synthetic pour tester avec des prix inventés (sans internet).

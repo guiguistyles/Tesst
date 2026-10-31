@@ -51,7 +51,7 @@ Le réalisme est intégré : 0,4 % de frais et 0,1 % d'écart de prix sur chaque
 
 ## Comment ça tourne
 
-GitHub Actions lance un passage **toutes les 2 heures** (`.github/workflows/trading-bots.yml`).
+GitHub Actions lance un passage **toutes les heures** (`.github/workflows/trading-bots.yml`).
 Chaque passage traite toutes les bougies d'1 h manquées et enregistre l'état dans `state/arena.json`.
 
 > ⚠️ GitHub n'exécute les tâches programmées que sur la **branche principale** (`main`).
