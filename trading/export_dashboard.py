@@ -13,6 +13,7 @@ from pathlib import Path
 from . import config
 from .strategies import STRATEGIES
 
+MAX_TRADES = 400  # derniers trades gardés par simulation
 RUNS = {"direct": config.STATE_PATH, "rejeu": config.STATE_PATH.parent / "backtest.json"}
 MAX_POINTS = 90
 
@@ -45,7 +46,7 @@ def bot_row(run, b):
 def export(out_dir):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    bots, equity, market, events = [], [], [], []
+    bots, equity, market, events, trades = [], [], [], [], []
     for run, path in RUNS.items():
         if not path.exists():
             continue
@@ -60,6 +61,24 @@ def export(out_dir):
             if sample[-1] != pts[-1]:
                 sample.append(pts[-1])
             equity += [{"run": run, "bot_id": b["id"], "group": _group(b), "at": iso(t), "equity": e} for t, e in sample]
+        run_trades = []
+        for b in s["bots"]:
+            base = {"run": run, "bot_id": b["id"], "name": b["name"], "group": _group(b), "asset": b["asset"]}
+            for t in b["trades"]:
+                cost = t.get("cost") or config.CAPITAL
+                run_trades.append({**base, "trade_id": f"{b['id']}-{t['in']}", "status": "fermé",
+                                   "opened_at": iso(t["in"]), "closed_at": iso(t["out"]),
+                                   "buy": t["buy"], "sell": t["sell"], "pnl": t["pnl"],
+                                   "pnl_pct": round(t["pnl"] / cost, 4), "reason": t["why"]})
+            if b["alive"] and b["qty"] > 0 and b.get("entry_ts"):
+                pnl = b["equity"] - b["entry_cost"]
+                run_trades.append({**base, "trade_id": f"{b['id']}-{b['entry_ts']}", "status": "en cours",
+                                   "opened_at": iso(b["entry_ts"]), "closed_at": None,
+                                   "buy": round(b["entry_price"], 6), "sell": None, "pnl": round(pnl, 4),
+                                   "pnl_pct": round(pnl / b["entry_cost"], 4) if b["entry_cost"] else None,
+                                   "reason": None})
+        run_trades.sort(key=lambda t: t["closed_at"] or "9999", reverse=True)
+        trades += run_trades[:MAX_TRADES]
         news = (s.get("news") or {}).get("scores", {})
         for asset, m in (s.get("market") or {}).items():
             if m and asset in config.MARKETS:
@@ -70,12 +89,13 @@ def export(out_dir):
                                "chg_24h": round(m["chg_24h"], 4), "chg_7d": round(m["chg_7d"], 4),
                                "vol_daily": round(m["vol_daily"], 4), "trend": m["trend"],
                                "sentiment": news.get(asset) if run == "direct" and s.get("news", {}).get("ok") else None,
-                               "updated_at": iso(s["last_tick_ts"]), "started_at": iso(s["created_ts"])})
+                               "updated_at": iso(s["last_tick_ts"]), "started_at": iso(s["created_ts"]),
+                               "candle_min": config.CANDLE_MIN})
         groups = {b["id"]: _group(b) for b in s["bots"]}
         for i, ev in enumerate(reversed(s["events"][-60:])):
             events.append({"run": run, "n": i, "at": iso(ev["ts"]), "type": ev["type"],
                            "group": groups.get(ev["bot"]), "message": ev["msg"]})
-    for name, rows in (("bots", bots), ("equity", equity), ("market", market), ("events", events)):
+    for name, rows in (("bots", bots), ("equity", equity), ("market", market), ("events", events), ("trades", trades)):
         (out_dir / f"{name}.json").write_text(json.dumps(rows, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         print(f"{name}.json : {len(rows)} lignes")
 

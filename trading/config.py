@@ -50,10 +50,14 @@ def assets_of(group):
     return [a for a, m in MARKETS.items() if m[0] == group]
 
 
+# Durée d'une bougie : les bots prennent une décision à chaque bougie fermée.
+CANDLE_MIN = 15
+CANDLE = CANDLE_MIN * 60   # en secondes
+
 CAPITAL = 50.0          # argent virtuel de départ de chaque bot (€)
 FEE = 0.004             # frais par ordre (0,4 %, proche d'une plateforme réelle)
 SLIPPAGE = 0.001        # écart de prix à l'exécution (0,1 %)
-WINDOW = 300            # nb de bougies (1 h) d'historique données aux stratégies
+WINDOW = 300            # nb de bougies d'historique données aux stratégies
 
 # --- Points de vie ---
 HP_START = 100
@@ -73,4 +77,4 @@ MAX_PER_GROUP = 18        # population maximum d'une équipe (clones compris)
 
 MAX_EVENTS = 300
 MAX_TRADES_KEPT = 40
-MAX_EQUITY_POINTS = 400
+MAX_EQUITY_POINTS = 800   # un point par heure au plus : ~33 jours d'historique

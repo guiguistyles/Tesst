@@ -8,7 +8,7 @@ from .strategies import CONTROLS, STRATEGIES, initial_population, min_history, m
 
 # ---------------------------------------------------------------- création
 
-STATE_VERSION = 2
+STATE_VERSION = 3  # 3 : bougies de 15 minutes
 
 
 def team_assets():
@@ -80,7 +80,8 @@ def sell(bot, price, ts, reason):
     st["wins" if pnl > 0 else "losses"] += 1
     st["best"], st["worst"] = max(st["best"], pnl), min(st["worst"], pnl)
     bot["trades"].append({"in": bot["entry_ts"], "out": ts, "buy": round(bot["entry_price"], 6),
-                          "sell": round(price, 6), "pnl": round(pnl, 4), "why": reason})
+                          "sell": round(price, 6), "cost": round(bot["entry_cost"], 4),
+                          "pnl": round(pnl, 4), "why": reason})
     del bot["trades"][:-config.MAX_TRADES_KEPT]
     bot["cash"], bot["qty"], bot["entry_cost"], bot["entry_price"], bot["entry_ts"] = proceeds, 0.0, 0.0, 0.0, None
     return pnl
@@ -162,7 +163,13 @@ def advance(state, data, ts_limit, sentiment, status, log=print, series=None):
                 break
             bot["last_ts"] = ts
         if bot["alive"] and bot["equity_hist"][-1][0] != bot["last_ts"]:
-            bot["equity_hist"].append([bot["last_ts"], round(bot["equity"], 2)])
+            point = [bot["last_ts"], round(bot["equity"], 2)]
+            hist = bot["equity_hist"]
+            # un point par heure au plus : le dernier point de l'heure en cours est remplacé
+            if len(hist) > 1 and hist[-1][0] // 3600 == point[0] // 3600:
+                hist[-1] = point
+            else:
+                hist.append(point)
             del bot["equity_hist"][:-config.MAX_EQUITY_POINTS]
 
 

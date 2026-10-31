@@ -17,7 +17,7 @@ def _get_json(url, timeout=20):
 
 
 def fetch_kraken(pair):
-    data = _get_json(f"https://api.kraken.com/0/public/OHLC?pair={pair}&interval=60")
+    data = _get_json(f"https://api.kraken.com/0/public/OHLC?pair={pair}&interval={config.CANDLE_MIN}")
     if data.get("error"):
         raise RuntimeError(f"Kraken: {data['error']}")
     key = next(k for k in data["result"] if k != "last")
@@ -27,17 +27,17 @@ def fetch_kraken(pair):
 
 
 def fetch_coinbase(product):
-    rows = _get_json(f"https://api.exchange.coinbase.com/products/{product}/candles?granularity=3600")
+    rows = _get_json(f"https://api.exchange.coinbase.com/products/{product}/candles?granularity={config.CANDLE}")
     now = time.time()
     out = [{"t": int(r[0]), "l": float(r[1]), "h": float(r[2]), "o": float(r[3]),
-            "c": float(r[4]), "v": float(r[5])} for r in rows if r[0] + 3600 <= now]
+            "c": float(r[4]), "v": float(r[5])} for r in rows if r[0] + config.CANDLE <= now]
     return sorted(out, key=lambda c: c["t"])
 
 
-def fetch_yahoo(ticker, rng="6mo"):
-    """Bougies d'1 h d'une action, d'un ETF ou d'une matière première (Yahoo Finance)."""
+def fetch_yahoo(ticker, rng="60d"):
+    """Bougies d'une action, d'un ETF ou d'une matière première (Yahoo Finance, 60 jours max en 15 min)."""
     from urllib.parse import quote
-    data = _get_json(f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(ticker)}?interval=1h&range={rng}")
+    data = _get_json(f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(ticker)}?interval={config.CANDLE_MIN}m&range={rng}")
     res = (data.get("chart") or {}).get("result")
     if not res:
         raise RuntimeError(f"Yahoo: {(data.get('chart') or {}).get('error')}")
@@ -47,7 +47,7 @@ def fetch_yahoo(ticker, rng="6mo"):
     out = []
     for i, t in enumerate(r.get("timestamp") or []):
         o, h, l, c = q["open"][i], q["high"][i], q["low"][i], q["close"][i]
-        if None in (o, h, l, c) or t + 3600 > now:
+        if None in (o, h, l, c) or t + config.CANDLE > now:
             continue  # trou dans les données, ou bougie pas encore fermée
         out.append({"t": int(t), "o": float(o), "h": float(h), "l": float(l), "c": float(c),
                     "v": float(q["volume"][i] or 0)})
@@ -60,7 +60,7 @@ def synthetic(asset, n=720, end_ts=None, seed=None):
     start = {"BTC": 60000.0, "ETH": 2500.0, "SOL": 140.0, "DOGE": 0.15, "XRP": 0.5}.get(asset, 100.0)
     group = config.group_of(asset)
     vol = {"crypto": 0.007, "altcoins": 0.011, "actions": 0.004, "matieres": 0.005}[group]
-    end_ts = end_ts or int(time.time()) // 3600 * 3600 - 3600
+    end_ts = end_ts or int(time.time()) // config.CANDLE * config.CANDLE - config.CANDLE
     price, out = start, []
     drift = rng.uniform(-0.0003, 0.0003)
     for i in range(n):
@@ -70,7 +70,7 @@ def synthetic(asset, n=720, end_ts=None, seed=None):
         price = max(0.01, price * math.exp(drift + rng.gauss(0, vol)))
         h = max(o, price) * (1 + abs(rng.gauss(0, vol / 3)))
         l = min(o, price) * (1 - abs(rng.gauss(0, vol / 3)))
-        out.append({"t": end_ts - (n - 1 - i) * 3600, "o": o, "h": h, "l": l, "c": price, "v": 1.0})
+        out.append({"t": end_ts - (n - 1 - i) * config.CANDLE, "o": o, "h": h, "l": l, "c": price, "v": 1.0})
     return out
 
 
