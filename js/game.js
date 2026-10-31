@@ -386,8 +386,7 @@ const Game = (() => {
       p.shield -= a; d -= a;
     }
     if (d <= 0) return;
-    let lost = 0;
-    for (const g of S.glyphs) if (g.stack && !g.leaving && lost < 3) { g.leaving = true; g.life = 0.4; lost++; }
+    for (const sp of S.spells) if (sp.fx === 'stack') sp.stacks = 0; // Accumulation : un coup reçu remet le compte à zéro
     p.hp -= d;
     p.hurt = 0.15;
     if (p.hp <= 0) {
@@ -896,27 +895,30 @@ const Game = (() => {
       }
       case 'glyph': {
         // posés dans la zone autour du personnage, sur les groupes d'ennemis les plus denses
-        const r = s.radius * area, spots = crowdSpots(p.x, p.y, s.range || 260, r, Math.round(s.count || 1));
-        if (!spots.length) return false;
         const stack = sp.fx === 'stack';
-        let boosted = false;
+        // Accumulation (comme la Pluie Glyphique de ZaapRush) : chaque lancer repose tous les glyphes, neufs,
+        // avec un de plus que le lancer précédent tant qu'on n'est pas touché. Au-delà de 14, chaque glyphe
+        // en trop devient +8 % de dommages et +2 % de taille pour tous (taille +40 % au plus).
+        const want = Math.round(s.count || 1) + (stack ? sp.stacks || 0 : 0);
+        const extra = stack ? Math.max(0, want - STACK_MAX) : 0;
+        const r = s.radius * area * (1 + Math.min(0.4, 0.02 * extra)), dmg = s.dmg * (1 + 0.08 * extra);
+        const n = Math.min(want, STACK_MAX), range = s.range || 260;
+        const spots = crowdSpots(p.x, p.y, range, r, n);
+        if (!spots.length) return false;
+        // pas assez de groupes d'ennemis : le reste est réparti autour du personnage
+        for (let tries = 0; spots.length < n && tries < n * 12; tries++) {
+          const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * range;
+          const at = clampArena(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, 20);
+          if (spots.every((o) => d2(o.x, o.y, at.x, at.y) > r * r * 0.8)) spots.push(at);
+        }
+        if (stack) S.glyphs.forEach((g) => { if (g.src === sp && g.life > 0.4) g.life = 0.4; }); // les anciens s'effacent
         for (const at of spots) {
-          if (stack) {
-            const mine = S.glyphs.filter((g) => g.src === sp && g.stack && !g.leaving);
-            if (mine.length >= STACK_MAX) {
-              // Accumulation pleine : le plus ancien glyphe s'efface et le nouveau prend la taille et les
-              // dommages actuels du sort ; chaque lancer renforce aussi tous les glyphes.
-              mine[0].leaving = true; mine[0].life = 0.4;
-              if (!boosted) {
-                boosted = true;
-                sp.stackBonus = (sp.stackBonus || 0) + 1;
-                addText(p.x, p.y - 44, 'Glyphes +' + sp.stackBonus, def.color);
-              }
-            }
-          }
-          const life = stack ? Infinity : s.duration;
-          S.glyphs.push({ src: sp, stack, fx: sp.fx, x: at.x, y: at.y, r, dmg: s.dmg, tick: s.tick, tt: 0, life, max: life, color: def.color });
+          S.glyphs.push({ src: sp, fx: sp.fx, x: at.x, y: at.y, r, dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
           S.fx.push({ type: 'ring', x: at.x, y: at.y, r, t: 0, life: 0.35, color: def.color });
+        }
+        if (stack) {
+          sp.stacks = (sp.stacks || 0) + 1;
+          if (want >= STACK_MAX) addText(p.x, p.y - 44, extra ? `Glyphes ×${n} +${extra}` : `Glyphes ×${n}`, def.color);
         }
         if (sp.fx === 'follow') S.glyphs.push({ src: sp, follow: true, x: p.x, y: p.y, r: r * 0.6, dmg: s.dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
         return true;
@@ -1122,13 +1124,10 @@ const Game = (() => {
 
   function updateZones(dt) {
     for (const g of S.glyphs) {
-      if (!g.stack || g.leaving) g.life -= dt; // Accumulation : les glyphes restent jusqu'à être remplacés
+      g.life -= dt;
       g.tt -= dt;
       if (g.follow) { g.x = S.p.x; g.y = S.p.y; }
-      // Accumulation pleine : +8 % de dommages et +2 % de taille par lancer (taille +40 % au plus)
-      const bonus = g.stack ? g.src.stackBonus || 0 : 0;
-      const r = g.r * Math.min(1.4, 1 + 0.02 * bonus), dmg = g.dmg * (1 + 0.08 * bonus);
-      g.drawR = r;
+      const r = g.r, dmg = g.dmg;
       if (g.tt <= 0) {
         g.tt = g.tick;
         query(g.x, g.y, r, (e) => {
@@ -1360,7 +1359,7 @@ const Game = (() => {
       const a = Math.min(1, g.life / 0.4);
       ctx.globalAlpha = 0.25 * a;
       ctx.fillStyle = g.color;
-      const gr = g.drawR || g.r; // taille renforcée par l'Accumulation
+      const gr = g.r;
       isoEllipse(g.x, g.y, gr); ctx.fill();
       ctx.globalAlpha = 0.8 * a;
       ctx.strokeStyle = g.color; ctx.lineWidth = 3;

@@ -434,7 +434,7 @@ const SPELLS = {
   attaque_naturelle: { name: 'Attaque Naturelle', icon: 'AN', color: '#9ef01a', type: 'projectile', desc: 'Volée de pétales qui explosent à l’impact.', base: { dmg: 11, cd: 1.1, count: 2, pierce: 0, speed: 420, range: 460, size: 6, explode: 32 } },
   flamiche: { name: 'Flamiche', icon: 'Fl', color: '#ff7b2f', type: 'projectile', desc: 'Petite flamme rapide.', base: { dmg: 9, cd: 0.6, count: 1, pierce: 0, speed: 600, range: 460, size: 4 } },
   glyphe_agressif: { name: 'Glyphe Agressif', icon: 'GA', color: '#ff4f6d', type: 'glyph', desc: 'Glyphe court mais très douloureux.', base: { dmg: 14, cd: 6, radius: 70, duration: 2.5, tick: 0.35 } , ranks: ['cd', 'dmg', 'duration', 'count'], branches: [
-    { key: 'accumulation', name: 'Accumulation', fx: 'stack', desc: 'Les glyphes ne s’effacent plus : chaque lancer en ajoute, jusqu’à 14. Ensuite, chaque lancer remplace le plus ancien par un glyphe neuf (taille et dommages actuels du sort) et renforce tous vos glyphes (+8 % de dommages, +2 % de taille, taille +40 % au plus). Chaque coup reçu efface les 3 plus anciens.' },
+    { key: 'accumulation', name: 'Accumulation', fx: 'stack', desc: 'Chaque lancer repose tous vos glyphes avec un de plus que le précédent, tant que vous n’êtes pas touché (14 au plus). Au-delà, chaque glyphe en trop donne +8 % de dommages et +2 % de taille à tous (taille +40 % au plus). Un coup reçu remet le compte à zéro.' },
     { key: 'empreinte', name: 'Empreinte', fx: 'imprint', desc: 'Un ennemi tué sur le glyphe laisse sa propre petite marque brûlante pendant 30 s (20 à la fois au plus).' },
     { key: 'detonation', name: 'Détonation', fx: 'burst', desc: 'À la fin de sa durée, le glyphe explose et inflige 4 fois ses dommages dans sa zone.' },
   ] },
