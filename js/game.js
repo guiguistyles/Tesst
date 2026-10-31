@@ -1008,10 +1008,11 @@ const Game = (() => {
       case 'glyph': {
         // posés dans la zone autour du personnage, sur les groupes d'ennemis les plus denses
         const stack = sp.fx === 'stack';
-        // Accumulation (comme la Pluie Glyphique de ZaapRush) : chaque lancer repose tous les glyphes, neufs,
-        // avec un de plus que le lancer précédent tant qu'on n'est pas touché. Au-delà de 14, chaque glyphe
-        // en trop devient +8 % de dommages et +2 % de taille pour tous (taille +40 % au plus).
-        const want = Math.round(s.count || 1) + (stack ? sp.stacks || 0 : 0);
+        // Accumulation (d'après la Pluie Glyphique de ZaapRush) : chaque lancer repose tous les glyphes, neufs,
+        // en ajoutant à chaque fois le nombre de glyphes du sort (2, 4, 6… pour 2 par lancer) tant qu'on n'est pas
+        // touché. Au-delà de 14, chaque glyphe en trop devient +8 % de dommages et +2 % de taille pour tous (+40 % au plus).
+        const base = Math.round(s.count || 1);
+        const want = stack ? base * ((sp.stacks || 0) + 1) : base;
         const extra = stack ? Math.max(0, want - STACK_MAX) : 0;
         const r = s.radius * area * (1 + Math.min(0.4, 0.02 * extra)), dmg = s.dmg * (1 + 0.08 * extra);
         const n = Math.min(want, STACK_MAX);
