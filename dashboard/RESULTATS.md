@@ -1,11 +1,11 @@
 # Arène des bots
 
-_Mis à jour le 01/11 18:15 UTC · 50 € virtuels par bot · argent fictif_
+_Mis à jour le 01/11 19:15 UTC · 50 € virtuels par bot · argent fictif_
 
 | # | Bot | Équipe | Capital | Gain | PV | Trades | Pire chute | Statut |
 |---|---|---|---:|---:|---:|---:|---:|---|
 | 1 | #30 Explosion de volatilité (AVAX) | Altcoins | 50.84 € | +1.7 % | 107 | 2 | 2.5 % | vivant |
-| 2 | #29 Écart statistique (LINK) | Altcoins | 50.73 € | +1.5 % | 107 | 1 | 0.5 % | vivant |
+| 2 | #29 Écart statistique (LINK) | Altcoins | 50.60 € | +1.2 % | 107 | 1 | 0.5 % | vivant |
 | 3 | #08 Cassure de plus haut (SOL) | Cryptos principales | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
 | 4 | #10 Élan (ETH) | Cryptos principales | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
 | 5 | #11 Acheteur de creux (SOL) | Cryptos principales | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
@@ -47,22 +47,22 @@ _Mis à jour le 01/11 18:15 UTC · 50 € virtuels par bot · argent fictif_
 | 41 | #62 Explosion de volatilité (ARGENT) | Matières premières | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
 | 42 | #63 Lecteur d'actus (WTI) | Matières premières | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
 | 43 | #64 Actus + tendance (BRENT) | Matières premières | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
-| 44 | #01 Acheter et garder (BTC) (témoin) | Cryptos principales | 49.95 € | -0.1 % | ∞ | 0 | 0.8 % | vivant |
+| 44 | #01 Acheter et garder (BTC) (témoin) | Cryptos principales | 49.91 € | -0.2 % | ∞ | 0 | 0.8 % | vivant |
 | 45 | #18 Pile ou face (ADA) (témoin) | Altcoins | 49.82 € | -0.4 % | ∞ | 1 | 1.0 % | vivant |
-| 46 | #21 Chasseur RSI (DOGE) | Altcoins | 49.76 € | -0.5 % | 100 | 0 | 0.5 % | vivant |
-| 47 | #17 Acheter et garder (XRP) (témoin) | Altcoins | 49.74 € | -0.5 % | ∞ | 0 | 0.8 % | vivant |
-| 48 | #13 Écart statistique (ETH) | Cryptos principales | 49.73 € | -0.5 % | 95 | 1 | 0.5 % | vivant |
-| 49 | #06 Retour Bollinger (BTC) | Cryptos principales | 49.66 € | -0.7 % | 93 | 1 | 0.7 % | vivant |
-| 50 | #31 Lecteur d'actus (XRP) | Altcoins | 49.64 € | -0.7 % | 100 | 0 | 0.7 % | vivant |
-| 51 | #12 Tendance + RSI (BTC) | Cryptos principales | 49.61 € | -0.8 % | 92 | 1 | 0.8 % | vivant |
+| 46 | #17 Acheter et garder (XRP) (témoin) | Altcoins | 49.68 € | -0.6 % | ∞ | 0 | 1.0 % | vivant |
+| 47 | #21 Chasseur RSI (DOGE) | Altcoins | 49.62 € | -0.8 % | 100 | 0 | 0.9 % | vivant |
+| 48 | #31 Lecteur d'actus (XRP) | Altcoins | 49.59 € | -0.8 % | 100 | 0 | 1.0 % | vivant |
+| 49 | #13 Écart statistique (ETH) | Cryptos principales | 49.55 € | -0.9 % | 95 | 1 | 1.0 % | vivant |
+| 50 | #06 Retour Bollinger (BTC) | Cryptos principales | 49.49 € | -1.0 % | 93 | 1 | 1.2 % | vivant |
+| 51 | #12 Tendance + RSI (BTC) | Cryptos principales | 49.45 € | -1.1 % | 92 | 1 | 1.3 % | vivant |
 | 52 | #23 Cassure Bollinger (LINK) | Altcoins | 49.42 € | -1.2 % | 87 | 2 | 2.8 % | vivant |
 | 53 | #24 Cassure de plus haut (AVAX) | Altcoins | 49.30 € | -1.4 % | 86 | 2 | 2.9 % | vivant |
-| 54 | #02 Pile ou face (ETH) (témoin) | Cryptos principales | 49.27 € | -1.5 % | ∞ | 1 | 1.5 % | vivant |
-| 55 | #05 Chasseur RSI (SOL) | Cryptos principales | 49.22 € | -1.6 % | 100 | 0 | 1.6 % | vivant |
-| 56 | #22 Retour Bollinger (DOT) | Altcoins | 49.18 € | -1.6 % | 84 | 2 | 2.0 % | vivant |
-| 57 | #04 Croisement EMA (ETH) | Cryptos principales | 49.08 € | -1.8 % | 82 | 2 | 2.5 % | vivant |
+| 54 | #04 Croisement EMA (ETH) | Cryptos principales | 49.08 € | -1.8 % | 82 | 2 | 2.5 % | vivant |
+| 55 | #02 Pile ou face (ETH) (témoin) | Cryptos principales | 49.06 € | -1.9 % | ∞ | 2 | 1.9 % | vivant |
+| 56 | #05 Chasseur RSI (SOL) | Cryptos principales | 48.97 € | -2.1 % | 100 | 0 | 2.2 % | vivant |
+| 57 | #22 Retour Bollinger (DOT) | Altcoins | 48.94 € | -2.1 % | 84 | 2 | 2.1 % | vivant |
 | 58 | #19 Croisement de moyennes (XRP) | Altcoins | 48.88 € | -2.2 % | 78 | 2 | 2.2 % | vivant |
-| 59 | #03 Croisement de moyennes (BTC) | Cryptos principales | 48.81 € | -2.4 % | 77 | 2 | 2.8 % | vivant |
+| 59 | #03 Croisement de moyennes (BTC) | Cryptos principales | 48.52 € | -3.0 % | 70 | 3 | 3.0 % | vivant |
 | 60 | #20 Croisement EMA (ADA) | Altcoins | 48.51 € | -3.0 % | 70 | 2 | 3.0 % | vivant |
 | 61 | #28 Tendance + RSI (DOT) | Altcoins | 48.04 € | -3.9 % | 61 | 3 | 3.9 % | vivant |
 | 62 | #07 Cassure Bollinger (ETH) | Cryptos principales | 46.51 € | -7.0 % | 30 | 6 | 7.0 % | vivant |
