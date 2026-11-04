@@ -30,6 +30,19 @@ def position(b):
     return "investi" if b["qty"] > 0 else "à découvert" if b["qty"] < 0 else "en euros"
 
 
+def gain_24h(b):
+    """Variation du capital sur les 24 dernières heures (depuis la naissance pour un bot plus jeune)."""
+    pts = b["equity_hist"]
+    if not b["alive"] or not pts:
+        return None
+    ref = pts[0][1]
+    for t, e in pts:
+        if t > b["last_ts"] - 86400:
+            break
+        ref = e
+    return round(b["equity"] / ref - 1, 4) if ref else None
+
+
 def bot_row(run, b):
     st = b["stats"]
     return {
@@ -38,7 +51,7 @@ def bot_row(run, b):
         "side": SIDES[b.get("side", "long")],
         "asset": b["asset"], "status": "vivant" if b["alive"] else "mort",
         "control": b["control"], "equity": round(b["equity"], 2),
-        "gain_pct": round(b["equity"] / config.CAPITAL - 1, 4),
+        "gain_pct": round(b["equity"] / config.CAPITAL - 1, 4), "gain_24h": gain_24h(b),
         "hp": None if b["control"] else round(max(0.0, b["hp"]), 1),
         "trades": st["trades"], "wins": st["wins"],
         "max_drawdown": round(b["max_drawdown"], 4),
