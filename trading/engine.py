@@ -3,7 +3,8 @@ import random
 from bisect import bisect_right
 
 from . import config, guardian
-from .strategies import CONTROLS, STRATEGIES, initial_population, min_history, mutate
+from .strategies import (CONTROLS, STRATEGIES, initial_population, min_history, mutate,
+                         side_population, strategy_label)
 
 
 # ---------------------------------------------------------------- création
@@ -22,14 +23,28 @@ def init_state(ts, seed=42):
         new_bot(state, strat, asset, dict(params), sl, tp, ts)
     log_event(state, ts, "start", None,
               f"{len(state['bots'])} bots créés en {len(config.GROUPS)} équipes, avec {config.CAPITAL:.0f} € virtuels chacun")
+    add_side_bots(state, ts)
     return state
 
 
-def new_bot(state, strategy, asset, params, stop_loss, take_profit, ts, parent=None, generation=0):
+def add_side_bots(state, ts):
+    """Ajoute les bots qui parient sur la baisse (ou dans les deux sens). Une seule fois par arène."""
+    if state.get("sides_added"):
+        return
+    n = 0
+    for group, strat, asset, params, sl, tp, side in side_population(team_assets()):
+        new_bot(state, strat, asset, dict(params), sl, tp, ts, side=side)
+        n += 1
+    state["sides_added"] = True
+    log_event(state, ts, "start", None,
+              f"{n} nouveaux bots arrivent : ils peuvent parier sur la baisse (↓) ou dans les deux sens (↕)")
+
+
+def new_bot(state, strategy, asset, params, stop_loss, take_profit, ts, parent=None, generation=0, side="long"):
     state["next_id"] += 1
     bid = state["next_id"]
     bot = {
-        "id": bid, "name": f"#{bid:02d} {STRATEGIES[strategy][1]} ({asset})",
+        "id": bid, "name": f"#{bid:02d} {strategy_label(strategy, side)} ({asset})", "side": side,
         "group": config.group_of(asset), "strategy": strategy, "asset": asset, "params": params,
         "stop_loss": stop_loss, "take_profit": take_profit,
         "control": strategy in CONTROLS, "parent": parent, "generation": generation,
@@ -67,11 +82,39 @@ def buy(bot, price, ts):
     bot["stats"]["fees"] += fee
 
 
-def sell(bot, price, ts, reason):
+def open_short(bot, price, ts):
+    """Vente à découvert : on vend des parts empruntées, on les rachètera plus tard."""
     fill = price * (1 - config.SLIPPAGE)
-    gross = bot["qty"] * fill
-    fee = gross * config.FEE
-    proceeds = gross - fee
+    fee = bot["cash"] * config.FEE
+    notional = bot["cash"] - fee
+    bot["qty"] = -notional / fill
+    bot["entry_cost"], bot["entry_price"], bot["entry_ts"] = bot["cash"], price, ts
+    bot["cash"] += notional  # garantie + produit de la vente (bloqués jusqu'au rachat)
+    bot["stats"]["fees"] += fee
+
+
+def borrow_fee(bot, price):
+    """Frais d'emprunt d'une position à découvert, prélevés à chaque bougie."""
+    if bot["qty"] < 0:
+        fee = -bot["qty"] * price * config.SHORT_BORROW_DAILY * config.CANDLE / 86400
+        bot["cash"] -= fee
+        bot["stats"]["fees"] += fee
+
+
+def sell(bot, price, ts, reason):
+    """Ferme la position : revend (pari sur la hausse) ou rachète (pari sur la baisse)."""
+    if bot["qty"] < 0:
+        fill = price * (1 + config.SLIPPAGE)
+        cost = -bot["qty"] * fill
+        fee = cost * config.FEE
+        proceeds = bot["cash"] - cost - fee
+        side = "short"
+    else:
+        fill = price * (1 - config.SLIPPAGE)
+        gross = bot["qty"] * fill
+        fee = gross * config.FEE
+        proceeds = gross - fee
+        side = "long"
     pnl = proceeds - bot["entry_cost"]
     st = bot["stats"]
     st["trades"] += 1
@@ -81,7 +124,7 @@ def sell(bot, price, ts, reason):
     st["best"], st["worst"] = max(st["best"], pnl), min(st["worst"], pnl)
     bot["trades"].append({"in": bot["entry_ts"], "out": ts, "buy": round(bot["entry_price"], 6),
                           "sell": round(price, 6), "cost": round(bot["entry_cost"], 4),
-                          "pnl": round(pnl, 4), "why": reason})
+                          "pnl": round(pnl, 4), "why": reason, "side": side})
     del bot["trades"][:-config.MAX_TRADES_KEPT]
     bot["cash"], bot["qty"], bot["entry_cost"], bot["entry_price"], bot["entry_ts"] = proceeds, 0.0, 0.0, 0.0, None
     return pnl
@@ -104,6 +147,18 @@ def _series(data):
     return out
 
 
+def _inverted(s):
+    """Prix « retourné » (1 / prix) : la même stratégie y voit une baisse comme une hausse."""
+    if "inv" not in s:
+        s["inv"] = {"c": [1 / x for x in s["c"]], "h": [1 / x for x in s["l"]], "l": [1 / x for x in s["h"]]}
+    return s["inv"]
+
+
+def _signal(fn, src, lo, i, bot, in_pos, entry, sentiment, rng):
+    ctx = {"in_position": in_pos, "entry_price": entry, "sentiment": sentiment, "rng": rng}
+    return fn(src["c"][lo:i + 1], src["h"][lo:i + 1], src["l"][lo:i + 1], bot["params"], ctx)
+
+
 def advance(state, data, ts_limit, sentiment, status, log=print, series=None):
     """Fait vivre chaque bot bougie par bougie jusqu'à ts_limit."""
     series = series or _series(data)
@@ -118,9 +173,12 @@ def advance(state, data, ts_limit, sentiment, status, log=print, series=None):
         need = min_history(bot["params"])
         start, end = bisect_right(s["t"], bot["last_ts"]), bisect_right(s["t"], ts_limit)
         can_buy_market = status.get(bot["asset"], (False, ""))[0] and not stop
+        side = bot.get("side", "long")
+        inv = _inverted(s) if side != "long" else None
         for i in range(start, end):
             ts, price = s["t"][i], s["c"][i]
-            if stop and bot["qty"] > 0:
+            borrow_fee(bot, price)
+            if stop and bot["qty"] != 0:
                 apply_hp(bot, sell(bot, price, ts, "arrêt d'urgence"))
             reason = guardian.exit_check(bot, price)
             if reason:
@@ -133,21 +191,31 @@ def advance(state, data, ts_limit, sentiment, status, log=print, series=None):
                         bot["hp"] -= config.HP_STOPLOSS_PENALTY
             elif ts >= bot["paused_until"] and i + 1 >= need:
                 lo = max(0, i + 1 - config.WINDOW)
-                ctx = {"in_position": bot["qty"] > 0, "entry_price": bot["entry_price"],
-                       "sentiment": sentiment.get(bot["asset"], 0.0),
-                       "rng": random.Random(f"{state['seed']}-{bot['id']}-{ts}")}
-                want = fn(s["c"][lo:i + 1], s["h"][lo:i + 1], s["l"][lo:i + 1], bot["params"], ctx)
-                if want is True and bot["qty"] == 0:
-                    if can_buy_market and not guardian.suspicious_candle(s["c"][i - 1], price):
+                senti = sentiment.get(bot["asset"], 0.0)
+                rng = random.Random(f"{state['seed']}-{bot['id']}-{ts}")
+                entry = bot["entry_price"]
+                can_open = can_buy_market and not guardian.suspicious_candle(s["c"][i - 1], price)
+                if bot["qty"] > 0:  # pari sur la hausse en cours
+                    if _signal(fn, s, lo, i, bot, True, entry, senti, rng) is False:
+                        apply_hp(bot, sell(bot, price, ts, "signal"))
+                elif bot["qty"] < 0:  # pari sur la baisse en cours
+                    if _signal(fn, inv, lo, i, bot, True, 1 / entry, -senti, rng) is False:
+                        apply_hp(bot, sell(bot, price, ts, "signal"))
+                else:
+                    want_up = side != "short" and _signal(fn, s, lo, i, bot, False, 0.0, senti, rng) is True
+                    want_down = (not want_up and side != "long"
+                                 and _signal(fn, inv, lo, i, bot, False, 0.0, -senti,
+                                             random.Random(f"{state['seed']}-{bot['id']}-{ts}-inv")) is True)
+                    if can_open and want_up:
                         buy(bot, price, ts)
-                elif want is False and bot["qty"] > 0:
-                    apply_hp(bot, sell(bot, price, ts, "signal"))
+                    elif can_open and want_down:
+                        open_short(bot, price, ts)
             eq = equity(bot, price)
             bot["equity"] = eq
             bot["peak_equity"] = max(bot["peak_equity"], eq)
             bot["max_drawdown"] = max(bot["max_drawdown"], 1 - eq / bot["peak_equity"])
             if not bot["control"] and guardian.daily_loss_breached(bot, ts, eq):
-                if bot["qty"] > 0:
+                if bot["qty"] != 0:
                     apply_hp(bot, sell(bot, price, ts, "pause du Gardien"))
                 bot["hp"] -= config.HP_PAUSE_PENALTY
                 bot["paused_until"] = ts + 86400
@@ -174,7 +242,7 @@ def advance(state, data, ts_limit, sentiment, status, log=print, series=None):
 
 
 def kill(state, bot, ts, price, cause):
-    if bot["qty"] > 0:
+    if bot["qty"] != 0:
         sell(bot, price, ts, "liquidation")
     bot["equity"] = bot["cash"]
     bot["alive"], bot["died_ts"], bot["death_cause"], bot["last_ts"] = False, ts, cause, ts
@@ -194,7 +262,7 @@ def _spawn_from(state, parent, ts, rng):
     params, sl, tp, asset = mutate(parent["params"], parent["stop_loss"], parent["take_profit"],
                                    parent["asset"], rng, config.assets_of(parent["group"]))
     child = new_bot(state, parent["strategy"], asset, params, sl, tp, ts,
-                    parent=parent["id"], generation=parent["generation"] + 1)
+                    parent=parent["id"], generation=parent["generation"] + 1, side=parent.get("side", "long"))
     parent["children"] += 1
     return child
 
@@ -223,7 +291,7 @@ def lifecycle(state, data, ts, log=print, series=None):
             child = _spawn_from(state, bot, ts, rng)
             log_event(state, ts, "clone", bot, f"🧬 {bot['name']} a atteint {config.HP_CLONE} PV et se clone : {child['name']}")
 
-    templates = initial_population(team_assets())
+    templates = [t + ("long",) for t in initial_population(team_assets())] + side_population(team_assets())
     for dead in [b for b in state["bots"] if not b["alive"] and not b.get("replaced")]:
         dead["replaced"] = True
         group = dead["group"]
@@ -240,14 +308,15 @@ def lifecycle(state, data, ts, log=print, series=None):
             log_event(state, ts, "naissance", child,
                       f"🐣 {child['name']} remplace {dead['name']} (descendant de {parent['name']}, un des meilleurs de l'équipe)")
         else:
-            _, strat, asset, params, sl, tp = rng.choice(
+            _, strat, asset, params, sl, tp, side = rng.choice(
                 [t for t in templates if t[0] == group and t[1] not in CONTROLS])
-            child = new_bot(state, strat, asset, dict(params), sl, tp, ts)
+            child = new_bot(state, strat, asset, dict(params), sl, tp, ts, side=side)
             log_event(state, ts, "naissance", child, f"🐣 {child['name']} remplace {dead['name']}")
 
 
 def run_until(state, data, ts_limit, sentiment, status, log=print, series=None):
     series = series or _series(data)
+    add_side_bots(state, state["last_tick_ts"])  # arène existante : les nouveaux bots arrivent maintenant
     advance(state, data, ts_limit, sentiment, status, log, series)
     lifecycle(state, data, ts_limit, log, series)
     state["last_tick_ts"] = ts_limit

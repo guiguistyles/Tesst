@@ -57,6 +57,7 @@ CANDLE = CANDLE_MIN * 60   # en secondes
 CAPITAL = 50.0          # argent virtuel de départ de chaque bot (€)
 FEE = 0.004             # frais par ordre (0,4 %, proche d'une plateforme réelle)
 SLIPPAGE = 0.001        # écart de prix à l'exécution (0,1 %)
+SHORT_BORROW_DAILY = 0.0003  # frais d'emprunt d'une vente à découvert (0,03 % par jour)
 WINDOW = 300            # nb de bougies d'historique données aux stratégies
 
 # --- Points de vie ---
@@ -73,7 +74,7 @@ RUIN_EQUITY = 35.0        # sous 35 € (-30 %), le bot est éliminé
 DAILY_LOSS_LIMIT = 0.10   # -10 % en 24 h -> vente forcée + pause 24 h
 MAX_CANDLE_JUMP = 0.25    # bougie à ±25 % en 1 h = donnée suspecte, pas d'achat
 MAX_DATA_AGE_H = {"crypto": 3, "altcoins": 3, "actions": 96, "matieres": 96}  # bourses fermées le week-end
-MAX_PER_GROUP = 18        # population maximum d'une équipe (clones compris)
+MAX_PER_GROUP = 24        # population maximum d'une équipe (clones compris)
 
 MAX_EVENTS = 300
 MAX_TRADES_KEPT = 40

@@ -41,7 +41,16 @@ Ceux qui perdent meurent, ceux qui gagnent se clonent. Au bout de 30 jours, on r
 - Les **témoins** (« Acheter et garder » et « Pile ou face ») sont immortels. Ils servent de référence :
   un bot qui ne bat pas le hasard n'a aucun talent.
 
-Le réalisme est intégré : 0,4 % de frais et 0,1 % d'écart de prix sur chaque ordre, pas de levier, pas de vente à découvert.
+## Parier sur la hausse ou sur la baisse
+
+Chaque bot a un sens :
+- **hausse** (la majorité) : il achète, puis revend.
+- **baisse ↓** : il vend à découvert, puis rachète. Il gagne quand le prix baisse. Il utilise la même stratégie qu'un bot « hausse », appliquée au prix retourné.
+- **hausse et baisse ↕** : il prend le pari que sa stratégie indique, dans un sens ou dans l'autre.
+
+Chaque équipe a 7 bots de ce type, dont le témoin « Parier sur la baisse et garder ». Le stop-loss et la prise de bénéfice marchent dans les deux sens.
+
+Le réalisme est intégré : 0,4 % de frais et 0,1 % d'écart de prix sur chaque ordre, pas de levier. Une position à découvert paie en plus 0,03 % de frais d'emprunt par jour.
 
 ## Où voir les résultats
 
