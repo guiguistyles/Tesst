@@ -31,12 +31,14 @@ def suspicious_candle(prev_close, close):
 
 
 def exit_check(bot, price):
-    """Stop-loss / prise de bénéfice imposés par le Gardien."""
-    if bot["qty"] <= 0:
+    """Stop-loss / prise de bénéfice imposés par le Gardien (dans les deux sens)."""
+    if bot["qty"] == 0:
         return None
-    if price <= bot["entry_price"] * (1 - bot["stop_loss"]):
+    up = price / bot["entry_price"] - 1
+    move = up if bot["qty"] > 0 else -up  # gain du bot en % du prix
+    if move <= -bot["stop_loss"]:
         return "stop-loss"
-    if bot.get("take_profit") and price >= bot["entry_price"] * (1 + bot["take_profit"]):
+    if bot.get("take_profit") and move >= bot["take_profit"]:
         return "prise de bénéfice"
     return None
 
@@ -57,8 +59,8 @@ def invariants(bot):
             problems.append(f"{k} invalide ({v})")
     if bot["cash"] < -1e-6:
         problems.append("solde négatif")
-    if bot["qty"] < -1e-12:
-        problems.append("quantité négative (vente à découvert interdite)")
+    if bot["qty"] < -1e-12 and bot.get("side", "long") == "long":
+        problems.append("quantité négative (ce bot ne parie que sur la hausse)")
     if bot["cash"] > 1e-6 and bot["qty"] > 1e-12:
         problems.append("à la fois en euros et investi (incohérent)")
     return problems

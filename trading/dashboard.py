@@ -40,7 +40,7 @@ def _row(rank, b):
     hp = max(0.0, b["hp"])
     hpw = min(100.0, hp / config.HP_CLONE * 100)
     tag = ' <span class="tag">témoin</span>' if b["control"] else ""
-    pos = "investi" if b["qty"] > 0 else "en euros"
+    pos = "investi" if b["qty"] > 0 else "à découvert" if b["qty"] < 0 else "en euros"
     params = ", ".join(f"{k}={v}" for k, v in b["params"].items()) or "-"
     team = config.GROUPS.get(b.get("group") or config.group_of(b["asset"]), "")
     return (f'<tr><td>{rank}</td><td><b>{e(b["name"])}</b>{tag}<div class="sub">{e(team)} · {e(params)} · '

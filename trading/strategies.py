@@ -4,7 +4,13 @@ Chaque stratégie regarde l'historique des prix et répond :
   True  -> « je veux être acheté »
   False -> « je veux tout vendre »
   None  -> « je ne change rien »
-Pas de levier, pas de vente à découvert : un bot est soit 100 % en euros, soit 100 % investi.
+Pas de levier : un bot est soit 100 % en euros, soit 100 % investi.
+
+Chaque bot a un « sens » :
+  long  -> parie sur la hausse (achète puis revend)
+  short -> parie sur la baisse (vend à découvert puis rachète). Il applique la même
+           stratégie au prix « retourné » (1 / prix) : une hausse devient une baisse.
+  both  -> parie sur la hausse OU sur la baisse selon ce que dit la stratégie.
 """
 import random
 
@@ -203,6 +209,15 @@ STRATEGIES = {
 
 CONTROLS = {"hold", "random"}  # les témoins sont immortels et ne se clonent pas
 
+SIDES = {"long": "hausse", "short": "baisse", "both": "hausse et baisse"}
+
+
+def strategy_label(strategy, side="long"):
+    if strategy == "hold" and side == "short":
+        return "Parier sur la baisse et garder"
+    name = STRATEGIES[strategy][1]
+    return name if side == "long" else f"{name} ↓" if side == "short" else f"{name} ↕"
+
 # Contraintes des paramètres : (min, max, entier ?)
 BOUNDS = {
     "fast": (3, 100, True), "slow": (10, 250, True), "signal": (3, 30, True),
@@ -233,6 +248,17 @@ TEMPLATES = [
     ("news_trend", {"thr": 0.10, "trend": 100}, 0.05, None),
 ]
 
+# Bots qui parient aussi sur la baisse (ajoutés le 4 novembre) : (stratégie, sens)
+SIDE_TEMPLATES = [
+    ("hold", "short"),        # témoin : vendu à découvert en permanence
+    ("ema_cross", "short"),
+    ("momentum", "short"),
+    ("donchian", "short"),
+    ("ema_cross", "both"),
+    ("macd", "both"),
+    ("rsi_reversion", "both"),
+]
+
 # Les marchés ne bougent pas autant : le stop-loss et les seuils s'adaptent à chaque équipe.
 RISK_SCALE = {"crypto": 1.0, "altcoins": 1.5, "actions": 0.6, "matieres": 0.7}
 
@@ -251,6 +277,26 @@ def initial_population(groups):
                     p[key] = round(p[key] * k, 4)
             out.append((group, strat, assets[i % len(assets)], p,
                         round(sl * k, 4), None if tp is None else round(tp * k, 4)))
+    return out
+
+
+def side_population(groups):
+    """Les bots qui parient sur la baisse. Renvoie [(équipe, stratégie, marché, réglages, stop, tp, sens)]."""
+    base = {strat: (params, sl, tp) for strat, params, sl, tp in TEMPLATES}
+    out = []
+    for group, assets in groups.items():
+        k = RISK_SCALE[group]
+        for i, (strat, side) in enumerate(SIDE_TEMPLATES):
+            asset = assets[(i + 1) % len(assets)]
+            if strat == "hold":
+                out.append((group, strat, assets[0], {}, 1.0, None, side))
+                continue
+            params, sl, tp = base[strat]
+            p = dict(params)
+            for key in ("thr", "drop", "gain"):
+                if key in p:
+                    p[key] = round(p[key] * k, 4)
+            out.append((group, strat, asset, p, round(sl * k, 4), None if tp is None else round(tp * k, 4), side))
     return out
 
 

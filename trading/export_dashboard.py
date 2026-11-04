@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config
-from .strategies import STRATEGIES
+from .strategies import SIDES, strategy_label
 
 MAX_TRADES = 400  # derniers trades gardés par simulation
 RUNS = {"direct": config.STATE_PATH, "rejeu": config.STATE_PATH.parent / "backtest.json"}
@@ -26,18 +26,23 @@ def _group(b):
     return b.get("group") or config.group_of(b["asset"])
 
 
+def position(b):
+    return "investi" if b["qty"] > 0 else "à découvert" if b["qty"] < 0 else "en euros"
+
+
 def bot_row(run, b):
     st = b["stats"]
     return {
         "run": run, "bot_id": b["id"], "name": b["name"], "group": _group(b),
-        "group_label": config.GROUPS[_group(b)], "strategy": STRATEGIES[b["strategy"]][1],
+        "group_label": config.GROUPS[_group(b)], "strategy": strategy_label(b["strategy"], b.get("side", "long")),
+        "side": SIDES[b.get("side", "long")],
         "asset": b["asset"], "status": "vivant" if b["alive"] else "mort",
         "control": b["control"], "equity": round(b["equity"], 2),
         "gain_pct": round(b["equity"] / config.CAPITAL - 1, 4),
         "hp": None if b["control"] else round(max(0.0, b["hp"]), 1),
         "trades": st["trades"], "wins": st["wins"],
         "max_drawdown": round(b["max_drawdown"], 4),
-        "position": "investi" if b["qty"] > 0 else "en euros",
+        "position": position(b),
         "generation": b["generation"], "parent": b["parent"],
         "born_at": iso(b["born_ts"]), "died_at": iso(b["died_ts"]), "death_cause": b["death_cause"],
     }
@@ -70,14 +75,15 @@ def export(out_dir):
                 run_trades.append({**base, "trade_id": f"{b['id']}-{t['in']}", "status": "fermé",
                                    "opened_at": iso(t["in"]), "closed_at": iso(t["out"]),
                                    "buy": t["buy"], "sell": t["sell"], "pnl": t["pnl"],
-                                   "pnl_pct": round(t["pnl"] / cost, 4), "reason": t["why"]})
-            if b["alive"] and b["qty"] > 0 and b.get("entry_ts"):
+                                   "pnl_pct": round(t["pnl"] / cost, 4), "reason": t["why"],
+                                   "side": SIDES[t.get("side", "long")]})
+            if b["alive"] and b["qty"] != 0 and b.get("entry_ts"):
                 pnl = b["equity"] - b["entry_cost"]
                 run_trades.append({**base, "trade_id": f"{b['id']}-{b['entry_ts']}", "status": "en cours",
                                    "opened_at": iso(b["entry_ts"]), "closed_at": None,
                                    "buy": round(b["entry_price"], 6), "sell": None, "pnl": round(pnl, 4),
                                    "pnl_pct": round(pnl / b["entry_cost"], 4) if b["entry_cost"] else None,
-                                   "reason": None})
+                                   "reason": None, "side": SIDES["long" if b["qty"] > 0 else "short"]})
         run_trades.sort(key=lambda t: t["closed_at"] or "9999", reverse=True)
         trades += run_trades[:MAX_TRADES]
         news = (s.get("news") or {}).get("scores", {})

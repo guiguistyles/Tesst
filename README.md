@@ -37,4 +37,4 @@ Pour équilibrer ou ajouter du contenu, modifiez `js/data.js` : un sort se décr
 
 ## Arène des bots de trading
 
-Le dossier [`trading/`](trading/README.md) contient aussi une simulation : 64 bots de trading en 4 équipes (cryptos principales, altcoins, actions, matières premières) avec 50 € virtuels chacun, qui s'affrontent avec un système de points de vie. Les résultats sont dans [`dashboard/RESULTATS.md`](dashboard/RESULTATS.md).
+Le dossier [`trading/`](trading/README.md) contient aussi une simulation : 92 bots de trading (certains parient sur la baisse) en 4 équipes (cryptos principales, altcoins, actions, matières premières) avec 50 € virtuels chacun, qui s'affrontent avec un système de points de vie. Les résultats sont dans [`dashboard/RESULTATS.md`](dashboard/RESULTATS.md).
