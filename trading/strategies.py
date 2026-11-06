@@ -259,6 +259,17 @@ SIDE_TEMPLATES = [
     ("rsi_reversion", "both"),
 ]
 
+# Bots « apprentis » 🎓 (ajoutés le 6 novembre) : mêmes stratégies, mais ils apprennent
+# de leurs trades (voir learning.py). Les autres bots servent de comparaison.
+LEARN_TEMPLATES = [
+    ("ema_cross", "long"),
+    ("momentum", "long"),
+    ("rsi_reversion", "long"),
+    ("donchian", "long"),
+    ("macd", "both"),
+    ("momentum", "short"),
+]
+
 # Les marchés ne bougent pas autant : le stop-loss et les seuils s'adaptent à chaque équipe.
 RISK_SCALE = {"crypto": 1.0, "altcoins": 1.5, "actions": 0.6, "matieres": 0.7}
 
@@ -280,14 +291,14 @@ def initial_population(groups):
     return out
 
 
-def side_population(groups):
+def side_population(groups, templates=None, shift=1):
     """Les bots qui parient sur la baisse. Renvoie [(équipe, stratégie, marché, réglages, stop, tp, sens)]."""
     base = {strat: (params, sl, tp) for strat, params, sl, tp in TEMPLATES}
     out = []
     for group, assets in groups.items():
         k = RISK_SCALE[group]
-        for i, (strat, side) in enumerate(SIDE_TEMPLATES):
-            asset = assets[(i + 1) % len(assets)]
+        for i, (strat, side) in enumerate(templates or SIDE_TEMPLATES):
+            asset = assets[(i + shift) % len(assets)]
             if strat == "hold":
                 out.append((group, strat, assets[0], {}, 1.0, None, side))
                 continue
@@ -298,6 +309,11 @@ def side_population(groups):
                     p[key] = round(p[key] * k, 4)
             out.append((group, strat, asset, p, round(sl * k, 4), None if tp is None else round(tp * k, 4), side))
     return out
+
+
+def learner_population(groups):
+    """Les bots apprentis. Même format que side_population."""
+    return side_population(groups, LEARN_TEMPLATES, shift=2)
 
 
 def mutate(params, stop_loss, take_profit, asset, rng, assets):

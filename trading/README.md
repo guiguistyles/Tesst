@@ -41,6 +41,15 @@ Ceux qui perdent meurent, ceux qui gagnent se clonent. Au bout de 30 jours, on r
 - Les **témoins** (« Acheter et garder » et « Pile ou face ») sont immortels. Ils servent de référence :
   un bot qui ne bat pas le hasard n'a aucun talent.
 
+## Les bots apprentis 🎓
+
+Chaque équipe a 6 bots « apprentis », repérés par 🎓. Ils utilisent les mêmes stratégies que les autres, mais tirent des leçons de leurs propres trades :
+- **Mémoire des situations perdantes** : à chaque pari, le bot note la situation du marché (en hausse, en baisse ou plat ; calme ou agité). Après au moins 4 paris dans une même situation, s'il en a gagné moins d'un tiers et qu'il y perd de l'argent, il l'évite pendant 3 jours, puis retente sa chance.
+- **Stop-loss qui s'ajuste** : si le prix regagne la moitié du terrain perdu dans les 4 heures qui suivent un stop-loss, le stop était trop serré et le bot l'élargit. S'il ferme un pari sur une grosse perte sans que le stop ait servi, il le resserre. Le stop reste entre la moitié et le double de son réglage de départ.
+- **Filtre anti-frais** : un aller-retour coûte environ 1 %. Le bot n'entre pas si le mouvement qu'il peut espérer sur sa durée habituelle de détention ne couvre pas ce coût.
+
+Leurs descendants héritent de leurs leçons. Les autres bots n'apprennent pas : ils servent de comparaison.
+
 ## Parier sur la hausse ou sur la baisse
 
 Chaque bot a un sens :

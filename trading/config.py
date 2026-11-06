@@ -74,7 +74,7 @@ RUIN_EQUITY = 35.0        # sous 35 € (-30 %), le bot est éliminé
 DAILY_LOSS_LIMIT = 0.10   # -10 % en 24 h -> vente forcée + pause 24 h
 MAX_CANDLE_JUMP = 0.25    # bougie à ±25 % en 1 h = donnée suspecte, pas d'achat
 MAX_DATA_AGE_H = {"crypto": 3, "altcoins": 3, "actions": 96, "matieres": 96}  # bourses fermées le week-end
-MAX_PER_GROUP = 24        # population maximum d'une équipe (clones compris)
+MAX_PER_GROUP = 30        # population maximum d'une équipe (clones compris)
 
 MAX_EVENTS = 300
 MAX_TRADES_KEPT = 40

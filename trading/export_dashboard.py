@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config
+from .learning import lessons
 from .strategies import SIDES, strategy_label
 
 MAX_TRADES = 400  # derniers trades gardés par simulation
@@ -52,6 +53,8 @@ def bot_row(run, b):
         "asset": b["asset"], "status": "vivant" if b["alive"] else "mort",
         "control": b["control"], "equity": round(b["equity"], 2),
         "gain_pct": round(b["equity"] / config.CAPITAL - 1, 4), "gain_24h": gain_24h(b),
+        "learner": bool(b.get("learner")), "lessons": lessons(b, b["last_ts"]),
+        "stop_loss": round(b["stop_loss"], 4),
         "hp": None if b["control"] else round(max(0.0, b["hp"]), 1),
         "trades": st["trades"], "wins": st["wins"],
         "max_drawdown": round(b["max_drawdown"], 4),
