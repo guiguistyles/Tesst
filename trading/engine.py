@@ -2,9 +2,11 @@
 import random
 from bisect import bisect_right
 
-from . import config, guardian
-from .strategies import (CONTROLS, STRATEGIES, initial_population, min_history, mutate,
-                         side_population, strategy_label)
+import copy
+
+from . import config, guardian, learning
+from .strategies import (CONTROLS, RISK_SCALE, STRATEGIES, initial_population, learner_population,
+                         min_history, mutate, side_population, strategy_label)
 
 
 # ---------------------------------------------------------------- création
@@ -24,7 +26,22 @@ def init_state(ts, seed=42):
     log_event(state, ts, "start", None,
               f"{len(state['bots'])} bots créés en {len(config.GROUPS)} équipes, avec {config.CAPITAL:.0f} € virtuels chacun")
     add_side_bots(state, ts)
+    add_learner_bots(state, ts)
     return state
+
+
+def add_learner_bots(state, ts):
+    """Ajoute les bots apprentis 🎓. Une seule fois par arène."""
+    if state.get("learners_added"):
+        return
+    n = 0
+    for group, strat, asset, params, sl, tp, side in learner_population(team_assets()):
+        new_bot(state, strat, asset, dict(params), sl, tp, ts, side=side, learner=True)
+        n += 1
+    state["learners_added"] = True
+    log_event(state, ts, "start", None,
+              f"🎓 {n} bots apprentis arrivent : ils retiennent les situations où ils perdent, "
+              "ajustent leur stop-loss et évitent les paris qui ne couvrent pas les frais")
 
 
 def add_side_bots(state, ts):
@@ -40,11 +57,12 @@ def add_side_bots(state, ts):
               f"{n} nouveaux bots arrivent : ils peuvent parier sur la baisse (↓) ou dans les deux sens (↕)")
 
 
-def new_bot(state, strategy, asset, params, stop_loss, take_profit, ts, parent=None, generation=0, side="long"):
+def new_bot(state, strategy, asset, params, stop_loss, take_profit, ts, parent=None, generation=0, side="long",
+            learner=False):
     state["next_id"] += 1
     bid = state["next_id"]
     bot = {
-        "id": bid, "name": f"#{bid:02d} {strategy_label(strategy, side)} ({asset})", "side": side,
+        "id": bid, "name": f"#{bid:02d} {strategy_label(strategy, side)}{' 🎓' if learner else ''} ({asset})", "side": side,
         "group": config.group_of(asset), "strategy": strategy, "asset": asset, "params": params,
         "stop_loss": stop_loss, "take_profit": take_profit,
         "control": strategy in CONTROLS, "parent": parent, "generation": generation,
@@ -58,6 +76,9 @@ def new_bot(state, strategy, asset, params, stop_loss, take_profit, ts, parent=N
                   "best": 0.0, "worst": 0.0, "stops": 0},
         "trades": [], "equity_hist": [[ts, config.CAPITAL]],
     }
+    if learner:
+        bot["learner"] = True
+        learning.ensure(bot)
     state["bots"].append(bot)
     return bot
 
@@ -126,6 +147,9 @@ def sell(bot, price, ts, reason):
                           "sell": round(price, 6), "cost": round(bot["entry_cost"], 4),
                           "pnl": round(pnl, 4), "why": reason, "side": side})
     del bot["trades"][:-config.MAX_TRADES_KEPT]
+    if bot.get("learner"):
+        bot["trades"][-1]["regime"] = bot.get("entry_regime")
+        learning.on_close(bot, pnl, reason, ts, bot["entry_cost"])
     bot["cash"], bot["qty"], bot["entry_cost"], bot["entry_price"], bot["entry_ts"] = proceeds, 0.0, 0.0, 0.0, None
     return pnl
 
@@ -175,13 +199,20 @@ def advance(state, data, ts_limit, sentiment, status, log=print, series=None):
         can_buy_market = status.get(bot["asset"], (False, ""))[0] and not stop
         side = bot.get("side", "long")
         inv = _inverted(s) if side != "long" else None
+        learner = bot.get("learner", False)
+        if learner:
+            learning.ensure(bot)
         for i in range(start, end):
             ts, price = s["t"][i], s["c"][i]
             borrow_fee(bot, price)
+            if learner:
+                learning.check_stop(bot, price, ts)
             if stop and bot["qty"] != 0:
                 apply_hp(bot, sell(bot, price, ts, "arrêt d'urgence"))
             reason = guardian.exit_check(bot, price)
             if reason:
+                if learner and reason == "stop-loss":
+                    learning.watch_stop(bot, bot["entry_price"], 1 if bot["qty"] > 0 else -1, ts)
                 pnl = sell(bot, price, ts, reason)
                 apply_hp(bot, pnl)
                 if reason == "stop-loss":
@@ -206,10 +237,30 @@ def advance(state, data, ts_limit, sentiment, status, log=print, series=None):
                     want_down = (not want_up and side != "long"
                                  and _signal(fn, inv, lo, i, bot, False, 0.0, -senti,
                                              random.Random(f"{state['seed']}-{bot['id']}-{ts}-inv")) is True)
-                    if can_open and want_up:
+                    direction = 1 if want_up else -1 if want_down else 0
+                    if can_open and direction and learner:
+                        window = s["c"][lo:i + 1]
+                        k = learning.key(direction, learning.regime(window, RISK_SCALE[bot["group"]]))
+                        if not learning.allowed(bot, k, ts):
+                            if not bot.get("blocking"):
+                                bot["learn"]["blocked_regime"] += 1
+                            bot["blocking"], direction = True, 0
+                        elif not learning.fee_ok(bot, window):
+                            if not bot.get("blocking"):
+                                bot["learn"]["blocked_fees"] += 1
+                            bot["blocking"], direction = True, 0
+                        else:
+                            bot["entry_regime"], bot["blocking"] = k, False
+                    elif learner and not direction:
+                        bot["blocking"] = False
+                    if can_open and direction > 0:
                         buy(bot, price, ts)
-                    elif can_open and want_down:
+                    elif can_open and direction < 0:
                         open_short(bot, price, ts)
+            if learner and bot["learn_news"]:
+                for msg in bot["learn_news"]:
+                    log_event(state, ts, "leçon", bot, msg)
+                bot["learn_news"] = []
             eq = equity(bot, price)
             bot["equity"] = eq
             bot["peak_equity"] = max(bot["peak_equity"], eq)
@@ -262,7 +313,11 @@ def _spawn_from(state, parent, ts, rng):
     params, sl, tp, asset = mutate(parent["params"], parent["stop_loss"], parent["take_profit"],
                                    parent["asset"], rng, config.assets_of(parent["group"]))
     child = new_bot(state, parent["strategy"], asset, params, sl, tp, ts,
-                    parent=parent["id"], generation=parent["generation"] + 1, side=parent.get("side", "long"))
+                    parent=parent["id"], generation=parent["generation"] + 1, side=parent.get("side", "long"),
+                    learner=parent.get("learner", False))
+    if parent.get("learner") and asset == parent["asset"]:
+        # l'enfant hérite des leçons de son parent sur le même marché
+        child["memory"] = copy.deepcopy(parent.get("memory", {}))
     parent["children"] += 1
     return child
 
@@ -291,7 +346,9 @@ def lifecycle(state, data, ts, log=print, series=None):
             child = _spawn_from(state, bot, ts, rng)
             log_event(state, ts, "clone", bot, f"🧬 {bot['name']} a atteint {config.HP_CLONE} PV et se clone : {child['name']}")
 
-    templates = [t + ("long",) for t in initial_population(team_assets())] + side_population(team_assets())
+    templates = ([t + ("long", False) for t in initial_population(team_assets())]
+                 + [t + (False,) for t in side_population(team_assets())]
+                 + [t + (True,) for t in learner_population(team_assets())])
     for dead in [b for b in state["bots"] if not b["alive"] and not b.get("replaced")]:
         dead["replaced"] = True
         group = dead["group"]
@@ -308,15 +365,16 @@ def lifecycle(state, data, ts, log=print, series=None):
             log_event(state, ts, "naissance", child,
                       f"🐣 {child['name']} remplace {dead['name']} (descendant de {parent['name']}, un des meilleurs de l'équipe)")
         else:
-            _, strat, asset, params, sl, tp, side = rng.choice(
+            _, strat, asset, params, sl, tp, side, learner = rng.choice(
                 [t for t in templates if t[0] == group and t[1] not in CONTROLS])
-            child = new_bot(state, strat, asset, dict(params), sl, tp, ts, side=side)
+            child = new_bot(state, strat, asset, dict(params), sl, tp, ts, side=side, learner=learner)
             log_event(state, ts, "naissance", child, f"🐣 {child['name']} remplace {dead['name']}")
 
 
 def run_until(state, data, ts_limit, sentiment, status, log=print, series=None):
     series = series or _series(data)
     add_side_bots(state, state["last_tick_ts"])  # arène existante : les nouveaux bots arrivent maintenant
+    add_learner_bots(state, state["last_tick_ts"])
     advance(state, data, ts_limit, sentiment, status, log, series)
     lifecycle(state, data, ts_limit, log, series)
     state["last_tick_ts"] = ts_limit
