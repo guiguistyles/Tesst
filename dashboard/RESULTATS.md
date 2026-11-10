@@ -1,6 +1,6 @@
 # Arène des bots
 
-_Mis à jour le 10/11 23:15 UTC · 50 € virtuels par bot · argent fictif_
+_Mis à jour le 10/11 23:18 UTC · 50 € virtuels par bot · argent fictif_
 
 | # | Bot | Équipe | Capital | Gain | PV | Trades | Pire chute | Statut |
 |---|---|---|---:|---:|---:|---:|---:|---|
