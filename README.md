@@ -15,9 +15,10 @@ Ajoutez `?debug` à l'URL pour jouer en mode invincible pendant les tests.
 
 ## Contenu
 
-- **10 classes** : Iop, Crâ, Féca, Eniripsa, Sram, Xélor, Osamodas, plus Sacrieur, Enutrof et Roublard à débloquer avec des kamas. Chaque classe a 4 sorts propres, améliorables jusqu'au niveau 5.
+- **13 classes** : Iop, Crâ, Féca, Eniripsa, Sram, Xélor, Osamodas, plus Sacrieur, Enutrof, Roublard, Écaflip, Pandawa et Sadida à débloquer avec des kamas. Chaque classe a 4 sorts propres, améliorables jusqu'au niveau 5.
 - **10 caractéristiques** à choisir en montant de niveau : Vitalité, Force, Agilité, Intelligence, Sagesse, Chance, Prospection, PA, Résistance, Soins.
-- **5 zaaps / zones** à débloquer l'une après l'autre : Astrub, Amakna, Forêt des Abraknydes, Montagne des Craqueleurs, Frigost. Chacune a ses monstres, deux boss intermédiaires (3:00 et 6:00) et un gardien (8:00).
+- À chaque niveau : 3 choix, avec 2 relances, 1 bannissement par partie, ou « Passer » contre 50 kamas.
+- **5 zaaps** sur une carte, à activer l'un après l'autre : Astrub, Amakna, Forêt des Abraknydes, Montagne des Craqueleurs, Frigost. Chacune a ses monstres, deux boss intermédiaires (3:00 et 6:00) et un gardien (8:00).
 - **10 Dofus** à récolter sur les gardiens. Chacun donne un bonus permanent.
 - **Boutique** d'améliorations permanentes payées en kamas, et Résurrection.
 - PC (ZQSD / WASD / flèches, Échap pour la pause) et mobile (joystick tactile).

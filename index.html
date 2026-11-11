@@ -3,25 +3,65 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#1b1430">
+  <meta name="theme-color" content="#1e1530">
   <meta name="description" content="Jeu de survie gratuit dans l'univers de Dofus 2 : choisissez votre classe, affrontez des hordes de monstres et récoltez les Dofus.">
   <title>ZaapSurvie 2.0</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <canvas id="game"></canvas>
 
-  <!-- ===== Menu principal ===== -->
+  <!-- ===== Accueil ===== -->
   <section id="screen-menu" class="screen active">
-    <div class="topbar"><span class="kamas-pill"><b class="k">K</b> <span data-kamas>0</span></span></div>
-    <div class="menu-box">
-      <h1 class="logo">Zaap<span>Survie</span> <em>2.0</em></h1>
-      <p class="tagline">Survie dans le Monde des Douze</p>
-      <div class="menu-buttons">
-        <button class="btn primary big" data-go="class">Jouer</button>
-        <button class="btn" data-go="shop">Boutique</button>
-        <button class="btn" data-go="dofus">Mes Dofus</button>
-        <button class="btn" data-go="help">Comment jouer</button>
+    <div class="topbar">
+      <span class="eyebrow">Sauvegarde locale</span>
+      <span class="kamas-pill"><b class="k">K</b> <span data-kamas>0</span></span>
+    </div>
+    <div class="home">
+      <div class="home-main">
+        <h1 class="logo">Zaap<span>Survie</span></h1>
+        <div class="logo-sub"><span class="version">2.0</span><span>Survivez aux hordes du Monde des Douze</span></div>
+        <div class="home-buttons">
+          <button class="btn primary big" data-go="class">
+            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
+            Jouer
+          </button>
+          <div class="grid2">
+            <button class="btn" data-go="shop">Boutique</button>
+            <button class="btn" data-go="dofus">Mes Dofus</button>
+            <button class="btn span2" data-go="help">Comment jouer</button>
+          </div>
+        </div>
+      </div>
+      <div class="home-art">
+        <svg viewBox="0 0 520 520" role="img" aria-label="Un zaap lumineux entouré de Dofus">
+          <ellipse cx="260" cy="440" rx="200" ry="34" fill="#140e22"/>
+          <circle cx="260" cy="250" r="190" fill="none" stroke="#4a3b6b" stroke-width="2" stroke-dasharray="4 10"/>
+          <circle cx="260" cy="250" r="150" fill="#2a2140" stroke="#c8a060" stroke-width="16"/>
+          <circle cx="260" cy="250" r="150" fill="none" stroke="#6a4a20" stroke-width="4"/>
+          <circle cx="260" cy="250" r="118" fill="#1b4e5a"/>
+          <circle cx="260" cy="250" r="88" fill="#2e8a93"/>
+          <circle cx="260" cy="250" r="54" fill="#7fe1e4"/>
+          <circle cx="260" cy="250" r="22" fill="#f4ffff"/>
+          <g class="zaap-swirl">
+            <path d="M260 132 A118 118 0 0 1 378 250" fill="none" stroke="#b8f2f4" stroke-width="6" stroke-linecap="round"/>
+            <path d="M260 368 A118 118 0 0 1 142 250" fill="none" stroke="#b8f2f4" stroke-width="6" stroke-linecap="round"/>
+          </g>
+          <g class="egg e1"><ellipse cx="78" cy="160" rx="22" ry="28" fill="#2ecc71"/><ellipse cx="71" cy="150" rx="6" ry="9" fill="#bdf5d3"/></g>
+          <g class="egg e2"><ellipse cx="452" cy="130" rx="22" ry="28" fill="#a2286a"/><ellipse cx="445" cy="120" rx="6" ry="9" fill="#e6a3c8"/></g>
+          <g class="egg e3"><ellipse cx="470" cy="360" rx="22" ry="28" fill="#1fc4c4"/><ellipse cx="463" cy="350" rx="6" ry="9" fill="#b6f1f1"/></g>
+          <g class="egg e4"><ellipse cx="60" cy="380" rx="22" ry="28" fill="#ff8c1a"/><ellipse cx="53" cy="370" rx="6" ry="9" fill="#ffd3a6"/></g>
+        </svg>
+      </div>
+    </div>
+    <div class="home-foot">
+      <div class="stat-cards">
+        <div class="stat-card"><span>Zaaps activés</span><b id="st-zones">1 / 5</b></div>
+        <div class="stat-card"><span>Dofus récoltés</span><b id="st-dofus">0 / 10</b></div>
+        <div class="stat-card"><span>Classes</span><b id="st-classes">7 / 13</b></div>
       </div>
       <p class="disclaimer">Jeu de fan non officiel, sans lien avec Ankama. DOFUS est une marque d’Ankama.</p>
     </div>
@@ -30,27 +70,47 @@
   <!-- ===== Choix de classe ===== -->
   <section id="screen-class" class="screen">
     <div class="topbar">
-      <button class="btn small" data-go="menu">← Retour</button>
+      <button class="btn small" data-go="menu"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg> Retour</button>
       <h2>Choisis ta classe</h2>
       <span class="kamas-pill"><b class="k">K</b> <span data-kamas>0</span></span>
     </div>
-    <div id="class-grid" class="grid"></div>
+    <div class="split">
+      <div id="class-grid" class="class-grid"></div>
+      <aside id="class-detail" class="detail gold"></aside>
+    </div>
   </section>
 
-  <!-- ===== Choix du zaap ===== -->
+  <!-- ===== Carte des zaaps ===== -->
   <section id="screen-zaap" class="screen">
     <div class="topbar">
-      <button class="btn small" data-go="class">← Retour</button>
+      <button class="btn small" data-go="class"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg> Classes</button>
       <h2>Choisis ton zaap</h2>
-      <span></span>
+      <span id="zaap-class" class="class-chip"></span>
     </div>
-    <div id="zaap-list" class="zaap-list"></div>
+    <div class="split">
+      <div class="map">
+        <svg class="map-bg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 74 C16 68 22 82 40 79 S68 88 100 82 L100 100 L0 100 Z" fill="#2f5a6e"/>
+          <path d="M66 0 C72 12 84 14 100 11 L100 0 Z" fill="#dce7f0"/>
+          <ellipse cx="50" cy="38" rx="16" ry="13" fill="#24321f"/>
+          <ellipse cx="76" cy="55" rx="14" ry="11" fill="#5e5446"/>
+          <polyline points="14,70 34,52 50,34 74,52 80,14" fill="none" stroke="#f2c14e" stroke-width="3" stroke-dasharray="1 7" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <div id="zaap-nodes"></div>
+        <div class="legend">
+          <span><i style="background:#7fe1e4"></i>Activé</span>
+          <span><i style="background:#f2c14e"></i>Terminé</span>
+          <span><i style="background:#5a5070"></i>Verrouillé</span>
+        </div>
+      </div>
+      <aside id="zaap-detail" class="detail teal"></aside>
+    </div>
   </section>
 
   <!-- ===== Boutique ===== -->
   <section id="screen-shop" class="screen">
     <div class="topbar">
-      <button class="btn small" data-go="menu">← Retour</button>
+      <button class="btn small" data-go="menu"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg> Retour</button>
       <h2>Boutique</h2>
       <span class="kamas-pill"><b class="k">K</b> <span data-kamas>0</span></span>
     </div>
@@ -61,7 +121,7 @@
   <!-- ===== Collection de Dofus ===== -->
   <section id="screen-dofus" class="screen">
     <div class="topbar">
-      <button class="btn small" data-go="menu">← Retour</button>
+      <button class="btn small" data-go="menu"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg> Retour</button>
       <h2>Mes Dofus</h2>
       <span></span>
     </div>
@@ -72,45 +132,61 @@
   <!-- ===== Aide ===== -->
   <section id="screen-help" class="screen">
     <div class="topbar">
-      <button class="btn small" data-go="menu">← Retour</button>
+      <button class="btn small" data-go="menu"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg> Retour</button>
       <h2>Comment jouer</h2>
       <span></span>
     </div>
     <div class="help">
       <p><b>Déplacement</b> : ZQSD, WASD ou flèches. Sur mobile, posez le doigt n’importe où et glissez.</p>
       <p><b>Attaque</b> : vos sorts se lancent tout seuls. Concentrez-vous sur l’esquive !</p>
-      <p><b>Expérience</b> : ramassez les cristaux lâchés par les monstres pour monter de niveau et choisir un nouveau sort ou une caractéristique.</p>
-      <p><b>Boss</b> : un boss apparaît à 3:00 et 6:00 et lâche un coffre. Le gardien de la zone arrive à 8:00 : battez-le pour gagner la partie, débloquer le zaap suivant et obtenir un Dofus.</p>
+      <p><b>Expérience</b> : ramassez les cristaux lâchés par les monstres pour monter de niveau et choisir un nouveau sort ou une caractéristique. Vous pouvez relancer les choix 2 fois et bannir 1 amélioration par partie.</p>
+      <p><b>Boss</b> : un boss apparaît à 3:00 et 6:00 et lâche un coffre. Le gardien de la zone arrive à 8:00 : battez-le pour gagner la partie, activer le zaap suivant et obtenir un Dofus.</p>
       <p><b>Kamas</b> : dépensez-les à la boutique ou pour débloquer de nouvelles classes.</p>
       <p><b>Pause</b> : Échap ou P.</p>
     </div>
   </section>
 
-  <!-- ===== HUD ===== -->
+  <!-- ===== Interface en jeu ===== -->
   <div id="hud" class="hidden">
-    <div class="hud-top">
-      <div class="xpbar"><div id="xp-fill"></div><span id="lvl">Niv. 1</span></div>
-      <div class="hud-row">
+    <div class="hud-player">
+      <div id="hud-portrait" class="portrait"><span id="hud-ini">Io</span><b id="lvl">1</b></div>
+      <div class="hud-bars">
         <div class="hpbar"><div id="hp-fill"></div><div id="sh-fill"></div><span id="hp-txt">100 / 100</span></div>
-        <div class="hud-stats">
-          <span id="timer">0:00</span>
-          <span>☠ <b id="kills">0</b></span>
-          <span><b class="k">K</b> <b id="hud-kamas">0</b></span>
-          <button id="btn-pause" class="btn small icon" aria-label="Pause">❚❚</button>
-        </div>
+        <div class="xpbar"><div id="xp-fill"></div></div>
       </div>
+    </div>
+    <div class="hud-center">
+      <div id="timer">0:00</div>
       <div id="boss-bar" class="hidden"><span id="boss-name"></span><div><div id="boss-fill"></div></div></div>
     </div>
-    <div id="hud-spells"></div>
+    <div class="hud-right">
+      <div class="hud-stats">
+        <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="10" r="7"/><path d="M9 21v-4h6v4M9.5 10h.01M14.5 10h.01"/></svg><b id="kills">0</b></span>
+        <span><b class="k">K</b><b id="hud-kamas">0</b></span>
+      </div>
+      <button id="btn-pause" class="hud-btn" aria-label="Pause"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg></button>
+    </div>
+    <div class="hud-bar">
+      <div id="hud-spells"></div>
+      <div class="hud-sep"></div>
+      <div id="hud-passives"></div>
+    </div>
   </div>
 
   <div id="banner" class="hidden"><div id="banner-title"></div><div id="banner-sub"></div></div>
 
   <!-- ===== Overlays ===== -->
   <div id="ov-levelup" class="overlay hidden">
-    <div class="panel">
-      <h2>Niveau supérieur !</h2>
+    <div class="panel wide">
+      <div class="eyebrow center" id="lu-level">Niveau 2</div>
+      <h2>Choisis une amélioration</h2>
+      <p id="ban-hint" class="hint hidden">Clique sur l’amélioration à bannir pour le reste de la partie.</p>
       <div id="choices"></div>
+      <div class="lu-actions">
+        <button class="btn" id="btn-reroll"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4"/></svg> <span>Relancer</span></button>
+        <button class="btn" id="btn-banish"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M6.5 6.5l11 11"/></svg> <span>Bannir</span></button>
+        <button class="btn" id="btn-skip">Passer · +50 kamas</button>
+      </div>
     </div>
   </div>
 

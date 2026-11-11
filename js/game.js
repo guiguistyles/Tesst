@@ -142,7 +142,7 @@ const Game = (() => {
       meta: metaStats(save), stats: null, passives: {}, spells: [],
       enemies: [], projs: [], eprojs: [], gems: [], fx: [], texts: [], traps: [], glyphs: [], strikes: [],
       spawnAcc: 0, nextWave: 60, bossIdx: 0, boss: null, pending: 0, choosing: false,
-      found: [], over: false, endTimer: -1, victory: false, grid: new Map(),
+      found: [], rerolls: 2, banishes: 1, banned: new Set(), over: false, endTimer: -1, victory: false, grid: new Map(),
     };
     recomputeStats();
     S.p.hp = S.p.maxHp;
@@ -176,6 +176,8 @@ const Game = (() => {
     return {
       hp: S.p.hp, maxHp: S.p.maxHp, shield: S.p.shield, xp: S.xp, xpNext: S.xpNext, level: S.level,
       t: S.t, kills: S.kills, kamas: Math.floor(S.kamas), spells: S.spells, passives: S.passives,
+      cls: S.cls, rerolls: S.rerolls, banishes: S.banishes,
+      cds: S.spells.map((sp) => (sp.s.cd ? clamp(sp.timer / (sp.s.cd * S.stats.cd), 0, 1) : 0)),
       boss: S.boss && !S.boss.dead ? { name: S.boss.def.name, hp: S.boss.hp, maxHp: S.boss.maxHp } : null,
     };
   }
@@ -357,6 +359,7 @@ const Game = (() => {
     if (e.dead) return;
     let d = base * S.stats.dmg;
     if (o.rage) d *= 1 + (1 - S.p.hp / S.p.maxHp) * 1.5;
+    if (o.gamble) d *= rand(0.3, 2.5); // Écaflip : dégâts aléatoires
     const crit = Math.random() < S.stats.crit + (o.crit || 0);
     if (crit) d *= 2;
     d *= rand(0.9, 1.1);
@@ -454,7 +457,7 @@ const Game = (() => {
             x: p.x, y: p.y - 6, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed,
             life: s.range / s.speed + 0.1, size: s.size, dmg: s.dmg, pierce: Math.round(s.pierce || 0),
             explode: s.explode ? s.explode * area : 0, knock: s.knock || 0, poison: s.poison || 0,
-            poisonDur: s.poisonDur || 0, gold: s.gold, color: def.color, hit: new Set(),
+            poisonDur: s.poisonDur || 0, gold: s.gold, gamble: s.gamble, color: def.color, hit: new Set(),
           });
         }
         return true;
@@ -489,7 +492,7 @@ const Game = (() => {
         for (let i = 0; i < n; i++) {
           // la première frappe vise le boss s’il est à portée
           const e = i === 0 && S.boss && cands.includes(S.boss) ? S.boss : pick(cands);
-          S.strikes.push({ x: e.x, y: e.y, r: s.radius * area, dmg: s.dmg, t: s.delay, life: s.delay, color: def.color });
+          S.strikes.push({ x: e.x, y: e.y, r: s.radius * area, dmg: s.dmg, t: s.delay, life: s.delay, color: def.color, gamble: s.gamble });
         }
         return true;
       }
@@ -537,7 +540,7 @@ const Game = (() => {
       query(x, y, s.size, (e) => {
         if ((e.hitT[sp.id] || 0) > S.t) return;
         e.hitT[sp.id] = S.t + 0.45;
-        hitEnemy(e, s.dmg, { knock: 25, sx: p.x, sy: p.y });
+        hitEnemy(e, s.dmg, { knock: 25, sx: p.x, sy: p.y, gamble: s.gamble });
       });
     }
   }
@@ -656,7 +659,7 @@ const Game = (() => {
         if (pr.life <= 0 || pr.hit.has(e)) return;
         if (pr.explode) { explodeProj(pr); return; }
         pr.hit.add(e);
-        hitEnemy(e, pr.dmg, { knock: pr.knock, poison: pr.poison, poisonDur: pr.poisonDur, gold: pr.gold, sx: pr.x - pr.vx, sy: pr.y - pr.vy });
+        hitEnemy(e, pr.dmg, { knock: pr.knock, poison: pr.poison, poisonDur: pr.poisonDur, gold: pr.gold, gamble: pr.gamble, sx: pr.x - pr.vx, sy: pr.y - pr.vy });
         if (--pr.pierce < 0) pr.life = 0;
       });
     }
@@ -672,7 +675,7 @@ const Game = (() => {
 
   function explodeProj(pr) {
     pr.life = 0;
-    aoe(pr.x, pr.y, pr.explode, pr.dmg, { knock: 20, gold: pr.gold }, pr.color);
+    aoe(pr.x, pr.y, pr.explode, pr.dmg, { knock: 20, gold: pr.gold, gamble: pr.gamble }, pr.color);
   }
 
   function updateZones(dt) {
@@ -695,7 +698,7 @@ const Game = (() => {
 
     for (const s of S.strikes) {
       s.t -= dt;
-      if (s.t <= 0) { aoe(s.x, s.y, s.r, s.dmg, { knock: 30 }, s.color); s.done = true; }
+      if (s.t <= 0) { aoe(s.x, s.y, s.r, s.dmg, { knock: 30, gamble: s.gamble }, s.color); s.done = true; }
     }
     S.strikes = S.strikes.filter((s) => !s.done);
   }
@@ -747,6 +750,7 @@ const Game = (() => {
   function genChoices() {
     const opts = [];
     for (const id of CLASSES[S.cls].spells) {
+      if (S.banned.has(id)) continue;
       const own = S.spells.find((s) => s.id === id);
       const def = SPELLS[id];
       if (!own) opts.push({ kind: 'spell', id, lvl: 1, w: 3, name: def.name, icon: def.icon, color: def.color, desc: def.desc });
@@ -755,7 +759,7 @@ const Game = (() => {
     const nPass = Object.keys(S.passives).length;
     for (const id in PASSIVES) {
       const l = S.passives[id] || 0, def = PASSIVES[id];
-      if (l >= def.max || (!l && nPass >= MAX_PASSIVES)) continue;
+      if (S.banned.has(id) || l >= def.max || (!l && nPass >= MAX_PASSIVES)) continue;
       opts.push({ kind: 'passive', id, lvl: l + 1, w: 1, name: def.name, icon: def.icon, color: def.color, desc: def.desc });
     }
     const out = [];
@@ -1262,6 +1266,21 @@ const Game = (() => {
         ctx.fillStyle = '#6a4a2a'; ctx.beginPath(); ctx.ellipse(x, y - 8, 15, 4, 0, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.arc(x, y - 10, 8, Math.PI, 0); ctx.fill();
         break;
+      case 'ears':
+        ctx.fillStyle = c;
+        for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(x + s * 4, y - 9); ctx.lineTo(x + s * 12, y - 22); ctx.lineTo(x + s * 12, y - 4); ctx.fill(); }
+        ctx.fillStyle = b; ctx.beginPath(); ctx.arc(x, y - 6, 10, Math.PI, 0); ctx.fill();
+        break;
+      case 'panda':
+        ctx.fillStyle = '#222';
+        for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(x + s * 9, y - 9, 4.5, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y - 6, 10, Math.PI, 0); ctx.fill();
+        break;
+      case 'leaves':
+        ctx.fillStyle = c;
+        for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.ellipse(x + i * 7, y - 12 - (i ? 0 : 4), 4, 9, i * 0.5, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = b; ctx.beginPath(); ctx.arc(x, y - 5, 10, Math.PI, 0); ctx.fill();
+        break;
       case 'bandana':
         ctx.fillStyle = '#c03030'; ctx.beginPath(); ctx.arc(x, y - 5, 11, Math.PI, 0); ctx.fill();
         ctx.beginPath(); ctx.moveTo(x - f * 10, y - 6); ctx.lineTo(x - f * 20, y - 2); ctx.lineTo(x - f * 18, y - 9); ctx.fill();
@@ -1477,5 +1496,20 @@ const Game = (() => {
     }
   }
 
-  return { init, start, stop, setPaused, choose };
+  function reroll() {
+    if (!S || S.rerolls <= 0) return null;
+    S.rerolls--;
+    return genChoices();
+  }
+
+  function banish(c) {
+    if (!S || S.banishes <= 0 || !c.id) return null;
+    S.banishes--;
+    S.banned.add(c.id);
+    return genChoices();
+  }
+
+  const counts = () => (S ? { rerolls: S.rerolls, banishes: S.banishes, level: S.level } : null);
+
+  return { init, start, stop, setPaused, choose, reroll, banish, counts };
 })();

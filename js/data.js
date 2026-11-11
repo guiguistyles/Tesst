@@ -68,6 +68,24 @@ const CLASSES = {
     desc: 'Artificier. Bombes et tromblon pour tout faire sauter.',
     spells: ['bombe_explosive', 'tromblon', 'pulsar', 'kaboom'],
   },
+  ecaflip: {
+    name: 'Écaflip', color: '#c9472f', accent: '#f6d6a0', hat: 'ears',
+    hp: 110, speed: 175, cost: 3000,
+    desc: 'Joueur. Ses coups sont imprévisibles : parfois faibles, parfois énormes.',
+    spells: ['pile_ou_face', 'griffe_joueuse', 'roulette', 'bond_felin'],
+  },
+  pandawa: {
+    name: 'Pandawa', color: '#3e8a5a', accent: '#f4f4f4', hat: 'panda',
+    hp: 140, speed: 155, cost: 3500,
+    desc: 'Bagarreur. Lait de bambou, flasques et coups de poing enflammés.',
+    spells: ['poing_enflamme', 'flasque_explosive', 'gueule_de_bois', 'lait_bambou'],
+  },
+  sadida: {
+    name: 'Sadida', color: '#5f7f2a', accent: '#c8e07a', hat: 'leaves',
+    hp: 105, speed: 165, cost: 4000,
+    desc: 'Druide. Ronces, poisons et tremblements de terre.',
+    spells: ['ronces', 'poison_paralysant', 'ronces_agressives', 'tremblement'],
+  },
 };
 
 // ---------------------------------------------------------------- Sorts
@@ -524,6 +542,141 @@ const SPELLS = {
       { d: '+2 explosions', a: { count: 2 } },
     ],
   },
+  // Écaflip
+  pile_ou_face: {
+    name: 'Pile ou Face', icon: 'PF', color: '#ffcf6a', type: 'projectile',
+    desc: 'Lance une pièce : dégâts entre 30% et 250%.',
+    base: { dmg: 14, cd: 0.8, count: 1, pierce: 0, speed: 520, range: 500, size: 6, gamble: 1 },
+    up: [
+      { d: '+1 pièce', a: { count: 1 } },
+      { d: '+30% dégâts', m: { dmg: 1.3 } },
+      { d: '+1 pièce', a: { count: 1 } },
+      { d: 'Transperce 2', a: { pierce: 2 } },
+    ],
+  },
+  griffe_joueuse: {
+    name: 'Griffe Joueuse', icon: 'GJ', color: '#f4a3ff', type: 'orbit',
+    desc: 'Des griffes tournent autour de vous.',
+    base: { dmg: 9, count: 2, radius: 75, speed: 3.6, size: 11, gamble: 1 },
+    up: [
+      { d: '+1 griffe', a: { count: 1 } },
+      { d: '+40% dégâts', m: { dmg: 1.4 } },
+      { d: '+25% rayon et vitesse', m: { radius: 1.25, speed: 1.25 } },
+      { d: '+2 griffes', a: { count: 2 } },
+    ],
+  },
+  roulette: {
+    name: 'Roulette', icon: 'Ro', color: '#c77dff', type: 'strike',
+    desc: 'La roulette frappe des ennemis au hasard.',
+    base: { dmg: 34, cd: 3.2, radius: 55, count: 3, range: 400, delay: 0.5, gamble: 1 },
+    up: [
+      { d: '+2 cibles', a: { count: 2 } },
+      { d: '+30% dégâts', m: { dmg: 1.3 } },
+      { d: '+30% zone', m: { radius: 1.3 } },
+      { d: '+3 cibles', a: { count: 3 } },
+    ],
+  },
+  bond_felin: {
+    name: 'Bond du Félin', icon: 'BF', color: '#ffb703', type: 'nova',
+    desc: 'Bond qui repousse tout autour de vous.',
+    base: { dmg: 18, cd: 3.0, radius: 95, knock: 70 },
+    up: [
+      { d: '+30% dégâts', m: { dmg: 1.3 } },
+      { d: '+25% zone', m: { radius: 1.25 } },
+      { d: '-25% recharge', m: { cd: 0.75 } },
+      { d: '+60% dégâts', m: { dmg: 1.6 } },
+    ],
+  },
+  // Pandawa
+  poing_enflamme: {
+    name: 'Poing Enflammé', icon: 'PE', color: '#ff7a3d', type: 'melee',
+    desc: 'Coup de poing brûlant devant vous.',
+    base: { dmg: 16, cd: 0.9, range: 70, arc: 1.8, knock: 35 },
+    up: [
+      { d: '+30% dégâts', m: { dmg: 1.3 } },
+      { d: '+25% portée', m: { range: 1.25 } },
+      { d: 'Frappe aussi derrière vous', a: { double: 1 } },
+      { d: '+50% dégâts', m: { dmg: 1.5 } },
+    ],
+  },
+  flasque_explosive: {
+    name: 'Flasque Explosive', icon: 'FE', color: '#e0b060', type: 'projectile',
+    desc: 'Une flasque qui explose à l’impact.',
+    base: { dmg: 18, cd: 2.0, count: 1, pierce: 0, speed: 360, range: 420, size: 8, explode: 65 },
+    up: [
+      { d: '+30% explosion', m: { explode: 1.3 } },
+      { d: '+40% dégâts', m: { dmg: 1.4 } },
+      { d: '+1 flasque', a: { count: 1 } },
+      { d: '-25% recharge', m: { cd: 0.75 } },
+    ],
+  },
+  gueule_de_bois: {
+    name: 'Gueule de Bois', icon: 'GB', color: '#b0d080', type: 'aura',
+    desc: 'Les ennemis proches titubent et ralentissent.',
+    base: { dmg: 3, tick: 0.5, radius: 100, slow: 0.35 },
+    up: [
+      { d: '+25% zone', m: { radius: 1.25 } },
+      { d: '+100% dégâts', m: { dmg: 2 } },
+      { d: 'Ralentit davantage', a: { slow: 0.15 } },
+      { d: '+25% zone', m: { radius: 1.25 } },
+    ],
+  },
+  lait_bambou: {
+    name: 'Lait de Bambou', icon: 'LB', color: '#f4f4e0', type: 'heal',
+    desc: 'Rend régulièrement des points de vie.',
+    base: { heal: 7, cd: 5.0 },
+    up: [
+      { d: '+4 soins', a: { heal: 4 } },
+      { d: '-20% recharge', m: { cd: 0.8 } },
+      { d: '+6 soins', a: { heal: 6 } },
+      { d: 'Soins doublés', m: { heal: 2 } },
+    ],
+  },
+  // Sadida
+  ronces: {
+    name: 'Ronces', icon: 'Rn', color: '#8fbf4a', type: 'strike',
+    desc: 'Des ronces jaillissent sous les ennemis.',
+    base: { dmg: 24, cd: 1.6, radius: 45, count: 2, range: 400, delay: 0.35 },
+    up: [
+      { d: '+1 ronce', a: { count: 1 } },
+      { d: '+30% dégâts', m: { dmg: 1.3 } },
+      { d: '+2 ronces', a: { count: 2 } },
+      { d: '+30% zone', m: { radius: 1.3 } },
+    ],
+  },
+  poison_paralysant: {
+    name: 'Poison Paralysant', icon: 'PP', color: '#7dff6a', type: 'projectile',
+    desc: 'Empoisonne la cible sur la durée.',
+    base: { dmg: 5, cd: 1.2, count: 1, pierce: 1, speed: 480, range: 480, size: 6, poison: 9, poisonDur: 3 },
+    up: [
+      { d: '+1 projectile', a: { count: 1 } },
+      { d: 'Poison +50%', m: { poison: 1.5 } },
+      { d: 'Poison dure +2s', a: { poisonDur: 2 } },
+      { d: '+2 projectiles', a: { count: 2 } },
+    ],
+  },
+  ronces_agressives: {
+    name: 'Ronces Agressives', icon: 'RA', color: '#5fa03a', type: 'glyph',
+    desc: 'Un buisson de ronces blesse les ennemis autour de vous.',
+    base: { dmg: 8, cd: 4.0, radius: 90, duration: 3.5, tick: 0.4 },
+    up: [
+      { d: '+30% zone', m: { radius: 1.3 } },
+      { d: '+40% dégâts', m: { dmg: 1.4 } },
+      { d: '+50% durée', m: { duration: 1.5 } },
+      { d: '-30% recharge', m: { cd: 0.7 } },
+    ],
+  },
+  tremblement: {
+    name: 'Tremblement', icon: 'Tb', color: '#c8a060', type: 'nova',
+    desc: 'La terre tremble autour de vous.',
+    base: { dmg: 22, cd: 3.4, radius: 120, knock: 20 },
+    up: [
+      { d: '+30% dégâts', m: { dmg: 1.3 } },
+      { d: '+20% zone', m: { radius: 1.2 } },
+      { d: '-25% recharge', m: { cd: 0.75 } },
+      { d: '+60% dégâts', m: { dmg: 1.6 } },
+    ],
+  },
 };
 
 // ---------------------------------------------------------------- Caractéristiques (passifs de partie)
@@ -583,31 +736,31 @@ const MONSTERS = {
 // ---------------------------------------------------------------- Zones (zaaps)
 const ZONES = [
   {
-    id: 'astrub', name: 'Astrub', sub: 'Cité d’Astrub',
+    id: 'astrub', x: 14, y: 70, name: 'Astrub', sub: 'Cité d’Astrub',
     ground: '#6a9b45', ground2: '#5f8f3e', deco: ['#4b7a30', '#e8d070', '#ff9ab0'], decoType: 'grass',
     monsters: ['bouftou', 'tofu', 'piou', 'larve_bleue'], mini: 'tofu_royal', boss: 'bouftou_royal',
     hpMul: 1, dmgMul: 1, kamas: 1, dofus: ['cawotte', 'emeraude'],
   },
   {
-    id: 'amakna', name: 'Amakna', sub: 'Champs et forêts d’Amakna',
+    id: 'amakna', x: 34, y: 52, name: 'Amakna', sub: 'Champs et forêts d’Amakna',
     ground: '#8aa548', ground2: '#7d9840', deco: ['#c8a040', '#4a7a2a', '#e8e090'], decoType: 'field',
     monsters: ['arakne', 'sanglier', 'moskito', 'prespic'], mini: 'black_wabbit', boss: 'dragon_cochon',
     hpMul: 1.8, dmgMul: 1.3, kamas: 1.5, dofus: ['kaliptus', 'dokoko'],
   },
   {
-    id: 'abraknydes', name: 'Forêt des Abraknydes', sub: 'Forêt maléfique',
+    id: 'abraknydes', x: 50, y: 34, name: 'Forêt des Abraknydes', sub: 'Forêt maléfique',
     ground: '#3f5a32', ground2: '#36502b', deco: ['#2a3f22', '#5a4a3a', '#7a9a50'], decoType: 'forest',
     monsters: ['chafer', 'abraknyde', 'fantome', 'chafer_archer'], mini: 'abrak_ancestral', boss: 'chene_mou',
     hpMul: 3, dmgMul: 1.7, kamas: 2.2, dofus: ['pourpre', 'ocre'],
   },
   {
-    id: 'craqueleurs', name: 'Montagne des Craqueleurs', sub: 'Plaines de Cania',
+    id: 'craqueleurs', x: 74, y: 52, name: 'Montagne des Craqueleurs', sub: 'Plaines de Cania',
     ground: '#9a8a6a', ground2: '#8d7d5f', deco: ['#6a6a6a', '#b0a080', '#5a5040'], decoType: 'rock',
     monsters: ['gelee', 'bwork', 'craqueleur', 'bwork_mage'], mini: 'craq_roc', boss: 'craq_legend',
     hpMul: 5, dmgMul: 2.2, kamas: 3, dofus: ['turquoise', 'ivoire'],
   },
   {
-    id: 'frigost', name: 'Frigost', sub: 'Île de Frigost',
+    id: 'frigost', x: 80, y: 14, name: 'Frigost', sub: 'Île de Frigost',
     ground: '#dfe9f2', ground2: '#d2dfeb', deco: ['#a8c4dc', '#2f4a3a', '#ffffff'], decoType: 'snow',
     monsters: ['mansot', 'boufmouth', 'sapik', 'fecorce'], mini: 'mansot_royal', boss: 'obsidiantre',
     hpMul: 8, dmgMul: 2.8, kamas: 4, dofus: ['ebene', 'vulbis'],
