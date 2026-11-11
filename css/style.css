@@ -362,3 +362,50 @@ h1, h2, h3 { font-family: var(--font-title); }
 .eq-row b { display: block; font-size: 14px; }
 .eq-row small { font-size: 12px; color: #d8d0ea; }
 @media (max-width: 700px) { #toasts { top: calc(max(16px, env(safe-area-inset-top)) + 150px); } }
+
+/* ===== Personnage, talents, carte ===== */
+#hud-side { position: absolute; right: max(16px, env(safe-area-inset-right)); top: calc(max(16px, env(safe-area-inset-top)) + 200px); display: flex; flex-direction: column; gap: 8px; pointer-events: auto; }
+#hud-side.hidden { display: none; }
+.side-btn { position: relative; min-width: 76px; height: 40px; border-radius: 12px; background: var(--hud-bg); border: 2px solid var(--line); color: #fff; font: 800 13px var(--font-body); cursor: pointer; }
+.side-btn:hover { border-color: var(--gold); }
+.badge { position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: var(--gold); color: #1e1530; font-size: 12px; display: grid; place-items: center; }
+.win-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.win-head h2 { margin: 0 !important; font-size: 30px !important; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tabs button { font: 800 15px var(--font-body); color: #d8d0ea; background: transparent; border: 2px solid var(--line); border-radius: 12px; padding: 8px 14px; cursor: pointer; display: flex; flex-direction: column; align-items: center; }
+.tabs button.active { background: var(--gold); color: #1e1530; border-color: var(--gold); }
+.tabs button:disabled { opacity: .45; cursor: not-allowed; }
+.tabs button small { font-size: 11px; font-weight: 700; opacity: .85; }
+kbd { font: 800 11px var(--font-body); border: 1px solid currentColor; border-radius: 5px; padding: 0 4px; opacity: .7; }
+.pts-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; background: rgba(242,193,78,.1); border: 1px solid rgba(242,193,78,.35); border-radius: 12px; padding: 10px 14px; margin-bottom: 10px; }
+.pts-line b { font-family: var(--font-title); font-size: 28px; color: var(--gold); }
+.pts-line small { flex-basis: 100%; color: var(--muted); font-size: 12px; }
+.carac-row, .tal-node { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+.c-ico { width: 40px; height: 40px; flex: none; border-radius: 10px; display: grid; place-items: center; font: 800 12px var(--font-body); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+.c-name, .t-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.c-name small, .t-main small { color: var(--muted); font-size: 12px; }
+.c-val { font-family: var(--font-title); font-size: 22px; min-width: 44px; text-align: right; }
+.c-cost { font-size: 11px; color: var(--muted); width: 64px; text-align: center; }
+.uses { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+.use { font-size: 12px; font-weight: 700; background: rgba(255,255,255,.06); border-radius: 8px; padding: 4px 8px; display: flex; align-items: center; gap: 6px; }
+.use.off { opacity: .45; }
+.use i, .el { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.sum { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: #d8d0ea; margin-bottom: 12px; }
+.sum b { color: #fff; }
+.tal-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 12px; }
+.tal-node .sicon { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-weight: 800; color: #1e1530; flex: none; }
+.tal-node.locked .sicon { filter: grayscale(.9) brightness(.7); }
+.tal-node .pips { margin: 3px 0 0; justify-content: flex-start; }
+.tal-node .why { color: #ffb0a0; }
+.charwin { max-width: 980px; }
+.mapwin { max-width: 1240px; }
+#map-canvas { width: 100%; height: auto; border-radius: 12px; border: 2px solid var(--gold); margin-top: 10px; background: #120c18; }
+.map-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; font-weight: 700; color: #d8d0ea; }
+.map-legend i { width: 12px; height: 12px; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+@media (max-width: 700px) {
+  #hud-side { top: auto; bottom: calc(max(16px, env(safe-area-inset-bottom)) + 84px); right: 10px; flex-direction: row; }
+  .side-btn { min-width: 0; padding: 0 8px; height: 34px; font-size: 12px; }
+  .tal-cols { grid-template-columns: 1fr; }
+  .carac-row { flex-wrap: wrap; }
+  .c-cost { display: none; }
+}

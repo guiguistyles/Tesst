@@ -24,6 +24,134 @@ const WORLD = (() => {
   ];
   const DUNGEONS = ['Bergerie du Bouftou Royal', 'Porcherie du Dragon Cochon', 'Cœur pourri du Chêne Mou', 'Antre du Craqueleur Légendaire', 'Caverne d’obsidienne'];
 
+  /* ---------------------------------------------------------------- Terrain */
+  // Chemins, plans d'eau (infranchissables sauf la glace), ponts et hameau autour du zaap.
+  const WATER_KIND = {
+    water: { fill: '#4f9fd8', rim: '#d8c890', solid: true },
+    swamp: { fill: '#4d6b3c', rim: '#34452a', solid: true },
+    chasm: { fill: '#1a1420', rim: '#6a5a4a', solid: true },
+    ice: { fill: '#d4ebf8', rim: '#a8c8e0', solid: false },
+    hole: { fill: '#2f6aa8', rim: '#e8f4fc', solid: true },
+  };
+  const ROAD_COL = { grass: ['#c2a46c', '#a88a56'], field: ['#c8aa70', '#aa8c58'], forest: ['#7d6444', '#5f4a32'], rock: ['#b0a080', '#8c7c60'], snow: ['#c6d2dc', '#a8b6c2'] };
+
+  function segDist(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l));
+    return Math.hypot(px - ax - dx * t, py - ay - dy * t);
+  }
+  /** Distance au chemin le plus proche. */
+  function roadDist(m, x, y) {
+    let d = Infinity;
+    for (const r of m.roads || []) for (let i = 1; i < r.length; i++) d = Math.min(d, segDist(x, y, r[i - 1][0], r[i - 1][1], r[i][0], r[i][1]));
+    if (m.plaza) d = Math.min(d, Math.max(0, Math.hypot(x - m.plaza.x, y - m.plaza.y) - m.plaza.r));
+    return d;
+  }
+  /** Le point est-il dans l'eau (ou un gouffre, ou sur un pont), avec une marge ? */
+  function inWater(m, x, y, pad = 0, solidOnly = true) {
+    if (!solidOnly) for (const b of m.bridges || []) if (Math.abs(x - b.x) < b.len / 2 + pad + 40 && Math.abs(y - b.y) < 60 + pad) return b;
+    for (const w of m.water || []) {
+      if (solidOnly && !WATER_KIND[w.kind].solid) continue;
+      const nx = (x - w.x) / (w.rx + pad), ny = (y - w.y) / (w.ry + pad);
+      if (nx * nx + ny * ny < 1) return w;
+    }
+    return null;
+  }
+  /** Obstacles (eau, maisons) : renvoie la position corrigée d'un cercle de rayon r. */
+  function collide(m, x, y, r) {
+    for (const w of m.water || []) {
+      if (!WATER_KIND[w.kind].solid) continue;
+      const ax = w.rx + r, ay = w.ry + r;
+      if (Math.abs(x - w.x) > ax || Math.abs(y - w.y) > ay) continue;
+      const nx = (x - w.x) / ax, ny = (y - w.y) / ay, d = nx * nx + ny * ny;
+      if (d >= 1) continue;
+      if (d < 1e-6) { x = w.x + ax; continue; }   // pile au centre : on sort par l'est
+      const k = 1 / Math.sqrt(d); x = w.x + (x - w.x) * k; y = w.y + (y - w.y) * k;
+    }
+    for (const hs of m.houses || []) {
+      const dx = x - hs.x, dy = y - hs.y, d = Math.hypot(dx, dy), R = hs.r + r;
+      if (d < R && d > 0.01) { x = hs.x + (dx / d) * R; y = hs.y + (dy / d) * R; }
+    }
+    return [x, y];
+  }
+  /** Ordonnée du chemin principal à une abscisse donnée. */
+  function roadY(road, x) {
+    for (let i = 1; i < road.length; i++) {
+      const [ax, ay] = road[i - 1], [bx, by] = road[i];
+      if (x >= ax && x <= bx) return ay + (by - ay) * ((x - ax) / (bx - ax || 1));
+    }
+    return 0;
+  }
+  /** Chemin lissé (courbe de Catmull-Rom) passant par des points de contrôle. */
+  function smoothPath(ctrl, step = 60) {
+    const out = [];
+    for (let i = 0; i < ctrl.length - 1; i++) {
+      const p0 = ctrl[Math.max(0, i - 1)], p1 = ctrl[i], p2 = ctrl[i + 1], p3 = ctrl[Math.min(ctrl.length - 1, i + 2)];
+      const n = Math.max(2, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / step));
+      for (let k = 0; k < n; k++) {
+        const t = k / n, t2 = t * t, t3 = t2 * t;
+        const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+        out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+      }
+    }
+    out.push(ctrl[ctrl.length - 1]);
+    return out;
+  }
+
+  function genTerrain(m, r) {
+    const W = m.w, H = m.h, type = m.decoType;
+    // Chemin principal : du zaap jusqu'à l'entrée du donjon, en serpentant
+    const ctrl = [[m.zaap.x, 0]];
+    const n = 7;
+    for (let k = 1; k < n; k++) ctrl.push([m.zaap.x + ((m.door.x - 180 - m.zaap.x) * k) / n, (r() - 0.5) * 620]);
+    ctrl.push([m.door.x - 180, 0], [m.door.x, 0]);
+    const main = smoothPath(ctrl);
+    m.roads = [main];
+    // Embranchement vers le repaire du boss intermédiaire
+    const ly = roadY(main, m.lair.x);
+    m.roads.push(smoothPath([[m.lair.x - 160, ly], [m.lair.x - 60, (ly + m.lair.y) / 2], [m.lair.x, m.lair.y - Math.sign(m.lair.y) * 170]]));
+    m.plaza = { x: m.zaap.x + 60, y: 0, r: 230 };
+    m.water = [];
+    m.bridges = [];
+    const places = [[m.zaap.x, m.zaap.y, 520], [m.npc.x, m.npc.y, 300], [m.lair.x, m.lair.y, 380], [m.door.x, m.door.y, 460]];
+    const freeSpot = (x, y, rad) => !places.some(([px, py, pr]) => Math.hypot(px - x, py - y) < pr + rad) &&
+      roadDist(m, x, y) > rad + 70 && !m.water.some((w) => Math.hypot(w.x - x, w.y - y) < Math.max(w.rx, w.ry) + rad + 80);
+    const addLakes = (count, kind, rmin, rmax) => {
+      let t = 0, c = 0;
+      while (c < count && t++ < 400) {
+        const rx = rmin + r() * (rmax - rmin), ry = rx * (0.55 + r() * 0.35);
+        const x = 600 + r() * (W - 1200), y = -H + rx + 80 + r() * (H * 2 - 2 * rx - 160);
+        if (!freeSpot(x, y, rx)) continue;
+        m.water.push({ x, y, rx, ry, kind });
+        // Petites flaques autour des grands plans d'eau
+        if (kind !== 'chasm' && r() < 0.6) m.water.push({ x: x + rx * 0.9, y: y + ry * 0.5, rx: rx * 0.35, ry: ry * 0.35, kind });
+        c++;
+      }
+    };
+    if (type === 'field') {
+      // Une rivière traverse Amakna du nord au sud : deux ponts permettent de la franchir
+      const rx0 = W * 0.33;
+      const cross = roadY(main, rx0);
+      const by = (cross > 0 ? -1 : 1) * H * 0.62;
+      for (let y = -H - 120; y <= H + 120; y += 55) {
+        const x = rx0 + Math.sin(y / 260) * 90 + Math.sin(y / 97) * 25;
+        if (Math.abs(y - cross) < 120 || Math.abs(y - by) < 100) continue;
+        m.water.push({ x, y, rx: 95, ry: 70, kind: 'water' });
+      }
+      m.bridges.push({ x: rx0 + Math.sin(cross / 260) * 90 + Math.sin(cross / 97) * 25, y: cross, len: 280, a: 0 });
+      m.bridges.push({ x: rx0 + Math.sin(by / 260) * 90 + Math.sin(by / 97) * 25, y: by, len: 280, a: 0 });
+      addLakes(1, 'water', 160, 230);
+    } else if (type === 'grass') addLakes(3, 'water', 150, 260);
+    else if (type === 'forest') addLakes(6, 'swamp', 110, 200);
+    else if (type === 'rock') addLakes(4, 'chasm', 140, 260);
+    else if (type === 'snow') { addLakes(1, 'ice', 420, 520); addLakes(3, 'hole', 90, 150); }
+    // Hameau autour du zaap
+    m.houses = [[-200, -330, 0.15], [170, -390, -0.2], [-250, 320, -0.1], [190, 360, 0.25], [440, -360, 0.1]].map(([dx, dy, rot], k) => ({
+      x: m.zaap.x + dx, y: m.zaap.y + dy, r: 85, rot, roof: ['#b5482e', '#3f6fb0', '#7a4a9a', '#b5482e', '#3f8a5a'][k],
+    }));
+    m.well = { x: m.zaap.x - 110, y: 150 };
+  }
+
   const zones = ZONES.map((z, i) => {
     const r = rng(1000 + i * 77);
     const [l0, l1] = LEVELS[i];
@@ -35,6 +163,7 @@ const WORLD = (() => {
       door: { x: MAP_W - 260, y: 0 },
       camps: [],
     };
+    genTerrain(m, r);
     // Camps de monstres : plus on va vers l'est (vers le donjon), plus ils sont forts
     const avoid = [m.zaap, m.npc, m.lair, m.door];
     let tries = 0;
@@ -42,6 +171,7 @@ const WORLD = (() => {
       const x = 260 + r() * (MAP_W - 520), y = -MAP_H + 200 + r() * (MAP_H * 2 - 400);
       if (avoid.some((a) => Math.hypot(a.x - x, a.y - y) < 560)) continue;
       if (m.camps.some((c) => Math.hypot(c.x - x, c.y - y) < 360)) continue;
+      if (inWater(m, x, y, 140, false) || roadDist(m, x, y) < 120) continue;
       const main = z.monsters[(r() * z.monsters.length) | 0], second = z.monsters[(r() * z.monsters.length) | 0];
       const n = 3 + ((r() * 3) | 0);
       const ids = [];
@@ -179,5 +309,110 @@ const WORLD = (() => {
     return Object.keys(it.stats).map((k) => `${STATS[k].minus ? '−' : '+'}${Math.round(it.stats[k] * 1000) / 10}% ${STATS[k].label}`).join(' · ');
   }
 
-  return { zones, QUESTS, NPCS, LEVELS, unlocked, SLOTS, RARITY, makeItem, itemDesc };
+  /* ---------------------------------------------------------------- Caractéristiques et talents */
+  const CARACS = {
+    vitalite: { name: 'Vitalité', short: 'VIT', color: '#e8574a', help: '+1 point de vie par point' },
+    sagesse: { name: 'Sagesse', short: 'SAG', color: '#b46cff', help: '+1 % d’expérience par point' },
+    force: { name: 'Force', short: 'FOR', color: '#b07a3a', elem: 'terre', help: '+1 % de dégâts Terre par point' },
+    intelligence: { name: 'Intelligence', short: 'INT', color: '#ff7a3a', elem: 'feu', help: '+1 % de dégâts Feu et de soins par point' },
+    chance: { name: 'Chance', short: 'CHA', color: '#3aa8e8', elem: 'eau', help: '+1 % de dégâts Eau par point, +1 % de butin pour 10' },
+    agilite: { name: 'Agilité', short: 'AGI', color: '#4fc36a', elem: 'air', help: '+1 % de dégâts Air par point, esquive et critiques' },
+  };
+  const ELEMENTS = {
+    terre: { name: 'Terre', stat: 'force', color: '#b07a3a' },
+    feu: { name: 'Feu', stat: 'intelligence', color: '#ff7a3a' },
+    eau: { name: 'Eau', stat: 'chance', color: '#3aa8e8' },
+    air: { name: 'Air', stat: 'agilite', color: '#4fc36a' },
+  };
+  // Élément de chaque sort : il ne monte qu'avec la caractéristique de cet élément
+  const SPELL_ELEM = {
+    pression: 'terre', epee_celeste: 'air', colere_iop: 'terre', epee_jugement: 'feu',
+    fleche_magique: 'air', fleche_explosive: 'feu', fleche_recul: 'air', pluie_fleches: 'feu',
+    bulle: 'eau', glyphe_enflamme: 'feu', armure_terrestre: 'terre', glyphe_aveuglement: 'eau',
+    mot_blessant: 'feu', mot_soignant: 'feu', mot_interdit: 'feu', mot_frayeur: 'air',
+    piege_sournois: 'feu', coup_sournois: 'air', poison_insidieux: 'air', double: 'air',
+    aiguille: 'feu', ralentissement: 'eau', poussiere_temporelle: 'feu', frappe_xelor: 'eau',
+    fouet: 'air', invoc_bouftou: 'terre', invoc_tofu: 'air', corbeau_noir: 'air',
+    chatiment: 'terre', assaut: 'terre', transfert_vie: 'feu', attirance: 'air',
+    lancer_pieces: 'eau', pelle_animee: 'terre', pelle_jugement: 'terre', corruption: 'eau',
+    bombe_explosive: 'feu', tromblon: 'feu', pulsar: 'eau', kaboom: 'feu',
+    pile_ou_face: 'eau', griffe_joueuse: 'air', roulette: 'feu', bond_felin: 'terre',
+    poing_enflamme: 'feu', flasque_explosive: 'feu', gueule_de_bois: 'terre', lait_bambou: 'eau',
+    ronces: 'terre', poison_paralysant: 'air', ronces_agressives: 'terre', tremblement: 'terre',
+  };
+  const STAT_PER_LEVEL = 5;
+  /** Coût du prochain point dans une caractéristique déjà à la valeur v (paliers de Dofus Rétro). */
+  function caracCost(id, v) {
+    if (id === 'vitalite') return 1;
+    if (id === 'sagesse') return 3;
+    return v < 100 ? 1 : v < 200 ? 2 : v < 300 ? 3 : 4;
+  }
+  function caracSpent(c) {
+    let s = 0;
+    for (const id in CARACS) for (let v = 0; v < (c[id] || 0); v++) s += caracCost(id, v);
+    return s;
+  }
+  // Talents : 1 point par niveau. Le premier sort est offert ; les suivants s'ouvrent après
+  // un nombre de points dépensés dans l'arbre ; chaque rang demande un niveau minimum.
+  const SPELL_GATE = [0, 4, 10, 18];
+  const RANK_LEVEL = [0, 1, 3, 10, 20, 32];
+  const TALENT_PASSIVES = {
+    pa: { name: 'Points d’action', short: 'PA', color: '#f2c14e', desc: '−5 % de recharge des sorts', max: 5 },
+    resistance: { name: 'Résistance', short: 'RES', color: '#9aa8b8', desc: '−6 % de dégâts subis', max: 5 },
+    soin: { name: 'Récupération', short: 'REC', color: '#7dff9a', desc: '+0,6 PV par seconde', max: 5 },
+    prospection: { name: 'Ramassage', short: 'RAM', color: '#ffd84a', desc: '+30 % de rayon de ramassage', max: 5 },
+    envergure: { name: 'Envergure', short: 'ENV', color: '#ff9a5a', desc: '+8 % de taille des zones', max: 5 },
+    celerite: { name: 'Célérité', short: 'CEL', color: '#4fc3c7', desc: '+5 % de vitesse de déplacement', max: 5 },
+  };
+  /** Niveau minimum pour entrer dans le donjon de chaque zone. */
+  const DUNGEON_LEVEL = [5, 15, 25, 35, 46];
+  const CHAR = { CARACS, ELEMENTS, SPELL_ELEM, STAT_PER_LEVEL, caracCost, caracSpent, SPELL_GATE, RANK_LEVEL, TALENT_PASSIVES, DUNGEON_LEVEL };
+
+  /* ---------------------------------------------------------------- Dessin de la carte */
+  /**
+   * Dessine le terrain d'une carte (sol, chemins, eau, ponts, maisons) dans un canevas
+   * de Wd × Hd pixels. Renvoie les fonctions de conversion X(x), Y(y).
+   */
+  function drawMap(g, m, Wd, Hd) {
+    const sx = Wd / m.w, sy = Hd / (m.h * 2), s = Math.min(sx, sy);
+    const X = (x) => x * sx, Y = (y) => (y + m.h) * sy;
+    const z = ZONES[m.zone];
+    if (m.kind === 'dungeon') {
+      g.fillStyle = '#3a3346'; g.fillRect(0, 0, Wd, Hd);
+      g.fillStyle = '#241d30'; g.fillRect(0, 0, Wd, Math.max(2, Hd * 0.05));
+      return { X, Y, s };
+    }
+    g.fillStyle = z.ground; g.fillRect(0, 0, Wd, Hd);
+    // Forêt et reliefs suggérés par des taches plus sombres
+    g.fillStyle = z.ground2;
+    const r = rng(9000 + m.zone);
+    for (let k = 0; k < 140; k++) { g.beginPath(); g.arc(r() * Wd, r() * Hd, (6 + r() * 16) * s * 6, 0, Math.PI * 2); g.fill(); }
+    const [rc, re] = ROAD_COL[m.decoType] || ROAD_COL.grass;
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const [col, wd] of [[re, 96], [rc, 70]]) {
+      g.strokeStyle = col; g.lineWidth = Math.max(1.5, wd * s);
+      for (const road of m.roads) { g.beginPath(); road.forEach(([x, y], i) => (i ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)))); g.stroke(); }
+      g.fillStyle = col;
+      g.beginPath(); g.ellipse(X(m.plaza.x), Y(m.plaza.y), (m.plaza.r + (wd - 70) / 2) * sx, (m.plaza.r + (wd - 70) / 2) * sy, 0, 0, Math.PI * 2); g.fill();
+    }
+    for (const pass of ['rim', 'fill']) for (const w of m.water) {
+      const k = WATER_KIND[w.kind], pad = pass === 'rim' ? 16 : 0;
+      g.fillStyle = k[pass];
+      g.beginPath(); g.ellipse(X(w.x), Y(w.y), (w.rx + pad) * sx, (w.ry + pad) * sy, 0, 0, Math.PI * 2); g.fill();
+    }
+    for (const b of m.bridges) {
+      g.fillStyle = '#8a5a2a';
+      g.fillRect(X(b.x - b.len / 2), Y(b.y - 50), b.len * sx, 100 * sy);
+      g.fillStyle = '#b07a3a';
+      g.fillRect(X(b.x - b.len / 2), Y(b.y - 36), b.len * sx, 72 * sy);
+    }
+    for (const hs of m.houses) {
+      g.fillStyle = '#e8dcc0'; g.fillRect(X(hs.x - 70), Y(hs.y - 55), 140 * sx, 110 * sy);
+      g.fillStyle = hs.roof; g.fillRect(X(hs.x - 80), Y(hs.y - 65), 160 * sx, 70 * sy);
+    }
+    return { X, Y, s };
+  }
+
+  return { zones, QUESTS, NPCS, LEVELS, unlocked, SLOTS, RARITY, makeItem, itemDesc,
+    WATER_KIND, ROAD_COL, roadDist, inWater, collide, drawMap, ...CHAR };
 })();

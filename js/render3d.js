@@ -930,6 +930,105 @@ const Render3D = (() => {
     });
   }
 
+  /** Bande plate le long d'un chemin (en pixels de jeu), posée à la hauteur y (m). */
+  function ribbon(pts, width, y) {
+    const pos = [], idx = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+      let tx = b[0] - a[0], ty = b[1] - a[1];
+      const l = Math.hypot(tx, ty) || 1; tx /= l; ty /= l;
+      const nx = -ty * width / 2, ny = tx * width / 2, [x, z] = pts[i];
+      pos.push((x + nx) / U, y, (z + ny) / U, (x - nx) / U, y, (z - ny) / U);
+      if (i) { const k = i * 2; idx.push(k - 2, k - 1, k, k - 1, k + 1, k); }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  }
+
+  function buildHouse(roof) {
+    const g = new THREE.Group();
+    const wall = mat(0xe8dcc0), wood = mat(0x6a4220);
+    g.add(at(box(3.6, 2.4, 2.8, wall), 0, 1.2, 0));
+    g.add(at(box(3.7, 0.25, 2.9, wood), 0, 0.12, 0));
+    for (const sx of [-1.75, 1.75]) for (const sz of [-1.35, 1.35]) g.add(at(box(0.22, 2.4, 0.22, wood), sx, 1.2, sz));
+    const r = at(cone(2.9, 1.9, 4, mat(new THREE.Color(roof).getHex())), 0, 3.35, 0, 0, Math.PI / 4, 0);
+    r.scale.set(1.25, 1, 0.95);
+    g.add(r);
+    g.add(at(box(0.8, 1.5, 0.1, mat(0x5a3a20)), 0, 0.75, 1.42));
+    for (const sx of [-1.1, 1.1]) g.add(at(box(0.6, 0.55, 0.08, mat(0x9ad0f0, 0.2)), sx, 1.55, 1.42));
+    g.add(at(box(0.45, 1.1, 0.45, mat(0x8a7a70)), 1.0, 4.0, -0.4));
+    return g;
+  }
+
+  function buildWell() {
+    const g = new THREE.Group();
+    g.add(at(cyl(0.75, 0.8, 0.8, 10, mat(0x8a8090)), 0, 0.4, 0));
+    g.add(at(cyl(0.55, 0.55, 0.05, 10, mat(0x2f6aa8, 0.2)), 0, 0.79, 0));
+    for (const sx of [-0.7, 0.7]) g.add(at(box(0.12, 1.6, 0.12, mat(0x6a4220)), sx, 1.4, 0));
+    g.add(at(cone(1.05, 0.7, 4, mat(0xb5482e)), 0, 2.45, 0, 0, Math.PI / 4, 0));
+    return g;
+  }
+
+  function buildBridge(b) {
+    const g = new THREE.Group();
+    const L = b.len / U, wood = mat(0xa8743a), dark = mat(0x5a3818);
+    g.add(at(box(L, 0.18, 3.2, dark), 0, 0.12, 0));
+    for (let x = -L / 2 + 0.35; x < L / 2; x += 0.75) g.add(at(box(0.6, 0.12, 3.0, wood), x, 0.25, 0));
+    for (const sz of [-1.55, 1.55]) {
+      g.add(at(box(L, 0.12, 0.12, dark), 0, 0.95, sz));
+      for (let x = -L / 2; x <= L / 2 + 0.01; x += L / 4) g.add(at(box(0.16, 0.9, 0.16, dark), x, 0.5, sz));
+    }
+    g.position.set(b.x / U, 0, b.y / U);
+    return g;
+  }
+
+  /** Terrain d'une carte de zone : chemins, plans d'eau, ponts, hameau. */
+  function buildTerrain3D(m, group) {
+    const [rc, re] = WORLD.ROAD_COL[m.decoType] || WORLD.ROAD_COL.grass;
+    const roadMat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 1, side: THREE.DoubleSide });
+    const edge = roadMat(re), core = roadMat(rc);
+    for (const road of m.roads) {
+      const a = new THREE.Mesh(ribbon(road, 96, 0.03), edge); a.receiveShadow = true; group.add(a);
+      const b = new THREE.Mesh(ribbon(road, 74, 0.04), core); b.receiveShadow = true; group.add(b);
+    }
+    for (const [mt, rr, y] of [[edge, m.plaza.r + 11, 0.032], [core, m.plaza.r, 0.042]]) {
+      const pl = new THREE.Mesh(new THREE.CircleGeometry(rr / U, 40), mt);
+      pl.rotation.x = -Math.PI / 2; pl.position.set(m.plaza.x / U, y, m.plaza.y / U); pl.receiveShadow = true;
+      group.add(pl);
+    }
+    // Plans d'eau : bord puis surface, en lots d'instances colorées
+    const disc = new THREE.CircleGeometry(1, 32).rotateX(-Math.PI / 2);
+    const n = m.water.length;
+    if (n) {
+      const rim = new THREE.InstancedMesh(disc, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), n);
+      const surf = new THREE.InstancedMesh(disc, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25, metalness: 0.1 }), n);
+      m.water.forEach((w, i) => {
+        const k = WORLD.WATER_KIND[w.kind];
+        tmpQ.identity();
+        tmpM.compose(tmpP.set(w.x / U, 0.05, w.y / U), tmpQ, tmpS.set((w.rx + 16) / U, 1, (w.ry + 16) / U));
+        rim.setMatrixAt(i, tmpM); rim.setColorAt(i, tmpC.set(k.rim));
+        tmpM.compose(tmpP.set(w.x / U, w.kind === 'chasm' ? 0.07 : 0.06, w.y / U), tmpQ, tmpS.set(w.rx / U, 1, w.ry / U));
+        surf.setMatrixAt(i, tmpM); surf.setColorAt(i, tmpC.set(k.fill));
+      });
+      rim.receiveShadow = surf.receiveShadow = true;
+      rim.frustumCulled = surf.frustumCulled = false;
+      group.add(rim, surf);
+      W3.water = surf;
+    }
+    for (const b of m.bridges) group.add(buildBridge(b));
+    for (const hs of m.houses) {
+      const h = buildHouse(hs.roof);
+      h.position.set(hs.x / U, 0, hs.y / U); h.rotation.y = hs.rot;
+      group.add(h);
+    }
+    const wl = buildWell();
+    wl.position.set(m.well.x / U, 0, m.well.y / U);
+    group.add(wl);
+  }
+
   /** Construit la carte courante (zone ou donjon) : décor, lieux, murs. */
   function buildMap3D(m) {
     if (!W3) {
@@ -954,7 +1053,7 @@ const Render3D = (() => {
     if (W3.group) { scene.remove(W3.group); disposeGroup(W3.group); }
     const group = new THREE.Group();
     scene.add(group);
-    Object.assign(W3, { group, key: m.key, map: m, anchor: null, first: true, zaap: null, npc: null, mark: null, door: null, torches: [] });
+    Object.assign(W3, { group, key: m.key, map: m, anchor: null, first: true, zaap: null, npc: null, mark: null, door: null, torches: [], water: null });
     const z = ZONES[m.zone], dungeon = m.kind === 'dungeon';
     let seed = 777 + m.zone * 31 + (dungeon ? 5 : 0);
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -965,13 +1064,15 @@ const Render3D = (() => {
     };
     const W = m.w, H = m.h;
     if (!dungeon) {
-      const avoid = [[m.zaap.x, m.zaap.y, 300], [m.npc.x, m.npc.y, 200], [m.lair.x, m.lair.y, 300], [m.door.x, m.door.y, 330]];
+      const avoid = [[m.zaap.x, m.zaap.y, 300], [m.npc.x, m.npc.y, 200], [m.lair.x, m.lair.y, 300], [m.door.x, m.door.y, 330], [m.well.x, m.well.y, 90]];
       for (const c of m.camps) avoid.push([c.x, c.y, 170]);
+      for (const hs of m.houses) avoid.push([hs.x, hs.y, 160]);
       const set = DECOR_SET[z.decoType] || DECOR_SET.grass, CELL = 150;
       for (let cx = 0; cx < W; cx += CELL) for (let cy = -H; cy < H; cy += CELL) {
         if (rnd() > 0.3) continue;
         const x = cx + rnd() * CELL, y = cy + rnd() * CELL;
         if (avoid.some(([ax, ay, r]) => Math.hypot(ax - x, ay - y) < r)) continue;
+        if (WORLD.inWater(m, x, y, 40, false) || WORLD.roadDist(m, x, y) < 70) continue;
         let k = rnd(), pk = set[0];
         for (const d of set) { if (k < d[1]) { pk = d; break; } k -= d[1]; }
         push(pk[0], x / U, y / U, pk[2] + rnd() * (pk[3] - pk[2]));
@@ -1022,6 +1123,7 @@ const Render3D = (() => {
       }
     };
     if (!dungeon) {
+      buildTerrain3D(m, group);
       const zp = buildZaap();
       zp.root.position.set(m.zaap.x / U, 0, m.zaap.y / U);
       group.add(zp.root);

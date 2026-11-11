@@ -131,6 +131,7 @@ const Game = (() => {
 
   function recomputeStats() {
     const st = Object.assign({}, S.meta);
+    if (S.mode === 'world' && S.carac) return recomputeWorldStats(st);
     const P = S.passives;
     st.hp *= 1 + 0.2 * (P.vitalite || 0);
     st.dmg *= 1 + 0.1 * (P.force || 0);
@@ -142,16 +143,7 @@ const Game = (() => {
     st.cd *= Math.pow(0.93, P.pa || 0);
     st.armor = 1 - (1 - st.armor) * Math.pow(0.94, P.resistance || 0);
     st.regen += 0.5 * (P.soin || 0);
-    // Équipement porté (aventure)
-    for (const slot in S.equip || {}) {
-      const it = S.equip[slot].stats;
-      st.dmg *= 1 + (it.dmg || 0);
-      st.hp *= 1 + (it.hp || 0);
-      st.speed *= 1 + (it.speed || 0);
-      st.crit += it.crit || 0;
-      st.cd *= 1 - (it.cd || 0);
-      st.armor = 1 - (1 - st.armor) * (1 - (it.armor || 0));
-    }
+    applyEquip(st);
     S.stats = st;
     const newMax = Math.round(CLASSES[S.cls].hp * st.hp);
     if (S.p.maxHp) S.p.hp += Math.max(0, newMax - S.p.maxHp);
@@ -166,6 +158,13 @@ const Game = (() => {
       const u = def.up[i];
       if (u.m) for (const k in u.m) s[k] = (s[k] || 0) * u.m[k];
       if (u.a) for (const k in u.a) s[k] = (s[k] || 0) + u.a[k];
+    }
+    // Aventure : le sort ne monte qu'avec la caractéristique de son élément
+    if (S && S.mode === 'world' && S.carac) {
+      const el = WORLD.ELEMENTS[WORLD.SPELL_ELEM[sp.id] || 'terre'];
+      if (s.dmg) s.dmg *= 1 + (S.carac[el.stat] || 0) / 100;
+      if (s.heal) s.heal *= 1 + (S.carac.intelligence || 0) / 100;
+      if (s.shield) s.shield *= 1 + (S.carac.force || 0) / 200 + (S.carac.vitalite || 0) / 400;
     }
     return s;
   }
@@ -236,6 +235,161 @@ const Game = (() => {
   }
 
 
+  // ============================================================ Caractéristiques et talents (aventure)
+  function applyEquip(st) {
+    for (const slot in S.equip || {}) {
+      const it = S.equip[slot].stats;
+      st.dmg *= 1 + (it.dmg || 0);
+      st.hp *= 1 + (it.hp || 0);
+      st.speed *= 1 + (it.speed || 0);
+      st.crit += it.crit || 0;
+      st.cd *= 1 - (it.cd || 0);
+      st.armor = 1 - (1 - st.armor) * (1 - (it.armor || 0));
+    }
+  }
+
+  function recomputeWorldStats(st) {
+    const C = S.carac, T = S.talents.passives;
+    st.xp *= 1 + (C.sagesse || 0) / 100;
+    st.dodge = Math.min(0.3, (C.agilite || 0) / 1200);
+    st.crit += (C.agilite || 0) / 2000;
+    st.loot = 1 + Math.floor((C.chance || 0) / 10) / 100;
+    st.cd *= Math.pow(0.95, T.pa || 0);
+    st.armor = 1 - (1 - st.armor) * Math.pow(0.94, T.resistance || 0);
+    st.regen += 0.6 * (T.soin || 0);
+    st.pickup *= 1 + 0.3 * (T.prospection || 0);
+    st.area *= 1 + 0.08 * (T.envergure || 0);
+    st.speed *= 1 + 0.05 * (T.celerite || 0);
+    applyEquip(st);
+    S.stats = st;
+    // Vie : base de la classe, +6 par niveau, +1 par point de Vitalité
+    const newMax = Math.round((CLASSES[S.cls].hp + (S.level - 1) * 6 + (C.vitalite || 0)) * st.hp);
+    if (S.p.maxHp) S.p.hp += Math.max(0, newMax - S.p.maxHp);
+    S.p.maxHp = newMax;
+    S.p.hp = Math.min(S.p.hp, newMax);
+  }
+
+  /** Multiplicateur d'expérience selon l'écart de niveau avec le monstre. */
+  function xpGap(e) {
+    if (!e.lvl) return 1;
+    const d = e.lvl - S.level;
+    if (d <= -5) return Math.max(0.1, 1 - 0.15 * (-d - 4));
+    if (d > 0) return 1 + Math.min(0.5, 0.05 * d);
+    return 1;
+  }
+
+  function worldLevelUp() {
+    const n = S.pending;
+    S.pending = 0;
+    recomputeStats();
+    S.p.hp = S.p.maxHp;
+    cb.onBanner(`Niveau ${S.level} !`, `+${WORLD.STAT_PER_LEVEL * n} caractéristiques · +${n} point${n > 1 ? 's' : ''} de talent`);
+    if (cb.onPoints) cb.onPoints();
+    cb.onSave();
+  }
+
+  function talentSpent() {
+    const T = S.talents;
+    let n = 0;
+    CLASSES[S.cls].spells.forEach((id, i) => { const r = T.spells[id] || 0; n += i === 0 ? Math.max(0, r - 1) : r; });
+    for (const k in T.passives) n += T.passives[k];
+    return n;
+  }
+  const talentPoints = () => S.level - 1 - talentSpent();
+  const caracPoints = () => (S.level - 1) * WORLD.STAT_PER_LEVEL - WORLD.caracSpent(S.carac);
+
+  /** Peut-on monter ce talent ? Renvoie la raison sinon. */
+  function talentCheck(kind, id) {
+    const T = S.talents;
+    if (kind === 'spell') {
+      const idx = CLASSES[S.cls].spells.indexOf(id), r = T.spells[id] || 0;
+      if (idx < 0) return 'Sort inconnu';
+      if (r >= 5) return 'Rang maximum';
+      if (r === 0 && talentSpent() < WORLD.SPELL_GATE[idx]) return `Dépense ${WORLD.SPELL_GATE[idx]} points dans l’arbre`;
+      if (S.level < WORLD.RANK_LEVEL[r + 1]) return `Niveau ${WORLD.RANK_LEVEL[r + 1]} requis`;
+    } else {
+      const def = WORLD.TALENT_PASSIVES[id], r = T.passives[id] || 0;
+      if (!def) return 'Talent inconnu';
+      if (r >= def.max) return 'Rang maximum';
+    }
+    if (talentPoints() < 1) return 'Plus de point de talent';
+    return '';
+  }
+
+  /** Remet la barre de sorts en accord avec les talents. */
+  function syncSpells() {
+    const order = CLASSES[S.cls].spells, T = S.talents;
+    const keep = [];
+    for (const id of order) {
+      const r = T.spells[id] || 0;
+      if (!r) continue;
+      let sp = S.spells.find((q) => q.id === id);
+      if (!sp) { addSpell(id); sp = S.spells[S.spells.length - 1]; }
+      sp.lvl = r;
+      sp.s = spellStats(sp);
+      keep.push(sp);
+    }
+    S.spells = keep;
+  }
+  function refreshSpells() { for (const sp of S.spells) sp.s = spellStats(sp); }
+
+  function talentUp(kind, id) {
+    if (!S || S.mode !== 'world') return null;
+    const why = talentCheck(kind, id);
+    if (why) return why;
+    const bag = kind === 'spell' ? S.talents.spells : S.talents.passives;
+    bag[id] = (bag[id] || 0) + 1;
+    if (kind === 'spell') { syncSpells(); if (bag[id] === 1) cb.onBanner('Nouveau sort : ' + SPELLS[id].name, 'Il se lance tout seul'); }
+    recomputeStats();
+    refreshSpells();
+    cb.onSave();
+    return '';
+  }
+
+  /** Remise à zéro des talents (le premier sort reste au rang 1). */
+  function resetTalents() {
+    if (!S || S.mode !== 'world') return;
+    S.talents = { spells: { [CLASSES[S.cls].spells[0]]: 1 }, passives: {} };
+    syncSpells();
+    recomputeStats();
+    refreshSpells();
+    cb.onSave();
+  }
+
+  /** Ajoute jusqu'à n points dans une caractéristique (selon les points restants et les paliers). */
+  function addCarac(id, n = 1) {
+    if (!S || S.mode !== 'world' || !WORLD.CARACS[id]) return;
+    for (let k = 0; k < n; k++) {
+      const v = S.carac[id] || 0, c = WORLD.caracCost(id, v);
+      if (caracPoints() < c) break;
+      S.carac[id] = v + 1;
+    }
+    recomputeStats();
+    refreshSpells();
+  }
+  function resetCarac() {
+    if (!S || S.mode !== 'world') return;
+    S.carac = {};
+    recomputeStats();
+    refreshSpells();
+    cb.onSave();
+  }
+
+  /** Données des fenêtres Caractéristiques et Talents. */
+  function charInfo() {
+    if (!S || S.mode !== 'world') return null;
+    const checks = {};
+    for (const id of CLASSES[S.cls].spells) checks['spell:' + id] = talentCheck('spell', id);
+    for (const id in WORLD.TALENT_PASSIVES) checks['passive:' + id] = talentCheck('passive', id);
+    return {
+      cls: S.cls, level: S.level, carac: Object.assign({}, S.carac), caracPts: caracPoints(),
+      talents: { spells: Object.assign({}, S.talents.spells), passives: Object.assign({}, S.talents.passives) },
+      talentPts: talentPoints(), spent: talentSpent(), checks,
+      maxHp: S.p.maxHp, dodge: S.stats.dodge || 0, crit: S.stats.crit, xp: S.stats.xp, loot: S.stats.loot || 1,
+      spellDmg: Object.fromEntries(S.spells.map((sp) => [sp.id, sp.s.dmg || sp.s.heal || sp.s.shield || 0])),
+    };
+  }
+
   // ============================================================ Aventure (une carte par zone + donjons)
   /** Démarre (ou reprend) l'aventure avec la sauvegarde du héros. */
   function startWorld(clsId, save, adv) { start(clsId, Math.min(4, adv.zone || 0), save, adv); }
@@ -245,19 +399,20 @@ const Game = (() => {
     S.level = adv.level || 1;
     S.xp = adv.xp || 0;
     S.xpNext = xpFor(S.level);
-    S.passives = Object.assign({}, adv.passives || {});
+    S.passives = {};
     S.equip = Object.assign({}, adv.equip || {});
+    // Caractéristiques et talents (une ancienne sauvegarde repart avec tous ses points à répartir)
+    S.carac = Object.assign({}, adv.carac || {});
+    const first = CLASSES[S.cls].spells[0];
+    S.talents = adv.talents
+      ? { spells: Object.assign({}, adv.talents.spells), passives: Object.assign({}, adv.talents.passives) }
+      : { spells: { [first]: 1 }, passives: {} };
+    if (!S.talents.spells[first]) S.talents.spells[first] = 1;
+    if (caracPoints() < 0) S.carac = {};
+    if (talentPoints() < 0) S.talents = { spells: { [first]: 1 }, passives: {} };
     recomputeStats();
-    if (adv.spells && adv.spells.length) {
-      S.spells = [];
-      for (const q of adv.spells) {
-        if (!SPELLS[q.id]) continue;
-        addSpell(q.id);
-        const sp = S.spells[S.spells.length - 1];
-        sp.lvl = Math.min(5, q.lvl || 1);
-        sp.s = spellStats(sp);
-      }
-    }
+    S.spells = [];
+    syncSpells();
     S.p.hp = S.p.maxHp;
     S.world = {
       quest: adv.quest || 0, qProgress: adv.qProgress || 0, qAccepted: !!adv.qAccepted,
@@ -337,7 +492,14 @@ const Game = (() => {
     if (!e.aggro) {
       if (dist < (e.boss ? 520 : 340) || e.hp < e.maxHp) {
         e.aggro = true;
-        if (e.camp) for (const m of e.camp.members) m.aggro = true;   // le groupe entier donne l'alerte
+        if (e.camp) {
+          // Le groupe entier donne l'alerte, et les groupes voisins viennent aider
+          for (const m of e.camp.members) m.aggro = true;
+          for (const c of S.world.camps) {
+            if (c === e.camp || !c.members.length || Math.hypot(c.def.x - e.camp.def.x, c.def.y - e.camp.def.y) > 430) continue;
+            for (const m of c.members) m.aggro = true;
+          }
+        }
       } else {
         e.wt = (e.wt || 0) - dt;
         if (e.wt <= 0) {
@@ -374,7 +536,7 @@ const Game = (() => {
     if (e.boss) {
       const n = e.kind === 'boss' ? 2 : 1;
       for (let i = 0; i < n; i++) S.gems.push({ kind: 'item', item: WORLD.makeItem(e.lvl, S.zoneIdx, 1), x: e.x + rand(-40, 40), y: e.y + rand(-40, 40), v: 0 });
-    } else if (Math.random() < (dungeon ? 0.07 : 0.035)) {
+    } else if (Math.random() < (dungeon ? 0.07 : 0.035) * (S.stats.loot || 1)) {
       S.gems.push({ kind: 'item', item: WORLD.makeItem(e.lvl, S.zoneIdx), x: e.x, y: e.y, v: 0 });
     }
     let first = false;
@@ -451,7 +613,7 @@ const Game = (() => {
     if (m.kind === 'zone') {
       if (near(m.npc)) return { kind: 'npc', label: 'Parler à ' + m.npc.name };
       if (near(m.zaap)) return { kind: 'zaap', label: 'Utiliser le zaap' };
-      if (near(m.door, 170)) return { kind: 'door', label: 'Entrer dans le donjon' };
+      if (near(m.door, 170)) return { kind: 'door', label: `Entrer dans le donjon (niv. ${WORLD.DUNGEON_LEVEL[m.zone]})` };
     } else if (near(m.exit, 150)) return { kind: 'exit', label: 'Quitter le donjon' };
     return null;
   }
@@ -478,6 +640,8 @@ const Game = (() => {
     } else if (n.kind === 'zaap') {
       cb.onZaap(WORLD.zones.map((z, i) => ({ idx: i, name: z.name, lvl: z.lvl, here: i === m.zone, open: WORLD.unlocked(i, w.bossKilled) })));
     } else if (n.kind === 'door') {
+      const need = WORLD.DUNGEON_LEVEL[m.zone];
+      if (S.level < need) { cb.onBanner('Donjon trop dangereux', `Il faut être niveau ${need} pour entrer`); return; }
       loadMap(m.dungeon);
     } else if (n.kind === 'exit') {
       const z = WORLD.zones[m.zone];
@@ -509,6 +673,7 @@ const Game = (() => {
       npcAlert: q && !w.qAccepted && q.zone === m.zone && m.kind === 'zone',
       camps: w.camps.filter((c) => c.members.length || S.t >= c.respawnAt).map((c) => c.def),
       bosses: w.lairs.filter((l) => S.t >= l.nextAt).map((l) => l.def),
+      pts: [caracPoints(), talentPoints()], open: WORLD.zones.map((z, i) => WORLD.unlocked(i, w.bossKilled)),
     };
   }
 
@@ -522,7 +687,8 @@ const Game = (() => {
     // Dans un donjon, on reprendra devant son entrée
     const pos = m.kind === 'zone' ? { x: Math.round(S.p.x), y: Math.round(S.p.y) } : { x: z.door.x - 170, y: 40 };
     return {
-      cls: S.cls, level: S.level, xp: S.xp, passives: Object.assign({}, S.passives), equip: Object.assign({}, S.equip),
+      cls: S.cls, level: S.level, xp: S.xp, equip: Object.assign({}, S.equip), carac: Object.assign({}, S.carac),
+      talents: { spells: Object.assign({}, S.talents.spells), passives: Object.assign({}, S.talents.passives) },
       spells: S.spells.map((sp) => ({ id: sp.id, lvl: sp.lvl })), zone: S.zoneIdx, pos,
       quest: w.quest, qProgress: w.qProgress, qAccepted: w.qAccepted, bossKilled: Object.assign({}, w.bossKilled),
       playTime: Math.round(w.playTime),
@@ -582,7 +748,7 @@ const Game = (() => {
   function hudData() {
     return {
       hp: S.p.hp, maxHp: S.p.maxHp, shield: S.p.shield, xp: S.xp, xpNext: S.xpNext, level: S.level,
-      t: S.t, kills: S.kills, kamas: Math.floor(S.kamas), spells: S.spells, passives: S.passives,
+      t: S.t, kills: S.kills, kamas: Math.floor(S.kamas), spells: S.spells, passives: S.mode === 'world' && S.talents ? S.talents.passives : S.passives,
       cls: S.cls, rerolls: S.rerolls, banishes: S.banishes,
       cds: S.spells.map((sp) => (sp.s.cd ? clamp(sp.timer / (sp.s.cd * S.stats.cd), 0, 1) : 0)),
       boss: S.boss && !S.boss.dead && (S.mode !== 'world' || S.boss.aggro) ? { name: S.boss.def.name + (S.boss.lvl ? ' · niv. ' + S.boss.lvl : ''), hp: S.boss.hp, maxHp: S.boss.maxHp } : null,
@@ -602,6 +768,7 @@ const Game = (() => {
     updateGems(dt);
     updateFx(dt);
 
+    if (S.mode === 'world' && S.pending > 0) worldLevelUp();
     if (S.pending > 0 && !S.choosing && !S.over) {
       S.choosing = true;
       cb.onLevelUp(genChoices());
@@ -639,9 +806,11 @@ const Game = (() => {
       const m = S.world.map;
       p.x = clamp(p.x, 40, m.w - 40);
       p.y = clamp(p.y, -m.h + 40, m.h - 40);
-      // Hors combat depuis 4 s : la vie remonte vite
+      // Eau, gouffres et maisons
+      if (m.kind === 'zone') [p.x, p.y] = WORLD.collide(m, p.x, p.y, p.r);
+      // Hors combat depuis 6 s : la vie remonte
       S.world.combatT += dt;
-      if (S.world.combatT > 4 && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.08 * dt);
+      if (S.world.combatT > 6 && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.04 * dt);
     }
     p.hurt = Math.max(0, p.hurt - dt);
     p.inv = Math.max(0, p.inv - dt);
@@ -651,6 +820,11 @@ const Game = (() => {
   function damagePlayer(d) {
     const p = S.p;
     if (S.over || p.hp <= 0 || GOD_MODE) return;
+    if (S.stats.dodge && Math.random() < S.stats.dodge) {
+      if (p.inv <= 0) addText(p.x, p.y - 30, 'Esquive', '#8fd9a0');
+      p.inv = Math.max(p.inv, 0.2);
+      return;
+    }
     d *= 1 - S.stats.armor;
     if (p.shield > 0) {
       const a = Math.min(p.shield, d);
@@ -746,6 +920,11 @@ const Game = (() => {
       kvx: 0, kvy: 0, slow: 0, slowT: 0, poison: 0, poisonT: 0, poisonAcc: 0, atk: 0, flash: 0,
       seed: Math.random() * 10, shot: rand(1, 2), hitT: {}, ab: 3, charge: 0, cx: 0, cy: 0,
     };
+    if (world && lvl) {
+      // Monstre bien plus fort que le héros : il frappe plus fort et encaisse mieux
+      const gap = lvl - S.level;
+      if (gap >= 5) { e.dmg *= 1 + Math.min(0.6, 0.04 * gap); e.tough = Math.max(0.5, 1 - 0.04 * gap); }
+    }
     S.enemies.push(e);
     return e;
   }
@@ -791,7 +970,7 @@ const Game = (() => {
 
   function hitEnemy(e, base, o) {
     if (e.dead) return;
-    let d = base * S.stats.dmg;
+    let d = base * S.stats.dmg * (e.tough || 1);
     if (o.rage) d *= 1 + (1 - S.p.hp / S.p.maxHp) * 1.5;
     if (o.gamble) d *= rand(0.3, 2.5); // Écaflip : dégâts aléatoires
     const crit = Math.random() < S.stats.crit + (o.crit || 0);
@@ -816,7 +995,7 @@ const Game = (() => {
     e.dead = true;
     S.kills++;
     const z = S.zone;
-    gainXp(e.xp, e.x, e.y);
+    gainXp(S.mode === 'world' ? e.xp * xpGap(e) : e.xp, e.x, e.y);
     if (e.gold || Math.random() < 0.07) {
       S.gems.push({ kind: 'kamas', x: e.x + rand(-6, 6), y: e.y + rand(-6, 6), v: Math.ceil(rand(1, 4) * z.kamas) });
     }
@@ -1119,6 +1298,10 @@ const Game = (() => {
         }
       });
     }
+    if (S.mode === 'world' && S.world.map.kind === 'zone') {
+      const m = S.world.map;
+      for (const e of S.enemies) if (!e.dead) [e.x, e.y] = WORLD.collide(m, e.x, e.y, e.r * 0.8);
+    }
     S.enemies = S.enemies.filter((e) => !e.dead);
   }
 
@@ -1204,6 +1387,12 @@ const Game = (() => {
       }
       case 'magnet': for (const o of S.gems) if (o.kind === 'xp' || o.kind === 'kamas') o.mag = true; break;
       case 'chest':
+        if (S.mode === 'world') {
+          // Aventure : le coffre donne de l'équipement au lieu d'améliorations
+          S.kamas += 30 * S.zone.kamas * S.stats.kamas;
+          pickItem(WORLD.makeItem(S.level + 2, S.zoneIdx, 1));
+          break;
+        }
         S.pending += 2;
         S.kamas += 30 * S.zone.kamas * S.stats.kamas;
         cb.onBanner('Coffre !', '+2 améliorations');
@@ -1592,6 +1781,57 @@ const Game = (() => {
     drawWorldPlaces();
   }
 
+  /** Chemins, plans d'eau et ponts (rendu 2D). */
+  function drawTerrain2D(m, x0, y0, x1, y1) {
+    const [rc, re] = WORLD.ROAD_COL[m.decoType] || WORLD.ROAD_COL.grass;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const [col, wd] of [[re, 96], [rc, 74]]) {
+      ctx.strokeStyle = col; ctx.lineWidth = wd;
+      for (const road of m.roads) { ctx.beginPath(); road.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke(); }
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(m.plaza.x, m.plaza.y, m.plaza.r + (wd - 74) / 2, 0, Math.PI * 2); ctx.fill();
+    }
+    // Pavés de la place du zaap
+    ctx.strokeStyle = 'rgba(0,0,0,.08)'; ctx.lineWidth = 2;
+    for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.arc(m.plaza.x, m.plaza.y, (m.plaza.r * k) / 4, 0, Math.PI * 2); ctx.stroke(); }
+    for (const pass of ['rim', 'fill', 'shine']) for (const w of m.water) {
+      if (w.x + w.rx + 30 < x0 || w.x - w.rx - 30 > x1 || w.y + w.ry + 30 < y0 || w.y - w.ry - 30 > y1) continue;
+      const k = WORLD.WATER_KIND[w.kind];
+      if (pass === 'shine') {
+        if (w.kind === 'chasm') continue;
+        ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.ellipse(w.x - w.rx * 0.2, w.y - w.ry * 0.25 + Math.sin(S.t * 1.5 + w.x) * 3, w.rx * 0.35, w.ry * 0.12, 0, 0, Math.PI * 2); ctx.stroke();
+        continue;
+      }
+      ctx.fillStyle = pass === 'rim' ? k.rim : k.fill;
+      const pad = pass === 'rim' ? 16 : 0;
+      ctx.beginPath(); ctx.ellipse(w.x, w.y, w.rx + pad, w.ry + pad, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    for (const b of m.bridges) {
+      ctx.fillStyle = '#6a4220'; ctx.fillRect(b.x - b.len / 2, b.y - 52, b.len, 104);
+      ctx.fillStyle = '#a8743a';
+      for (let px = b.x - b.len / 2 + 4; px < b.x + b.len / 2 - 4; px += 22) ctx.fillRect(px, b.y - 42, 18, 84);
+      ctx.fillStyle = '#5a3818'; ctx.fillRect(b.x - b.len / 2, b.y - 52, b.len, 8); ctx.fillRect(b.x - b.len / 2, b.y + 44, b.len, 8);
+    }
+  }
+
+  /** Maisons et puits du hameau (rendu 2D, par-dessus le décor). */
+  function drawVillage2D(m) {
+    for (const hs of m.houses) {
+      ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fillRect(hs.x - 66, hs.y + 30, 140, 22);
+      ctx.fillStyle = '#e8dcc0'; ctx.fillRect(hs.x - 62, hs.y - 40, 124, 80);
+      ctx.fillStyle = '#5a3a20'; ctx.fillRect(hs.x - 14, hs.y, 28, 40);
+      ctx.fillStyle = '#9ad0f0'; ctx.fillRect(hs.x - 48, hs.y - 22, 22, 18); ctx.fillRect(hs.x + 26, hs.y - 22, 22, 18);
+      ctx.fillStyle = hs.roof;
+      ctx.beginPath(); ctx.moveTo(hs.x - 78, hs.y - 36); ctx.lineTo(hs.x, hs.y - 100); ctx.lineTo(hs.x + 78, hs.y - 36); ctx.closePath(); ctx.fill();
+    }
+    const w = m.well;
+    ctx.fillStyle = '#8a8090'; ctx.beginPath(); ctx.ellipse(w.x, w.y, 30, 18, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2f6aa8'; ctx.beginPath(); ctx.ellipse(w.x, w.y, 20, 11, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#6a4220'; ctx.fillRect(w.x - 28, w.y - 50, 6, 50); ctx.fillRect(w.x + 22, w.y - 50, 6, 50);
+    ctx.fillStyle = '#b5482e'; ctx.beginPath(); ctx.moveTo(w.x - 38, w.y - 46); ctx.lineTo(w.x, w.y - 70); ctx.lineTo(w.x + 38, w.y - 46); ctx.closePath(); ctx.fill();
+  }
+
   function shade(hex, k) {
     const n = parseInt(hex.slice(1), 16);
     return `rgb(${((n >> 16) & 255) * k | 0},${((n >> 8) & 255) * k | 0},${(n & 255) * k | 0})`;
@@ -1612,6 +1852,7 @@ const Game = (() => {
   function drawWorldPlaces() {
     const w = S.world, m = w.map;
     if (m.kind === 'zone') {
+      drawVillage2D(m);
       drawPortal(m.zaap.x, m.zaap.y, '#4fc3c7');
       const n = m.npc, q = WORLD.QUESTS[w.quest];
       ctx.fillStyle = 'rgba(0,0,0,.25)'; isoEllipse(n.x, n.y, 14); ctx.fill();
@@ -1619,7 +1860,7 @@ const Game = (() => {
       ctx.fillStyle = '#f2d2b0'; ctx.beginPath(); ctx.arc(n.x, n.y - 38, 9, 0, Math.PI * 2); ctx.fill();
       if (q && !w.qAccepted && q.zone === m.zone) {
         ctx.font = 'bold 26px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#f2c14e';
-        ctx.fillText('!', n.x, n.y - 54 + Math.sin(S.t * 4) * 4);
+        ctx.fillText('!', n.x, n.y - 78 + Math.sin(S.t * 4) * 4);
       }
       ctx.globalAlpha = 0.3; ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 6;
       isoEllipse(m.lair.x, m.lair.y, 190); ctx.stroke();
@@ -1652,6 +1893,8 @@ const Game = (() => {
       }
     }
     ctx.fill();
+    const terrain = S.mode === 'world' && S.world.map.kind === 'zone' ? S.world.map : null;
+    if (terrain) drawTerrain2D(terrain, x0, y0, x1, y1);
 
     const C = 150;
     const c0 = Math.floor(x0 / C) - 1, c1 = Math.ceil(x1 / C) + 1;
@@ -1661,6 +1904,7 @@ const Game = (() => {
         const h = hash(cx, cy, z.idx !== undefined ? z.idx + 1 : S.zoneIdx + 1);
         if (h > 0.55) continue;
         const x = cx * C + hash(cx, cy, 7) * C, y = cy * C + hash(cx, cy, 13) * C;
+        if (terrain && (WORLD.inWater(terrain, x, y, 30, false) || WORLD.roadDist(terrain, x, y) < 60)) continue;
         drawDeco(z, x, y, h / 0.55, hash(cx, cy, 21));
       }
     }
@@ -2140,5 +2384,5 @@ const Game = (() => {
   /** Mesures de fluidité (affichées avec ?fps) : images/s, coût du rendu, nombre de monstres. */
   const perf = () => ({ fps, renderMs, enemies: S ? S.enemies.length : 0 });
 
-  return { init, start, stop, setPaused, choose, reroll, banish, counts, setRenderMode, renderMode, perf, startWorld, interact, travel, worldChoice, worldSnapshot, takeLoot, equipment, peek: () => S, _hit: (e, d) => hitEnemy(e, d, {}) };
+  return { init, start, stop, setPaused, choose, reroll, banish, counts, setRenderMode, renderMode, perf, startWorld, interact, travel, worldChoice, worldSnapshot, takeLoot, equipment, addCarac, resetCarac, talentUp, resetTalents, charInfo, peek: () => S, _hit: (e, d) => hitEnemy(e, d, {}) };
 })();
