@@ -15,9 +15,12 @@ const Game = (() => {
     const q = location.search.match(/[?&]vague=(\d+)/), v = location.search.match(/[?&]vitesse=(\d+)/);
     const h = location.hash.match(/^#vague(\d+)(?:x(\d))?$/);
     const wave = q ? +q[1] : h ? +h[1] : 0;
-    return { wave, speed: Math.min(4, Math.max(1, v ? +v[1] : h && h[2] ? +h[2] : 1)) };
+    // ?sort=epee_celeste ou #sort-epee-celeste : donne ce sort dès le départ (s'il est de la classe)
+    const sq = location.search.match(/[?&]sort=([a-z_]+)/), sh = location.hash.match(/^#sort-([a-z-]+)$/);
+    const spell = sq ? sq[1] : sh ? sh[1].replace(/-/g, '_') : null;
+    return { wave, spell, speed: Math.min(4, Math.max(1, v ? +v[1] : h && h[2] ? +h[2] : 1)) };
   })();
-  const GOD_MODE = /[?&]debug\b/.test(location.search) || TEST.wave > 0; // invincibilité pour les tests
+  const GOD_MODE = /[?&]debug\b/.test(location.search) || TEST.wave > 0 || !!TEST.spell; // invincibilité pour les tests
   // Tests de fluidité : ?stress / #stress remplit l'écran de monstres, ?fps / #fps affiche le compteur
   const STRESS = /[?&]stress\b/.test(location.search) || location.hash === '#stress';
   const SHOW_FPS = STRESS || TEST.wave > 0 || /[?&]fps\b/.test(location.search) || location.hash === '#fps';
@@ -181,6 +184,7 @@ const Game = (() => {
     r3RadiusAt = -1;
     addSpell(cls.spells[0]);
     if (TEST.wave) jumpToWave(TEST.wave);
+    if (TEST.spell && cls.spells.includes(TEST.spell) && !S.spells.some((q) => q.id === TEST.spell)) addSpell(TEST.spell);
     paused = false;
     lastT = performance.now();
     cancelAnimationFrame(raf);

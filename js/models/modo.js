@@ -363,6 +363,44 @@ function buildSword(P, len = 1.5, glowMat) {
   for (let i = 0; i < 4; i++) g.add(at(box(0.06, 0.06, 0.07, P.gold), 0, 0.4 + i * len * 0.2, 0));
   return g;
 }
+/**
+ * Épée céleste géante (sort Épée Céleste du Iop) : lame claire aux bords lumineux,
+ * rainure de lumière et runes, garde dorée ailée, gemme, auréole, poignée et pommeau.
+ * L'origine est la pointe de la lame : posée à y = 0, l'épée est plantée dans le sol.
+ */
+function buildEpeeCeleste() {
+  const g = new THREE.Group();
+  g.name = 'epee_celeste';
+  const steel = mat(0xe8f0ff), steel2 = mat(0xc4d2ee), edge = mat(0x9fe8ff, 0.8), core = mat(0xffffff, 1);
+  const gold = mat(0xf2c14e, 0.35), gold2 = mat(0xd8a838, 0.2), gem = mat(0x5fd0ff, 0.9), grip = mat(0x2a3a6a), feather = mat(0xffffff, 0.5);
+  const L = 2.6, base = 0.4;
+  // Lame : acier, bords lumineux, rainure de lumière, pointe en losange
+  g.add(at(box(0.36, L, 0.08, steel), 0, base + L / 2, 0));
+  g.add(at(box(0.46, L * 0.94, 0.04, edge), 0, base + L * 0.47, 0));
+  g.add(at(box(0.09, L * 0.86, 0.11, core), 0, base + L * 0.46, 0));
+  g.add(at(box(0.3, 0.08, 0.1, steel2), 0, base + L - 0.05, 0));
+  g.add(at(cone(0.26, base + 0.05, 4, steel), 0, base / 2, 0, Math.PI, Math.PI / 4));
+  for (let i = 0; i < 5; i++) g.add(at(box(0.1, 0.1, 0.13, gem), 0, base + 0.35 + i * L * 0.17, 0, 0, 0, Math.PI / 4));
+  // Garde ailée
+  const gy = base + L + 0.07;
+  g.add(at(box(1.0, 0.16, 0.2, gold), 0, gy, 0));
+  g.add(at(box(0.5, 0.26, 0.22, gold2), 0, gy + 0.02, 0));
+  for (const s of [-1, 1]) {
+    g.add(at(cone(0.09, 0.3, 4, gold), s * 0.6, gy, 0, 0, 0, s * -Math.PI / 2));
+    for (let i = 0; i < 4; i++) {
+      g.add(at(box(0.5 - i * 0.07, 0.09, 0.05, i % 2 ? feather : gold), s * (0.42 + i * 0.1), gy + 0.18 + i * 0.13, -0.02, 0, 0, s * (0.35 + i * 0.22)));
+    }
+  }
+  g.add(at(crystal(0.12, 0.34, gem, 6), 0, gy + 0.02, 0.14, Math.PI / 2));
+  g.add(at(torus(0.5, 0.03, 6, 32, gold), 0, gy + 0.05, -0.05));
+  // Poignée et pommeau
+  g.add(at(cyl(0.065, 0.065, 0.62, 8, grip), 0, gy + 0.42, 0));
+  for (let i = 0; i < 3; i++) g.add(at(torus(0.075, 0.02, 6, 12, gold), 0, gy + 0.2 + i * 0.2, 0, Math.PI / 2));
+  g.add(at(sph(0.12, 8, 6, gold), 0, gy + 0.8, 0));
+  g.add(at(crystal(0.08, 0.3, gem, 6), 0, gy + 1.0, 0));
+  return g;
+}
+
 function buildStaff(P, len = 2, topMat) {
   const g = new THREE.Group();
   g.name = 'baton';

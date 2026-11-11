@@ -445,7 +445,7 @@ const Render3D = (() => {
       }
     } else if (lc.id === 'epee_celeste') {
       const sp = S.spells.find((q) => q.id === lc.id);
-      vfxEpeeCeleste(x, z, sp ? (sp.s.radius * S.stats.area) / U : 3);
+      vfxEpeeCeleste(x, z, sp ? (sp.s.radius * S.stats.area) / U : 3, hero ? hero.yaw : 0);
     } else if (lc.type === 'glyph' || lc.type === 'nova') {
       const sp = S.spells.find((q) => q.id === lc.id);
       const r = sp && sp.s.radius ? (sp.s.radius * S.stats.area) / U : 2.5;
@@ -513,51 +513,95 @@ const Render3D = (() => {
     }, () => dropMeshes(meshes));
   }
 
-  /** IOP — Épée Céleste : 8 épées de lumière tombent en cercle autour du héros, onde dorée. */
-  function vfxEpeeCeleste(x, z, r) {
-    const swords = [], meshes = [];
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2 + 0.2;
-      const g = take('celeste', () => { const w = new THREE.Group(); const sw = buildSword(pal(), 1.1, mat(0xfff2a8, 0.9)); sw.rotation.x = Math.PI; sw.position.y = 1.6; w.add(sw); return w; });
-      g.position.set(x + Math.cos(a) * r, 3.2, z + Math.sin(a) * r);
-      g.rotation.set(0, -a, 0);
-      g.scale.setScalar(0.01);
-      swords.push(g);
-    }
-    const warn = fxMesh(RING_G(), '#fff2a8', 0.5, meshes);
-    warn.rotation.x = Math.PI / 2;
-    warn.position.set(x, 0.07, z);
-    warn.scale.setScalar(r);
-    const floor = fxMesh(DISC_G(), '#ffe680', 0.2, meshes);
-    floor.position.set(x, 0.05, z);
-    const pillars = [];
+  const makeCelesteSword = () => (typeof buildEpeeCeleste === 'function' ? buildEpeeCeleste() : buildSword(pal(), 2.6));
+  const SPHERE_G = () => geo('sphere', () => new THREE.SphereGeometry(1, 20, 14));
+  const STREAK_G = () => geo('streak', () => new THREE.BoxGeometry(1, 1, 1));
+
+  /**
+   * IOP — Épée Céleste : une grande épée de lumière tombe du ciel devant le héros.
+   * 1. le ciel s'ouvre (rayon + glyphe) et l'épée se matérialise tout en haut ;
+   * 2. elle plonge en accélérant, avec une traînée de lumière ;
+   * 3. impact : éclair en dôme, rayons au sol, ondes de choc, étincelles et plumes, secousse ;
+   * 4. elle reste plantée en pulsant puis se dissout en lumière vers le ciel.
+   */
+  function vfxEpeeCeleste(hx, hz, r, yaw) {
+    const x = hx + Math.sin(yaw) * 1.1, z = hz + Math.cos(yaw) * 1.1;
+    const meshes = [];
+    const sword = take('epee_celeste', makeCelesteSword);
+    sword.rotation.set(0, yaw + Math.PI / 2, 0);
+    const glyph = take('celeste_glyphe', makeGlyph);
+    glyph.position.set(hx, 0.05, hz);
+    glyph.scale.set(r, 1, r);
+    const beam = fxMesh(TUBE_G(), '#bfefff', 0, meshes);
+    const beamCore = fxMesh(TUBE_G(), '#ffffff', 0, meshes);
+    const streak = fxMesh(STREAK_G(), '#dff8ff', 0, meshes);
+    const dome = fxMesh(SPHERE_G(), '#fff6c8', 0, meshes);
+    const rays = [];
+    const T_FALL = 0.4, T_HIT = 0.58, LIFE = 1.55;
+    const SKY = 7.5; // assez bas pour voir l'épée se former dans le champ de la caméra
     let hit = false;
-    addVfx(0.9, (k, t) => {
-      const fall = Math.min(1, Math.max(0, (t - 0.14) / 0.14));
-      swords.forEach((g, i) => {
-        const appear = Math.min(1, t / 0.12);
-        const fade = t > 0.6 ? Math.max(0.01, 1 - (t - 0.6) / 0.3) : 1;
-        g.scale.setScalar(1.0 * appear * fade);
-        g.position.y = 3.2 * (1 - fall * fall) - (t > 0.28 ? (t - 0.28) * 0.5 : 0);
-        if (t < 0.28) part(g.position.x, g.position.y + 0.4, g.position.z, i % 2 ? '#fff2a8' : '#ffd84a', { life: 0.25, s: 0.09, vy: 0.5 });
-      });
-      warn.material.opacity = t < 0.28 ? 0.5 + 0.4 * Math.sin(t * 40) : 0;
-      floor.scale.set(r * Math.min(1, t * 4), 1, r * Math.min(1, t * 4));
-      floor.material.opacity = 0.22 * (1 - k);
-      if (!hit && t >= 0.28) {
+    addVfx(LIFE, (k, t) => {
+      // 1–2 : apparition puis chute
+      let y;
+      if (t < T_FALL) y = SKY - t * 1.5;
+      else if (t < T_HIT) { const f = (t - T_FALL) / (T_HIT - T_FALL); y = (SKY - T_FALL * 1.5) * (1 - f * f); }
+      else y = -0.5 - Math.max(0, t - 1.15) * 0.8;
+      const appear = Math.min(1, t / 0.2);
+      const dissolve = t > 1.15 ? Math.max(0.01, 1 - (t - 1.15) / (LIFE - 1.15)) : 1;
+      sword.position.set(x, y, z);
+      const SZ = 1.4; // l'épée fait environ 5,5 m
+      sword.scale.set(SZ * appear * (t > 1.15 ? 1 + (1 - dissolve) * 0.3 : 1), SZ * appear * dissolve, SZ * appear * (t > 1.15 ? 1 + (1 - dissolve) * 0.3 : 1));
+      sword.rotation.y = yaw + Math.PI / 2 + (t < T_FALL ? (T_FALL - t) * 4 : 0);
+      // Rayon de lumière qui tombe du ciel sur le point d'impact
+      const beamK = t < T_HIT ? Math.min(1, t / 0.25) : Math.max(0, 1 - (t - T_HIT) / 0.35);
+      beam.position.set(x, SKY / 2 + 1, z);
+      beam.scale.set(0.9 * beamK + 0.05, SKY + 2, 0.9 * beamK + 0.05);
+      beam.material.opacity = 0.28 * beamK;
+      beamCore.position.copy(beam.position);
+      beamCore.scale.set(0.22 * beamK + 0.02, SKY + 2, 0.22 * beamK + 0.02);
+      beamCore.material.opacity = 0.7 * beamK;
+      // Glyphe doré au sol (zone du sort)
+      tintGlyph(glyph, t < T_HIT ? '#ffe680' : '#bfefff', t < T_HIT ? Math.min(1, t * 4) : Math.max(0, 1 - (t - T_HIT) / 0.8));
+      glyph.rotation.y = t * 2.2;
+      // Traînée de la chute
+      if (t >= T_FALL - 0.05 && t < T_HIT) {
+        streak.material.opacity = 0.55;
+        streak.position.set(x, y + 4.5, z);
+        streak.scale.set(0.7, 6.5, 0.16);
+        streak.rotation.y = yaw + Math.PI / 2;
+        for (let i = 0; i < 6; i++) part(x + (Math.random() - 0.5) * 0.5, y + 0.5 + Math.random() * 4, z + (Math.random() - 0.5) * 0.5, i % 2 ? '#ffffff' : '#9fe8ff', { life: 0.3, s: 0.1, vy: 2 });
+      } else streak.material.opacity = 0;
+      if (t < T_FALL && Math.random() < 0.8) part(x + (Math.random() - 0.5) * 1.2, y + 1 + Math.random() * 3, z + (Math.random() - 0.5) * 1.2, '#fff2a8', { life: 0.4, s: 0.08 });
+      // 3 : impact
+      if (!hit && t >= T_HIT) {
         hit = true;
-        shake = Math.max(shake, 0.14);
-        shockwave(x, z, r * 1.25, '#ffe680', 0.55);
-        swords.forEach((g) => {
-          burst(g.position.x, 0.2, g.position.z, ['#ffffff', '#ffd84a', '#fff2a8'], 7, { speed: 2.2, up: 3, s: 0.08 });
-          const pl = fxMesh(TUBE_G(), '#fff2a8', 0.6, meshes);
-          pl.position.set(g.position.x, 1.3, g.position.z);
-          pl.scale.set(0.18, 2.6, 0.18);
-          pillars.push(pl);
-        });
+        shake = Math.max(shake, 0.32);
+        shockwave(x, z, r * 1.45, '#fff2a8', 0.7);
+        shockwave(x, z, r * 0.9, '#9fe8ff', 0.5, false);
+        burst(x, 0.4, z, ['#ffffff', '#fff2a8', '#9fe8ff', '#ffd84a'], 30, { speed: r * 1.6, up: 4, s: 0.11, life: 0.8 });
+        // Plumes de lumière qui retombent doucement
+        for (let i = 0; i < 14; i++) {
+          const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * 2;
+          part(x, 1.5 + Math.random(), z, '#ffffff', { vx: Math.cos(a) * sp, vz: Math.sin(a) * sp, vy: 1.5 + Math.random(), g: 1.6, life: 1.3, s: 0.12 });
+        }
+        for (let i = 0; i < 12; i++) {
+          const c = fxMesh(CRACK_G(), i % 2 ? '#fff2a8' : '#bfefff', 0.95, meshes);
+          c.position.set(x, 0.07, z);
+          c.rotation.y = (i / 12) * Math.PI * 2;
+          rays.push({ c, len: r * (1 + (i % 3) * 0.25) });
+        }
       }
-      pillars.forEach((pl) => { pl.material.opacity = 0.6 * (1 - k); pl.scale.x = pl.scale.z = 0.18 * (1 - k) + 0.02; });
-    }, () => { swords.forEach((g) => give('celeste', g)); dropMeshes(meshes); });
+      if (hit) {
+        const h = Math.min(1, (t - T_HIT) / 0.45);
+        dome.position.set(x, 0, z);
+        dome.scale.setScalar(Math.max(0.01, r * 1.15 * smooth(Math.min(1, (t - T_HIT) / 0.25))));
+        dome.material.opacity = 0.5 * (1 - h);
+        rays.forEach(({ c, len }) => { c.scale.set(len * smooth(Math.min(1, (t - T_HIT) / 0.2)), 1, 1.5); c.material.opacity = 0.95 * Math.max(0, 1 - (t - T_HIT) / 0.7); });
+        // 4 : épée plantée qui pulse puis se dissout vers le ciel
+        if (t < 1.15 && Math.random() < 0.5) part(x + (Math.random() - 0.5) * 0.6, 0.5 + Math.random() * 3, z + (Math.random() - 0.5) * 0.6, '#bfefff', { vy: 0.8, life: 0.5, s: 0.07 });
+        if (t > 1.15) for (let i = 0; i < 4; i++) part(x + (Math.random() - 0.5) * 0.7, Math.random() * 4, z + (Math.random() - 0.5) * 0.7, i % 2 ? '#ffffff' : '#fff2a8', { vy: 3 + Math.random() * 2, life: 0.6, s: 0.1 });
+      }
+    }, () => { give('epee_celeste', sword); give('celeste_glyphe', glyph); dropMeshes(meshes); });
   }
 
   /** IOP — Colère de Iop, annonce : rayon du ciel et glyphe rouge sous la cible. */
@@ -692,7 +736,10 @@ const Render3D = (() => {
     }
     ring(); disc(); wave(); arc(); slash();
     endPools();
+    const warm = [];
+    if (CLASSES[clsId].spells.includes('epee_celeste')) warm.push(['epee_celeste', take('epee_celeste', makeCelesteSword)], ['celeste_glyphe', take('celeste_glyphe', makeGlyph)]);
     renderer.compile(scene, camera);
+    for (const [name, m] of warm) give(name, m);
     for (const k in pools) for (const m of pools[k].items) m.visible = false;
   }
   function end() {
