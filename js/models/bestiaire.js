@@ -1000,7 +1000,8 @@ function buildMansotRoyal() {
       if (k > 0.4 && k < 1.4 && Math.random() < 0.6) fxA.mote(new V3(root.position.x + (Math.random() - 0.5) * 1.2, 0.1, root.position.z + body.position.z * S - 0.8), ice, 0.6, 0.4, CUBE_GEO, 1.2);
       if (cross(1.4)) for (let i = 0; i < 9; i++) {
         const a = -0.8 + (i / 8) * 1.6, d = 1.5 + (i % 3) * 0.8;
-        const pos = new V3(root.position.x + Math.sin(a) * (d + 2), 0, root.position.z + Math.cos(a) * (d + 2));
+        const aa = a + root.rotation.y;
+        const pos = new V3(root.position.x + Math.sin(aa) * (d + 2), 0, root.position.z + Math.cos(aa) * (d + 2));
         const sp = crystal(0.22, 1.4 + Math.random(), iceT, 5);
         sp.position.copy(pos);
         sp.rotation.set(Math.cos(a) * 0.3, 0, -Math.sin(a) * 0.3);

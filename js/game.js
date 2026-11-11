@@ -202,7 +202,8 @@ const Game = (() => {
   function jumpToWave(n) {
     S.t = n * 60;
     S.nextWave = S.t + 2;
-    S.bossIdx = BOSS_TIMES.findIndex((b) => b.kind === 'boss');
+    // ?boss=mini (tests) : commence avec le boss intermédiaire au lieu du gardien
+    S.bossIdx = /[?&]boss=mini\b/.test(location.search) ? 0 : BOSS_TIMES.findIndex((b) => b.kind === 'boss');
     const levels = Math.min(60, 8 + n);
     for (let i = 0; i < levels; i++) {
       S.level++;
@@ -688,6 +689,7 @@ const Game = (() => {
           sp = 0;
         } else if (e.ab <= 0) {
           e.ab = e.boss === 2 ? 4.5 : 5.5;
+          e.abAt = S.t; // le rendu 3D lance l'animation d'attaque du boss
           if (e.boss === 2 && Math.random() < 0.5) {
             const n = 14;
             for (let i = 0; i < n; i++) {

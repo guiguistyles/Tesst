@@ -70,6 +70,15 @@ const Render3D = (() => {
   const parts = [];        // particules de traînée, soins, éclats
   const vfx = [];          // effets de sorts en plusieurs temps (Épée Céleste, impacts…)
   let shake = 0;           // secousse de la caméra (m), qui retombe toute seule
+  // Boss du jeu : modèles complets articulés (js/models/bestiaire.js), un par boss présent
+  const BOSS_BUILD = {
+    tofu_royal: 'buildTofuRoyal', bouftou_royal: 'buildBouftouRoyal', black_wabbit: 'buildBlackWabbit', dragon_cochon: 'buildDragonCochon',
+    abrak_ancestral: 'buildAbraknydeAncestral', chene_mou: 'buildCheneMou', craq_roc: 'buildCraqueleurPlaines', craq_legend: 'buildCraqueleurLegendaire',
+    mansot_royal: 'buildMansotRoyal', obsidiantre: 'buildObsidiantre',
+  };
+  const BOSS_ABILITY_TIME = { black_wabbit: 2.8, dragon_cochon: 2.8, abrak_ancestral: 3.2, chene_mou: 3.2 };
+  const bossLive = new Map();   // ennemi -> { inst, id, abT, abAt, yaw, x, z }
+  const bossFree = {};          // id -> modèles prêts à resservir
   let prevStrikes = new Set();
 
   // ---------------------------------------------------------------- Formes des projectiles et des sorts
@@ -709,6 +718,75 @@ const Render3D = (() => {
     }
   }
 
+  // ---------------------------------------------------------------- Boss du jeu
+  const bossBuilder = (id) => (BOSS_BUILD[id] && typeof window[BOSS_BUILD[id]] === 'function' ? window[BOSS_BUILD[id]] : null);
+  function takeBoss(id) {
+    const l = bossFree[id] || (bossFree[id] = []);
+    const inst = l.pop() || bossBuilder(id)();
+    scene.add(inst.root, inst.fx);
+    return inst;
+  }
+  function giveBoss(id, inst) {
+    scene.remove(inst.root, inst.fx);
+    (bossFree[id] || (bossFree[id] = [])).push(inst);
+  }
+  /** Construit et compile à l'avance les deux boss de la zone (pas d'à-coup à leur arrivée). */
+  function prewarmBosses(zone) {
+    const insts = [];
+    for (const id of [zone.mini, zone.boss]) if (bossBuilder(id) && !(bossFree[id] && bossFree[id].length)) {
+      const inst = takeBoss(id);
+      inst.root.position.set(0, -200, 0);
+      inst.update('move', 0, 0);
+      insts.push([id, inst]);
+    }
+    if (insts.length) renderer.compile(scene, camera);
+    for (const [id, inst] of insts) giveBoss(id, inst);
+  }
+  /**
+   * Un boss par image : position et orientation du jeu, marche, et animation d'attaque
+   * lancée quand le jeu déclenche une charge ou un tir en cercle (e.abAt).
+   */
+  function updateBoss(e, dt, p) {
+    let rec = bossLive.get(e);
+    if (!rec) {
+      rec = { inst: takeBoss(e.id), id: e.id, abT: 99, abAt: e.abAt, yaw: Math.atan2(p.x - e.x, p.y - e.y) };
+      bossLive.set(e, rec);
+      shockwave(e.x / U, e.y / U, 3, '#ff3b3b', 0.8);
+      burst(e.x / U, 0.5, e.y / U, ['#ff3b3b', '#ffd84a', '#ffffff'], 24, { speed: 4, up: 5, s: 0.14 });
+      shake = Math.max(shake, 0.25);
+    }
+    if (e.abAt !== rec.abAt) { rec.abAt = e.abAt; rec.abT = 0; }
+    rec.abT += dt;
+    const T = BOSS_ABILITY_TIME[e.id] || 3;
+    const attacking = rec.abT < T;
+    // Face au joueur, ou dans l'axe de sa charge
+    const want = e.charge > 0 ? Math.atan2(e.cx, e.cy) : Math.atan2(p.x - e.x, p.y - e.y);
+    let d = want - rec.yaw;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    rec.yaw += d * Math.min(1, dt * 5);
+    const root = rec.inst.root;
+    root.position.set(e.x / U, 0, e.y / U);
+    root.rotation.y = rec.yaw;
+    root.scale.setScalar(e.flash > 0 ? 1.05 : 1);
+    rec.x = e.x / U; rec.z = e.y / U;
+    rec.inst.update(attacking ? 'ability' : 'move', attacking ? rec.abT : time, dt);
+  }
+  /** Retire les boss qui ne sont plus là ; grande explosion à la mort. */
+  function releaseBosses(seen, all = false) {
+    for (const [e, rec] of bossLive) {
+      if (!all && seen.has(e)) continue;
+      if (!all && e.dead) {
+        shake = Math.max(shake, 0.45);
+        shockwave(rec.x, rec.z, 6, '#ffd84a', 1);
+        shockwave(rec.x, rec.z, 4, '#ffffff', 0.7, false);
+        burst(rec.x, 1, rec.z, ['#ffd84a', '#ffffff', '#ff8a2a'], 40, { speed: 5, up: 7, s: 0.16, life: 1.2 });
+        for (let i = 0; i < 16; i++) part(rec.x + (Math.random() - 0.5) * 3, 0.3, rec.z + (Math.random() - 0.5) * 3, '#d8cfc0', { vy: 1 + Math.random(), life: 1.4, s: 0.35, grow: 2 });
+      }
+      giveBoss(rec.id, rec.inst);
+      bossLive.delete(e);
+    }
+  }
+
   // ---------------------------------------------------------------- Début / fin de partie
   function begin(S) {
     if (!ready) return;
@@ -726,7 +804,9 @@ const Render3D = (() => {
     prevStrikes = new Set();
     shake = 0;
     time = 0;
+    releaseBosses(new Set(), true);
     prewarm(S.cls);
+    prewarmBosses(S.zone);
   }
 
   /**
@@ -757,6 +837,7 @@ const Render3D = (() => {
     if (!ready) return;
     if (hero) { scene.remove(hero.inst.root, hero.inst.fx); hero = null; }
     shieldBubble.visible = false;
+    releaseBosses(new Set(), true);
   }
 
   // ---------------------------------------------------------------- Caméra
@@ -814,8 +895,10 @@ const Render3D = (() => {
 
     // Monstres : un lot par type ; les monstres ordinaires ont leur modèle, les boss restent des blocs (étape 4)
     for (const b of monsters.values()) b.n = 0;
+    const seenBosses = new Set();
     for (const e of S.enemies) {
       if (e.dead) continue;
+      if (e.boss && bossBuilder(e.id)) { seenBosses.add(e); updateBoss(e, dt, p); continue; }
       const d = e.def, b = monsterBatch(e.id);
       if (b.model) {
         const R = (e.r / U) * 1.25;
@@ -835,6 +918,7 @@ const Render3D = (() => {
       b.add(e.x / U, hop, e.y / U, ry, w, h * (1 + Math.sin(time * 8 + e.seed) * 0.05), w * 0.9, tmpC);
     }
     for (const b of monsters.values()) b.commit();
+    releaseBosses(seenBosses);
 
     for (const sp of S.spells) {
       const def = SPELLS[sp.id];

@@ -339,7 +339,9 @@ function animBase(r, mode, t) {
 
 /** Position monde devant le boss (dist en mètres) au niveau du sol. */
 function front(r, dist, side = 0, y = 0) {
-  return new V3(r.root.position.x + side, y, r.root.position.z + dist);
+  // Tient compte de l'orientation de la créature (rotation autour de l'axe vertical)
+  const a = r.root.rotation ? r.root.rotation.y : 0, c = Math.cos(a), s = Math.sin(a);
+  return new V3(r.root.position.x + side * c + dist * s, y, r.root.position.z - side * s + dist * c);
 }
 function wpos(obj) { return obj.getWorldPosition(new V3()); }
 /** Phase de l'Ability : k dans le cycle, et détection du passage d'un instant. */
