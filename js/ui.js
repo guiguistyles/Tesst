@@ -383,6 +383,9 @@ function togglePause() {
   if (!inGame || !$('#ov-levelup').classList.contains('hidden') || !$('#ov-end').classList.contains('hidden')) return;
   const ov = $('#ov-pause');
   const willPause = ov.classList.contains('hidden');
+  const q = $('#btn-quit');
+  delete q.dataset.armed;
+  q.textContent = 'Abandonner';
   if (willPause) $('#pause-build').innerHTML = $('#hud-spells').innerHTML + $('#hud-passives').innerHTML;
   ov.classList.toggle('hidden', !willPause);
   Game.setPaused(willPause);
@@ -429,8 +432,11 @@ function boot() {
   $$('[data-go]').forEach((b) => b.addEventListener('click', () => show(b.dataset.go)));
   $('#btn-pause').addEventListener('click', togglePause);
   $('#btn-resume').addEventListener('click', togglePause);
+  // confirmation en deux clics (les boîtes confirm() sont bloquées dans certains cadres)
   $('#btn-quit').addEventListener('click', () => {
-    if (confirm('Abandonner la partie ? Les kamas ramassés sont perdus.')) quitToMenu();
+    const q = $('#btn-quit');
+    if (q.dataset.armed) quitToMenu();
+    else { q.dataset.armed = '1'; q.textContent = 'Confirmer l’abandon (kamas perdus)'; }
   });
   $('#btn-again').addEventListener('click', startGame);
   $('#btn-menu').addEventListener('click', quitToMenu);
