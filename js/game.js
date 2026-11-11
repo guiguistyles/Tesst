@@ -55,6 +55,7 @@ const Game = (() => {
     addEventListener('keydown', (e) => {
       keys[e.code] = true;
       if ((e.code === 'Escape' || e.code === 'KeyP') && S && !S.over) cb.onPauseKey();
+      if ((e.code === 'KeyE' || e.code === 'Enter') && S && !paused && !S.choosing) interact();
     });
     addEventListener('keyup', (e) => { keys[e.code] = false; });
     addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -166,9 +167,10 @@ const Game = (() => {
   }
 
   // ------------------------------------------------------------ Démarrage / arrêt
-  function start(clsId, zoneIdx, save) {
+  function start(clsId, zoneIdx, save, adv = null) {
     const cls = CLASSES[clsId];
     S = {
+      mode: adv ? 'world' : 'arena',
       cls: clsId, zone: ZONES[zoneIdx], zoneIdx, save,
       t: 0, kills: 0, kamas: 0, level: 1, xp: 0, xpNext: xpFor(1),
       p: { x: 0, y: 0, r: 14, hp: 0, maxHp: 0, face: 1, dirX: 1, dirY: 0, shield: 0, hurt: 0, inv: 0, walk: 0,
@@ -178,18 +180,21 @@ const Game = (() => {
       spawnAcc: 0, nextWave: 60, bossIdx: 0, boss: null, pending: 0, choosing: false,
       found: [], rerolls: 2, banishes: 1, banned: new Set(), over: false, endTimer: -1, victory: false, grid: new Map(),
     };
+    S.xpNext = xpFor(1);
     recomputeStats();
     S.p.hp = S.p.maxHp;
     if (r3) r3.begin(S);
     r3RadiusAt = -1;
     addSpell(cls.spells[0]);
-    if (TEST.wave) jumpToWave(TEST.wave);
+    if (adv) initWorld(adv);
+    else if (TEST.wave) jumpToWave(TEST.wave);
     if (TEST.spell && cls.spells.includes(TEST.spell) && !S.spells.some((q) => q.id === TEST.spell)) addSpell(TEST.spell);
     paused = false;
     lastT = performance.now();
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(loop);
-    cb.onBanner(S.zone.name, 'Survivez et vainquez ' + MONSTERS[S.zone.boss].name + ' !');
+    if (adv) cb.onBanner(S.zone.name, 'Le Réveil des Zaaps');
+    else cb.onBanner(S.zone.name, 'Survivez et vainquez ' + MONSTERS[S.zone.boss].name + ' !');
   }
 
   function stop() { cancelAnimationFrame(raf); if (r3) r3.end(); S = null; }
@@ -215,7 +220,278 @@ const Game = (() => {
     S.p.hp = S.p.maxHp;
   }
 
-  function xpFor(lvl) { return Math.floor(3 + lvl * 2.5 + Math.pow(lvl, 1.6)); }
+  // L'aventure dure bien plus qu'une partie d'arène : la courbe d'expérience y est plus longue
+  function xpFor(lvl) {
+    if (S && S.mode === 'world') return Math.floor(12 + lvl * 9 + Math.pow(lvl, 1.85));
+    return Math.floor(3 + lvl * 2.5 + Math.pow(lvl, 1.6));
+  }
+
+
+  // ============================================================ Monde ouvert
+  /** Démarre (ou reprend) l'aventure avec la sauvegarde du héros. */
+  function startWorld(clsId, save, adv) { start(clsId, 0, save, adv); }
+
+  /** Restaure le héros (niveau, sorts, caractéristiques, position) et prépare camps, repaires et quêtes. */
+  function initWorld(adv) {
+    S.level = adv.level || 1;
+    S.xp = adv.xp || 0;
+    S.xpNext = xpFor(S.level);
+    S.passives = Object.assign({}, adv.passives || {});
+    recomputeStats();
+    if (adv.spells && adv.spells.length) {
+      S.spells = [];
+      for (const q of adv.spells) {
+        if (!SPELLS[q.id]) continue;
+        addSpell(q.id);
+        const sp = S.spells[S.spells.length - 1];
+        sp.lvl = Math.min(5, q.lvl || 1);
+        sp.s = spellStats(sp);
+      }
+    }
+    const z0 = WORLD.zones[adv.lastZaap || 0];
+    const pos = adv.pos || { x: z0.zaap.x + 140, y: 40 };
+    S.p.x = pos.x; S.p.y = pos.y;
+    S.p.hp = S.p.maxHp;
+    S.zone = WORLD.zoneAt(S.p.x);
+    S.zoneIdx = S.zone.idx;
+    S.world = {
+      quest: adv.quest || 0, qProgress: adv.qProgress || 0, qAccepted: !!adv.qAccepted,
+      bossKilled: Object.assign({}, adv.bossKilled || {}),
+      zaaps: new Set(adv.zaaps || [0]), lastZaap: adv.lastZaap || 0,
+      camps: [], lairs: [], dead: 0, combatT: 10, playTime: adv.playTime || 0,
+    };
+    for (const z of WORLD.zones) {
+      for (const c of z.camps) S.world.camps.push({ def: c, members: [], respawnAt: 0 });
+      S.world.lairs.push({ def: z.lair, zone: z, kind: 'mini', e: null, nextAt: 0 });
+      S.world.lairs.push({ def: z.arena, zone: z, kind: 'boss', e: null, nextAt: 0 });
+    }
+  }
+
+  function updateWorld(dt) {
+    const w = S.world, p = S.p;
+    w.playTime += dt;
+    const z = WORLD.zoneAt(p.x);
+    if (z.idx !== S.zoneIdx) {
+      S.zone = z; S.zoneIdx = z.idx;
+      cb.onBanner(z.name, z.sub);
+    }
+    if (w.dead > 0) {
+      w.dead -= dt;
+      if (w.dead <= 0) respawnAtZaap();
+      return;
+    }
+    // Camps : les monstres apparaissent à l'approche et disparaissent quand on s'éloigne
+    for (const c of w.camps) {
+      const d = Math.hypot(c.def.x - p.x, c.def.y - p.y);
+      if (!c.members.length && S.t >= c.respawnAt && d < 1500 && d > 420) {
+        c.def.ids.forEach((id, i) => {
+          const a = (i / c.def.ids.length) * Math.PI * 2;
+          const e = spawnEnemy(id, c.def.x + Math.cos(a) * 60, c.def.y + Math.sin(a) * 60, 1, WORLD.zones[c.def.zone]);
+          e.camp = c; e.hx = e.x; e.hy = e.y;
+          c.members.push(e);
+        });
+      } else if (c.members.length && d > 2200 && !c.members.some((e) => e.aggro)) {
+        for (const e of c.members) e.dead = true;
+        c.members = [];
+      }
+    }
+    // Repaires : boss intermédiaire et gardien de chaque zone
+    let fight = null;
+    for (const l of w.lairs) {
+      const d = Math.hypot(l.def.x - p.x, l.def.y - p.y);
+      if (!l.e && S.t >= l.nextAt && d < 1300) {
+        const e = spawnEnemy(l.def.id, l.def.x, l.def.y, 1, l.zone);
+        e.kind = l.kind; e.lair = l; e.hx = e.x; e.hy = e.y;
+        l.e = e;
+      } else if (l.e && d > 2300 && !l.e.aggro) {
+        l.e.dead = true;
+        l.e = null;
+      }
+      if (l.e && l.e.aggro && !l.e.dead) fight = l.e;
+    }
+    S.boss = fight;
+  }
+
+  /** Comportement d'un monstre du monde : rôde près de son camp, attaque à l'approche, abandonne s'il est entraîné trop loin. */
+  function worldAggro(e, dist, dt) {
+    if (!e.aggro) {
+      if (dist < (e.boss ? 520 : 340) || e.hp < e.maxHp) {
+        e.aggro = true;
+        if (e.camp) for (const m of e.camp.members) m.aggro = true;   // le groupe entier donne l'alerte
+      } else {
+        e.wt = (e.wt || 0) - dt;
+        if (e.wt <= 0) {
+          e.wt = rand(1.5, 4);
+          const a = rand(0, Math.PI * 2), r = rand(0, 90);
+          e.wx = e.hx + Math.cos(a) * r; e.wy = e.hy + Math.sin(a) * r;
+        }
+        const wx = e.wx - e.x, wy = e.wy - e.y, wl = Math.hypot(wx, wy);
+        if (wl > 6) { e.x += (wx / wl) * e.speed * 0.35 * dt; e.y += (wy / wl) * e.speed * 0.35 * dt; }
+        return false;
+      }
+    } else if (dist > 1100 || Math.hypot(e.x - e.hx, e.y - e.hy) > 1500) {
+      // Le joueur s'est enfui : le monstre rentre, soigné
+      e.aggro = false;
+      e.hp = e.maxHp;
+      e.wx = e.hx; e.wy = e.hy; e.wt = 3;
+      return false;
+    }
+    S.world.combatT = 0;
+    return true;
+  }
+
+  function worldKill(e) {
+    const w = S.world;
+    if (e.camp) {
+      e.camp.members = e.camp.members.filter((m) => m !== e);
+      if (!e.camp.members.length) e.camp.respawnAt = S.t + 60;
+    }
+    if (e.lair) {
+      e.lair.e = null;
+      e.lair.nextAt = S.t + e.lair.def.respawn;
+    }
+    const q = WORLD.QUESTS[w.quest];
+    if (!q || !w.qAccepted) return;
+    if (q.goal.kill === e.id) {
+      w.qProgress++;
+      if (w.qProgress >= q.goal.n) completeQuest();
+    } else if (q.goal.boss === e.id) completeQuest();
+  }
+
+  /** Butin d'un boss du monde : kamas, coffre pour le boss intermédiaire, Dofus pour le gardien. */
+  function worldBossDrop(e, z) {
+    const first = !S.world.bossKilled[e.id];
+    S.world.bossKilled[e.id] = true;
+    if (e.kind === 'boss') {
+      const owned = S.save.dofus.concat(S.found);
+      const free = z.dofus.filter((d) => !owned.includes(d));
+      if (free.length && (first || Math.random() < 0.1)) S.gems.push({ kind: 'dofus', id: pick(free), x: e.x, y: e.y, v: 0 });
+      cb.onBanner(e.def.name + ' est vaincu !', first ? 'Le gardien de la zone est tombé' : '');
+    } else {
+      S.gems.push({ kind: 'chest', x: e.x, y: e.y, v: 0 });
+    }
+  }
+
+  function questText(q, w) {
+    if (!q) return 'Explore librement le Monde des Douze';
+    if (!w.qAccepted) return 'Parle à ' + WORLD.NPCS[q.zone].name + ' (' + WORLD.zones[q.zone].name + ')';
+    if (q.goal.kill) return `Vaincre des ${MONSTERS[q.goal.kill].name.toLowerCase()}s : ${w.qProgress} / ${q.goal.n}`;
+    return 'Vaincre ' + MONSTERS[q.goal.boss].name;
+  }
+
+  function completeQuest() {
+    const w = S.world, q = WORLD.QUESTS[w.quest];
+    gainXp(q.xp);
+    S.kamas += q.kamas;
+    const opened = q.goal.boss && w.quest % 3 === 2;
+    w.quest++;
+    w.qProgress = 0;
+    const next = WORLD.QUESTS[w.quest];
+    // Les quêtes d'une même zone s'enchaînent ; la suivante se reçoit auprès du personnage de la nouvelle zone
+    w.qAccepted = !!next && next.zone === q.zone;
+    const npc = WORLD.NPCS[q.zone];
+    cb.onDialog({ npc, title: 'Quête terminée : ' + q.title, reward: `+${q.xp} XP · +${q.kamas} kamas`,
+      lines: [...q.done, ...(w.qAccepted ? next.intro : [])], next: w.qAccepted ? next.title : null });
+    if (opened && w.quest < WORLD.QUESTS.length) cb.onBanner('La barrière s’est levée !', 'Direction ' + WORLD.zones[q.zone + 1].name);
+    cb.onSave();
+  }
+
+  /** Personnage ou zaap à portée du héros (pour le bouton d'action). */
+  function nearby() {
+    const p = S.p;
+    for (const z of WORLD.zones) {
+      if (Math.hypot(z.npc.x - p.x, z.npc.y - p.y) < 130) return { kind: 'npc', zone: z, label: 'Parler à ' + z.npc.name };
+      if (Math.hypot(z.zaap.x - p.x, z.zaap.y - p.y) < 130) return { kind: 'zaap', zone: z, label: S.world.zaaps.has(z.idx) ? 'Utiliser le zaap' : 'Activer le zaap' };
+    }
+    return null;
+  }
+
+  /** Touche E / bouton d'action : parler au personnage ou utiliser le zaap. */
+  function interact() {
+    if (!S || S.mode !== 'world' || S.over) return;
+    const n = nearby();
+    if (!n) return;
+    const w = S.world, q = WORLD.QUESTS[w.quest];
+    if (n.kind === 'npc') {
+      const npc = n.zone.npc;
+      if (q && q.zone === n.zone.idx && !w.qAccepted) {
+        w.qAccepted = true;
+        cb.onDialog({ npc, title: 'Nouvelle quête : ' + q.title, lines: q.intro });
+        cb.onSave();
+      } else if (q && q.zone === n.zone.idx) {
+        cb.onDialog({ npc, title: q.title, lines: ['Tu n’as pas encore fini ? ' + questText(q, w) + '.'] });
+      } else if (!q || q.zone > n.zone.idx) {
+        cb.onDialog({ npc, title: npc.name, lines: [!q ? 'Grâce à toi, la brume a disparu. Merci, héros !' : 'Merci pour ton aide ! Continue vers l’est, d’autres ont besoin de toi.'] });
+      }
+    } else {
+      if (!w.zaaps.has(n.zone.idx)) {
+        w.zaaps.add(n.zone.idx);
+        cb.onBanner('Zaap activé', n.zone.name);
+      }
+      w.lastZaap = n.zone.idx;
+      cb.onSave();
+      cb.onZaap([...w.zaaps].sort((a, b) => a - b).map((i) => ({ idx: i, name: WORLD.zones[i].name, here: i === n.zone.idx })));
+    }
+  }
+
+  /** Voyage instantané vers un zaap activé. */
+  function travel(i) {
+    if (!S || S.mode !== 'world' || !S.world.zaaps.has(i)) return;
+    S.world.lastZaap = i;
+    placeAt(WORLD.zones[i].zaap.x + 140, WORLD.zones[i].zaap.y + 40);
+    cb.onSave();
+  }
+
+  /** Téléporte le héros et vide les alentours (les camps réapparaîtront à l'approche). */
+  function placeAt(x, y) {
+    S.p.x = x; S.p.y = y;
+    for (const e of S.enemies) e.dead = true;
+    S.enemies = [];
+    S.eprojs = []; S.projs = []; S.strikes = []; S.traps = []; S.glyphs = [];
+    for (const c of S.world.camps) c.members = [];
+    for (const l of S.world.lairs) l.e = null;
+    S.boss = null;
+    r3RadiusAt = -1;
+  }
+
+  function respawnAtZaap() {
+    const z = WORLD.zones[S.world.lastZaap];
+    placeAt(z.zaap.x + 140, z.zaap.y + 40);
+    S.p.hp = S.p.maxHp;
+    S.over = false;
+    cb.onSave();
+  }
+
+  /** Données du monde pour l'interface (quête, action possible, mini-carte). */
+  function worldHud() {
+    const w = S.world, q = WORLD.QUESTS[w.quest], n = nearby();
+    return {
+      zone: S.zone.name, quest: q ? q.title : 'Le Monde des Douze est sauvé', goal: questText(q, w),
+      action: n ? n.label : null, px: S.p.x, py: S.p.y, unlocked: WORLD.unlockedZones(w.quest), zaaps: [...w.zaaps],
+      npcAlert: q && !w.qAccepted ? q.zone : -1,
+      bosses: w.lairs.filter((l) => S.t >= l.nextAt).map((l) => ({ x: l.def.x, y: l.def.y, kind: l.kind })),
+    };
+  }
+
+  /** Sauvegarde du héros et de sa progression (sans le butin, voir takeLoot). */
+  function worldSnapshot() {
+    if (!S || S.mode !== 'world') return null;
+    const w = S.world;
+    return {
+      cls: S.cls, level: S.level, xp: S.xp, passives: Object.assign({}, S.passives),
+      spells: S.spells.map((sp) => ({ id: sp.id, lvl: sp.lvl })), pos: { x: Math.round(S.p.x), y: Math.round(S.p.y) },
+      quest: w.quest, qProgress: w.qProgress, qAccepted: w.qAccepted, bossKilled: Object.assign({}, w.bossKilled),
+      zaaps: [...w.zaaps], lastZaap: w.lastZaap, playTime: Math.round(w.playTime),
+    };
+  }
+  /** Kamas et Dofus gagnés depuis la dernière sauvegarde (remis à zéro). */
+  function takeLoot() {
+    if (!S) return { kamas: 0, found: [] };
+    const loot = { kamas: Math.floor(S.kamas), found: S.found.slice() };
+    S.kamas -= loot.kamas;
+    S.found = [];
+    return loot;
+  }
 
   // ------------------------------------------------------------ Boucle
   function loop(now) {
@@ -251,7 +527,8 @@ const Game = (() => {
       t: S.t, kills: S.kills, kamas: Math.floor(S.kamas), spells: S.spells, passives: S.passives,
       cls: S.cls, rerolls: S.rerolls, banishes: S.banishes,
       cds: S.spells.map((sp) => (sp.s.cd ? clamp(sp.timer / (sp.s.cd * S.stats.cd), 0, 1) : 0)),
-      boss: S.boss && !S.boss.dead ? { name: S.boss.def.name, hp: S.boss.hp, maxHp: S.boss.maxHp } : null,
+      boss: S.boss && !S.boss.dead && (S.mode !== 'world' || S.boss.aggro) ? { name: S.boss.def.name, hp: S.boss.hp, maxHp: S.boss.maxHp } : null,
+      world: S.mode === 'world' ? worldHud() : null,
     };
   }
 
@@ -259,7 +536,7 @@ const Game = (() => {
     S.t += dt;
     updatePlayer(dt);
     buildGrid();
-    spawn(dt);
+    if (S.mode === 'world') updateWorld(dt); else spawn(dt);
     updateSpells(dt);
     updateEnemies(dt);
     updateProjectiles(dt);
@@ -299,6 +576,15 @@ const Game = (() => {
       if (Math.abs(mx) > 0.1) p.face = mx > 0 ? 1 : -1;
       p.walk += dt * 10;
     }
+    if (S.mode === 'world') {
+      // Bords du monde et barrière de la prochaine zone (tant que son gardien n'est pas vaincu)
+      const maxX = WORLD.unlockedZones(S.world.quest) * WORLD.ZONE_W - 40;
+      p.x = clamp(p.x, 40, Math.min(WORLD.WIDTH - 40, maxX));
+      p.y = clamp(p.y, -WORLD.HALF_H + 40, WORLD.HALF_H - 40);
+      // Hors combat depuis 4 s : la vie remonte vite
+      S.world.combatT += dt;
+      if (S.world.combatT > 4 && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.08 * dt);
+    }
     p.hurt = Math.max(0, p.hurt - dt);
     p.inv = Math.max(0, p.inv - dt);
     if (S.stats.regen && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + S.stats.regen * dt);
@@ -322,6 +608,11 @@ const Game = (() => {
         S.fx.push({ type: 'ring', x: p.x, y: p.y, r: 220, t: 0, life: 0.6, color: '#fff6a0' });
         for (const e of S.enemies) if (!e.boss) knock(e, p.x, p.y, 200);
         cb.onBanner('Résurrection !', '');
+      } else if (S.mode === 'world') {
+        p.hp = 0;
+        S.over = true;
+        S.world.dead = 2;
+        cb.onBanner('K.O. !', 'Retour au dernier zaap…');
       } else {
         p.hp = 0;
         S.over = true;
@@ -380,9 +671,10 @@ const Game = (() => {
     return Math.hypot(W, H) / 2 / zoom + 50;
   }
 
-  function spawnEnemy(id, x, y, hpMul = 1) {
-    const def = MONSTERS[id], z = S.zone;
-    const scale = def.boss ? 1 : 1 + S.t / 200;
+  function spawnEnemy(id, x, y, hpMul = 1, zone = null) {
+    const def = MONSTERS[id], z = zone || S.zone;
+    const world = S.mode === 'world';
+    const scale = def.boss || world ? 1 : 1 + S.t / 200;
     if (x === undefined) {
       const a = rand(0, Math.PI * 2), R = viewRadius();
       x = S.p.x + Math.cos(a) * R; y = S.p.y + Math.sin(a) * R;
@@ -390,7 +682,7 @@ const Game = (() => {
     const hp = def.hp * z.hpMul * scale * hpMul;
     const e = {
       id, def, x, y, r: def.r, hp, maxHp: hp, speed: def.speed * rand(0.9, 1.1),
-      dmg: def.dmg * z.dmgMul * (1 + S.t / 400), xp: def.xp, boss: def.boss || 0,
+      dmg: def.dmg * z.dmgMul * (world ? 1 : 1 + S.t / 400), xp: def.xp * (world ? 1 + z.idx * 0.6 : 1), boss: def.boss || 0, zoneRef: z,
       kvx: 0, kvy: 0, slow: 0, slowT: 0, poison: 0, poisonT: 0, poisonAcc: 0, atk: 0, flash: 0,
       seed: Math.random() * 10, shot: rand(1, 2), hitT: {}, ab: 3, charge: 0, cx: 0, cy: 0,
     };
@@ -463,7 +755,8 @@ const Game = (() => {
   function kill(e) {
     e.dead = true;
     S.kills++;
-    const z = S.zone;
+    const z = e.zoneRef || S.zone;
+    if (S.mode === 'world') worldKill(e);
     gainXp(e.xp, e.x, e.y);
     if (e.gold || Math.random() < 0.07) {
       S.gems.push({ kind: 'kamas', x: e.x + rand(-6, 6), y: e.y + rand(-6, 6), v: Math.ceil(rand(1, 4) * z.kamas) });
@@ -478,7 +771,9 @@ const Game = (() => {
         S.gems.push({ kind: 'kamas', x: e.x + rand(-50, 50), y: e.y + rand(-50, 50), v: Math.ceil(rand(5, 12) * z.kamas) });
       }
       if (S.boss === e) S.boss = null;
-      if (e.kind === 'boss') {
+      if (S.mode === 'world') {
+        worldBossDrop(e, z);
+      } else if (e.kind === 'boss') {
         const owned = S.save.dofus.concat(S.found);
         const free = z.dofus.filter((d) => !owned.includes(d));
         if (free.length) S.gems.push({ kind: 'dofus', id: pick(free), x: e.x, y: e.y, v: 0 });
@@ -680,6 +975,7 @@ const Game = (() => {
       const dx = p.x - e.x, dy = p.y - e.y, dist = Math.hypot(dx, dy) || 1;
       const ux = dx / dist, uy = dy / dist;
       let sp = e.speed * (1 - Math.min(0.8, e.slow));
+      if (S.mode === 'world' && !worldAggro(e, dist, dt)) continue;
 
       if (e.boss) {
         e.ab -= dt;
@@ -722,7 +1018,7 @@ const Game = (() => {
         damagePlayer(e.dmg);
       }
       // éloigne les monstres trop loin derrière le joueur
-      if (!e.boss && dist > viewRadius() * 1.6) {
+      if (S.mode !== 'world' && !e.boss && dist > viewRadius() * 1.6) {
         const a = Math.atan2(dy, dx) + rand(-0.6, 0.6), R = viewRadius();
         e.x = p.x + Math.cos(a) * R; e.y = p.y + Math.sin(a) * R;
       }
@@ -950,6 +1246,17 @@ const Game = (() => {
         ctx.restore();
       }
     }
+    if (S.mode === 'world') {
+      // Nom des personnages de l'histoire
+      ctx.font = 'bold 13px system-ui, sans-serif';
+      for (const z of WORLD.zones) {
+        const n = z.npc;
+        if (Math.abs(n.x - p.x) > 1200) continue;
+        const q = r3.project(n.x, n.y, 2.55);
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.fillStyle = '#f2c14e';
+        ctx.strokeText(n.name, q.x, q.y); ctx.fillText(n.name, q.x, q.y);
+      }
+    }
     screenOverlay(p);
   }
 
@@ -1173,7 +1480,74 @@ const Game = (() => {
 
   // ------------------------------------------------------------ Sol isométrique
   function drawGround(x0, y0, x1, y1) {
-    const z = S.zone;
+    if (S.mode !== 'world') return drawZoneGround(S.zone, x0, y0, x1, y1);
+    // Monde ouvert : chaque bande de zone a son sol et son décor
+    ctx.fillStyle = '#120c1e';
+    ctx.fillRect(x0 - 10, y0 - 10, x1 - x0 + 20, y1 - y0 + 20);
+    for (const z of WORLD.zones) {
+      if (z.x1 < x0 || z.x0 > x1) continue;
+      const bx0 = Math.max(x0 - 10, z.x0), bx1 = Math.min(x1 + 10, z.x1);
+      const by0 = Math.max(y0 - 10, -WORLD.HALF_H), by1 = Math.min(y1 + 10, WORLD.HALF_H);
+      if (by1 <= by0) continue;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(bx0, by0, bx1 - bx0, by1 - by0); ctx.clip();
+      ctx.fillStyle = z.ground;
+      ctx.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
+      drawZoneGround(z, bx0, by0, bx1, by1);
+      ctx.restore();
+    }
+    drawWorldPlaces(x0, y0, x1, y1);
+  }
+
+  /** Zaaps, personnages, repaires et barrière (rendu 2D). */
+  function drawWorldPlaces(x0, y0, x1, y1) {
+    const w = S.world, vis = (o, m) => o.x > x0 - m && o.x < x1 + m && o.y > y0 - m && o.y < y1 + m;
+    const alert = WORLD.QUESTS[w.quest] && !w.qAccepted ? WORLD.QUESTS[w.quest].zone : -1;
+    for (const z of WORLD.zones) {
+      if (vis(z.zaap, 120)) {
+        const on = w.zaaps.has(z.idx), zx = z.zaap.x, zy = z.zaap.y;
+        ctx.fillStyle = '#5a4a6a'; isoEllipse(zx, zy, 62); ctx.fill();
+        ctx.strokeStyle = on ? '#4fc3c7' : '#8a7a9a'; ctx.lineWidth = 4; isoEllipse(zx, zy, 52); ctx.stroke();
+        ctx.fillStyle = '#7a6a8a'; ctx.fillRect(zx - 40, zy - 70, 10, 70); ctx.fillRect(zx + 30, zy - 70, 10, 70);
+        ctx.beginPath(); ctx.ellipse(zx, zy - 70, 40, 18, 0, Math.PI, 0); ctx.lineWidth = 9; ctx.strokeStyle = '#7a6a8a'; ctx.stroke();
+        ctx.globalAlpha = on ? 0.45 + 0.2 * Math.sin(S.t * 3) : 0.12;
+        ctx.fillStyle = '#4fc3c7';
+        ctx.beginPath(); ctx.ellipse(zx, zy - 38, 28, 36, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      const n = z.npc;
+      if (vis(n, 80)) {
+        ctx.fillStyle = 'rgba(0,0,0,.25)'; isoEllipse(n.x, n.y, 14); ctx.fill();
+        ctx.fillStyle = CLASSES[n.look] ? CLASSES[n.look].color : '#c9a'; ctx.fillRect(n.x - 9, n.y - 30, 18, 26);
+        ctx.fillStyle = '#f2d2b0'; ctx.beginPath(); ctx.arc(n.x, n.y - 38, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillStyle = '#fff'; ctx.fillText(n.name, n.x, n.y + 16);
+        if (alert === z.idx) {
+          ctx.font = 'bold 26px system-ui, sans-serif'; ctx.fillStyle = '#f2c14e';
+          ctx.fillText('!', n.x, n.y - 54 + Math.sin(S.t * 4) * 4);
+        }
+      }
+      for (const l of [z.lair, z.arena]) {
+        if (!vis(l, 300)) continue;
+        ctx.globalAlpha = 0.3; ctx.strokeStyle = l === z.arena ? '#ff5a3a' : '#f2c14e'; ctx.lineWidth = 6;
+        isoEllipse(l.x, l.y, l === z.arena ? 260 : 190); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+    // Barrière vers la zone suivante
+    const u = WORLD.unlockedZones(w.quest);
+    if (u < WORLD.zones.length) {
+      const gx = u * WORLD.ZONE_W;
+      if (gx > x0 - 40 && gx < x1 + 40) {
+        const g = ctx.createLinearGradient(gx - 60, 0, gx, 0);
+        g.addColorStop(0, 'rgba(120,60,200,0)'); g.addColorStop(1, 'rgba(150,80,255,.55)');
+        ctx.fillStyle = g; ctx.fillRect(gx - 60, y0, 60, y1 - y0);
+        ctx.fillStyle = 'rgba(30,10,50,.85)'; ctx.fillRect(gx, y0, x1 - gx + 20, y1 - y0);
+      }
+    }
+  }
+
+  function drawZoneGround(z, x0, y0, x1, y1) {
     const TW = 96, TH = 48;
     ctx.fillStyle = z.ground2;
     const k0 = Math.floor(x0 / TW) - 1, k1 = Math.ceil(x1 / TW) + 1;
@@ -1192,7 +1566,7 @@ const Game = (() => {
     const r0 = Math.floor(y0 / C) - 1, r1 = Math.ceil(y1 / C) + 1;
     for (let cy = r0; cy <= r1; cy++) {
       for (let cx = c0; cx <= c1; cx++) {
-        const h = hash(cx, cy, S.zoneIdx + 1);
+        const h = hash(cx, cy, z.idx !== undefined ? z.idx + 1 : S.zoneIdx + 1);
         if (h > 0.55) continue;
         const x = cx * C + hash(cx, cy, 7) * C, y = cy * C + hash(cx, cy, 13) * C;
         drawDeco(z, x, y, h / 0.55, hash(cx, cy, 21));
@@ -1664,5 +2038,5 @@ const Game = (() => {
   /** Mesures de fluidité (affichées avec ?fps) : images/s, coût du rendu, nombre de monstres. */
   const perf = () => ({ fps, renderMs, enemies: S ? S.enemies.length : 0 });
 
-  return { init, start, stop, setPaused, choose, reroll, banish, counts, setRenderMode, renderMode, perf };
+  return { init, start, stop, setPaused, choose, reroll, banish, counts, setRenderMode, renderMode, perf, startWorld, interact, travel, worldSnapshot, takeLoot, peek: () => S, _hit: (e, d) => hitEnemy(e, d, {}) };
 })();

@@ -309,3 +309,38 @@ h1, h2, h3 { font-family: var(--font-title); }
   .lu-actions { margin-top: 14px; gap: 8px; }
   .lu-actions .btn { flex: 1; padding: 8px 10px; font-size: 14px; }
 }
+
+/* ===== Aventure : quête, mini-carte, action, dialogues ===== */
+#quest { background: var(--hud-bg); border-radius: 14px; padding: 6px 16px 8px; text-align: center; display: flex; flex-direction: column; gap: 1px; min-width: 260px; max-width: 420px; }
+#quest.hidden { display: none; }
+#q-zone { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #7fe1e4; font-weight: 800; }
+#q-title { font-family: var(--font-title); font-size: 18px; color: var(--gold); font-weight: 700; }
+#q-goal { font-size: 14px; font-weight: 700; }
+#minimap { position: absolute; right: max(16px, env(safe-area-inset-right)); top: calc(max(16px, env(safe-area-inset-top)) + 64px); width: 216px; height: 60px;
+  border: 2px solid var(--gold); border-radius: 10px; background: #120c1e; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+#minimap.hidden { display: none; }
+#btn-act { position: absolute; left: 50%; bottom: calc(max(20px, env(safe-area-inset-bottom)) + 88px); transform: translateX(-50%); pointer-events: auto;
+  font: 800 16px var(--font-body); color: #1e1530; background: var(--gold); border: 0; border-radius: 999px; padding: 12px 24px; cursor: pointer;
+  box-shadow: 0 4px 0 #a07a20, 0 6px 18px rgba(0,0,0,.4); animation: act-pulse 1.4s ease-in-out infinite; }
+#btn-act.hidden { display: none; }
+@keyframes act-pulse { 50% { transform: translateX(-50%) scale(1.05); } }
+#ov-dialog, #ov-travel { z-index: 22; }
+.panel.dialog { max-width: 560px; }
+.npc-head { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+.npc-head .avatar { width: 58px; height: 58px; font-size: 20px; border: 3px solid var(--gold); }
+.npc-head b { display: block; font-family: var(--font-title); font-size: 24px; color: var(--gold); }
+.npc-head span { color: var(--muted); font-size: 14px; }
+#dlg-title { margin: 6px 0 8px; color: #7fe1e4; }
+#dlg-lines p { margin: 0 0 10px; line-height: 1.5; font-size: 16px; }
+#dlg-lines p.next { color: var(--gold); }
+.reward { background: rgba(242,193,78,.12); border: 1px solid rgba(242,193,78,.4); border-radius: 12px; padding: 8px 12px; margin: 4px 0 14px; font-weight: 800; color: var(--gold); text-align: center; }
+.panel.dialog .btn { width: 100%; }
+#travel-list { margin-bottom: 10px; }
+#ov-travel .panel > .btn { width: 100%; }
+@media (max-width: 700px) {
+  #quest { min-width: 0; padding: 4px 10px 6px; }
+  #q-title { font-size: 15px; }
+  #q-goal { font-size: 12px; }
+  #minimap { width: 150px; height: 42px; top: calc(max(16px, env(safe-area-inset-top)) + 56px); }
+  #btn-act { bottom: calc(max(16px, env(safe-area-inset-bottom)) + 76px); font-size: 14px; padding: 10px 18px; }
+}

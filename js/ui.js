@@ -19,7 +19,8 @@ const Save = {
   load() {
     let d = null;
     try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { /* stockage indisponible */ }
-    this.data = Object.assign({ kamas: 0, unlocked: [], cleared: [], dofus: [], upgrades: {}, best: {}, lastClass: null, gfx: '2d' }, d || {});
+    this.data = Object.assign({ kamas: 0, unlocked: [], cleared: [], dofus: [], upgrades: {}, best: {}, lastClass: null, gfx: '2d', adventures: {} }, d || {});
+    if (!this.data.adventures) this.data.adventures = {};
     for (const id in CLASSES) if (!CLASSES[id].cost && !this.data.unlocked.includes(id)) this.data.unlocked.push(id);
   },
   store() {
@@ -30,6 +31,9 @@ const Save = {
 let selectedClass = null;
 let selectedZone = 0;
 let inGame = false;
+let playMode = 'world';   // 'world' (aventure) ou 'arena' (vagues)
+let worldGame = false;
+let saveTimer = 0;
 
 // ------------------------------------------------------------ Navigation
 function show(name) {
@@ -73,7 +77,7 @@ function renderClasses() {
     el.innerHTML = `${avatar(c, 64)}<span class="name">${c.name}</span>
       <span class="tag">${sel ? 'Sélectionné' : owned ? 'Disponible' : fmt(c.cost) + ' kamas'}</span>`;
     el.addEventListener('click', () => { selectedClass = id; renderClasses(); });
-    el.addEventListener('dblclick', () => { if (owned) goZaap(); });
+    el.addEventListener('dblclick', () => { if (owned) (playMode === 'world' ? startAdventure : goZaap)(); });
     g.appendChild(el);
   }
   renderClassDetail();
@@ -89,7 +93,13 @@ function renderClassDetail() {
     return `<div class="spell-row"><div class="sicon" style="background:${d.color}">${d.icon}</div><div><b>${d.name}</b><small>${d.desc}</small></div></div>`;
   }).join('');
   let action;
-  if (owned) action = '<button class="btn primary" id="btn-choose">Choisir mon zaap</button>';
+  const adv = Save.data.adventures[id];
+  if (owned && playMode === 'world') {
+    action = adv
+      ? `<button class="btn primary" id="btn-adv">Continuer · niv. ${adv.level} · ${esc(WORLD.zoneAt(adv.pos ? adv.pos.x : 0).name)}</button>
+         <button class="btn small danger" id="btn-adv-new">Recommencer l’aventure</button>`
+      : '<button class="btn primary" id="btn-adv">Commencer l’aventure</button>';
+  } else if (owned) action = '<button class="btn primary" id="btn-choose">Choisir mon zaap</button>';
   else {
     const missing = c.cost - Save.data.kamas;
     action = `<button class="btn primary" id="btn-unlock" ${missing > 0 ? 'disabled' : ''}>Débloquer · ${fmt(c.cost)} kamas</button>
@@ -101,13 +111,24 @@ function renderClassDetail() {
     <div class="mini-stats">
       <div><span>Vie</span><b>${c.hp}</b></div>
       <div><span>Vitesse</span><b>${c.speed}</b></div>
-      <div><span>Record</span><b>${best ? 'Zone ' + best : '—'}</b></div>
+      ${playMode === 'world'
+        ? `<div><span>Aventure</span><b>${adv ? 'Niv. ' + adv.level : '—'}</b></div>`
+        : `<div><span>Record</span><b>${best ? 'Zone ' + best : '—'}</b></div>`}
     </div>
     <div class="eyebrow">Sorts</div>
     <div class="spell-list">${spells}</div>
     ${action}`;
   const choose = $('#btn-choose');
   if (choose) choose.addEventListener('click', goZaap);
+  const go = $('#btn-adv');
+  if (go) go.addEventListener('click', startAdventure);
+  const reset = $('#btn-adv-new');
+  if (reset) reset.addEventListener('click', () => {
+    if (!reset.dataset.armed) { reset.dataset.armed = '1'; reset.textContent = 'Confirmer : effacer ce héros'; return; }
+    delete Save.data.adventures[id];
+    Save.store();
+    renderClasses();
+  });
   const unlock = $('#btn-unlock');
   if (unlock) unlock.addEventListener('click', () => {
     if (Save.data.kamas < c.cost) return;
@@ -235,10 +256,52 @@ function shake(el) {
 }
 
 // ------------------------------------------------------------ Partie
+function enterHud(world) {
+  $$('.screen').forEach((s) => s.classList.remove('active'));
+  ['#ov-end', '#ov-pause', '#ov-levelup', '#ov-dialog', '#ov-travel'].forEach((s) => $(s).classList.add('hidden'));
+  worldGame = world;
+  $('#hud').classList.toggle('world', world);
+  ['#quest', '#minimap'].forEach((s) => $(s).classList.toggle('hidden', !world));
+  $('#timer').classList.toggle('hidden', world);
+  $('#btn-act').classList.add('hidden');
+}
+
+/** Lance (ou reprend) l'aventure du héros sélectionné. */
+function startAdventure() {
+  if (!Save.data.unlocked.includes(selectedClass)) return;
+  Save.data.lastClass = selectedClass;
+  const adv = Save.data.adventures[selectedClass] || { cls: selectedClass, level: 1 };
+  enterHud(true);
+  const c = CLASSES[selectedClass];
+  $('#hud-portrait').style.background = c.color;
+  $('#hud-ini').textContent = initials(c.name);
+  lastSlotsKey = '';
+  $('#hud').classList.remove('hidden');
+  inGame = true;
+  Game.startWorld(selectedClass, Save.data, adv);
+  saveAdventure();
+  clearInterval(saveTimer);
+  saveTimer = setInterval(() => { if (inGame && worldGame) saveAdventure(); }, 15000);
+}
+
+/** Enregistre le héros, son avancée et le butin (kamas, Dofus) gagné depuis la dernière sauvegarde. */
+function saveAdventure() {
+  if (!worldGame) return;
+  const snap = Game.worldSnapshot();
+  if (!snap) return;
+  const loot = Game.takeLoot();
+  const d = Save.data;
+  d.kamas += loot.kamas;
+  for (const id of loot.found) if (!d.dofus.includes(id)) d.dofus.push(id);
+  d.adventures[snap.cls] = snap;
+  // Les zones libérées dans l'aventure ouvrent aussi les zaaps de l'arène
+  for (let i = 0; i < 5; i++) if (snap.bossKilled[ZONES[i].boss] && !d.cleared.includes(i)) d.cleared.push(i);
+  Save.store();
+}
+
 function startGame() {
   if (!zoneUnlocked(selectedZone)) return;
-  $$('.screen').forEach((s) => s.classList.remove('active'));
-  ['#ov-end', '#ov-pause', '#ov-levelup'].forEach((s) => $(s).classList.add('hidden'));
+  enterHud(false);
   const c = CLASSES[selectedClass];
   const portrait = $('#hud-portrait');
   portrait.style.background = c.color;
@@ -250,10 +313,13 @@ function startGame() {
 }
 
 function quitToMenu() {
+  if (worldGame) saveAdventure();
+  clearInterval(saveTimer);
+  worldGame = false;
   Game.stop();
   inGame = false;
   $('#hud').classList.add('hidden');
-  ['#ov-end', '#ov-pause', '#ov-levelup'].forEach((s) => $(s).classList.add('hidden'));
+  ['#ov-end', '#ov-pause', '#ov-levelup', '#ov-dialog', '#ov-travel'].forEach((s) => $(s).classList.add('hidden'));
   show('menu');
 }
 
@@ -286,6 +352,93 @@ function onHud(h) {
     $('#hud-passives').innerHTML = passiveSlots(h.passives);
   }
   $$('#hud-spells .cd').forEach((el, i) => { el.style.height = Math.round((h.cds[i] || 0) * 100) + '%'; });
+  if (h.world) onWorldHud(h.world);
+}
+
+// ------------------------------------------------------------ Aventure : quête, action, mini-carte
+let lastQuestKey = '';
+function onWorldHud(w) {
+  const qk = w.zone + w.quest + w.goal;
+  if (qk !== lastQuestKey) {
+    lastQuestKey = qk;
+    $('#q-zone').textContent = w.zone;
+    $('#q-title').textContent = w.quest;
+    $('#q-goal').textContent = w.goal;
+  }
+  const act = $('#btn-act');
+  act.classList.toggle('hidden', !w.action);
+  if (w.action && act.textContent !== w.action + ' (E)') act.textContent = w.action + ' (E)';
+  drawMinimap(w);
+}
+
+function drawMinimap(w) {
+  const cv = $('#minimap'), g = cv.getContext('2d');
+  const Wd = cv.width, Hd = cv.height, sx = Wd / WORLD.WIDTH, sy = Hd / (WORLD.HALF_H * 2);
+  const X = (x) => x * sx, Y = (y) => (y + WORLD.HALF_H) * sy;
+  for (const z of WORLD.zones) {
+    g.fillStyle = z.ground;
+    g.fillRect(X(z.x0), 0, X(z.x1) - X(z.x0) + 1, Hd);
+    if (z.idx >= w.unlocked) { g.fillStyle = 'rgba(20,8,40,.72)'; g.fillRect(X(z.x0), 0, X(z.x1) - X(z.x0) + 1, Hd); }
+  }
+  g.fillStyle = 'rgba(0,0,0,.25)';
+  for (let i = 1; i < WORLD.zones.length; i++) g.fillRect(X(i * WORLD.ZONE_W) - 1, 0, 2, Hd);
+  for (const b of w.bosses) {
+    g.fillStyle = b.kind === 'boss' ? '#ff4a3a' : '#f2a03a';
+    g.beginPath(); g.arc(X(b.x), Y(b.y), b.kind === 'boss' ? 6 : 4.5, 0, Math.PI * 2); g.fill();
+  }
+  for (const z of WORLD.zones) {
+    g.fillStyle = w.zaaps.includes(z.idx) ? '#4fc3c7' : '#6a5a80';
+    g.fillRect(X(z.zaap.x) - 4, Y(z.zaap.y) - 4, 8, 8);
+    if (w.npcAlert === z.idx) {
+      g.fillStyle = '#f2c14e'; g.font = 'bold 22px system-ui, sans-serif'; g.textAlign = 'center';
+      g.fillText('!', X(z.npc.x), Y(z.npc.y) + 6);
+    }
+  }
+  g.fillStyle = '#fff'; g.strokeStyle = '#1e1530'; g.lineWidth = 3;
+  g.beginPath(); g.arc(X(w.px), Y(w.py), 5.5, 0, Math.PI * 2); g.stroke(); g.fill();
+}
+
+function onDialog(d) {
+  const look = CLASSES[d.npc.look];
+  const av = $('#dlg-avatar');
+  av.style.background = look ? look.color : '#7a6a9a';
+  av.textContent = d.npc.name.slice(0, 2);
+  $('#dlg-name').textContent = d.npc.name;
+  $('#dlg-role').textContent = d.npc.title;
+  $('#dlg-title').textContent = d.title;
+  $('#dlg-lines').innerHTML = d.lines.map((l) => `<p>${esc(l)}</p>`).join('') + (d.next ? `<p class="next">Nouvelle quête : <b>${esc(d.next)}</b></p>` : '');
+  const r = $('#dlg-reward');
+  r.classList.toggle('hidden', !d.reward);
+  r.textContent = d.reward || '';
+  $('#ov-dialog').classList.remove('hidden');
+  dialogAt = performance.now();
+  Game.setPaused(true);
+}
+let dialogAt = 0;
+function closeDialog() {
+  // la touche qui a ouvert le dialogue ne doit pas le refermer aussitôt
+  if ($('#ov-dialog').classList.contains('hidden') || performance.now() - dialogAt < 300) return;
+  $('#ov-dialog').classList.add('hidden');
+  Game.setPaused(false);
+}
+
+function onZaap(list) {
+  const box = $('#travel-list');
+  box.innerHTML = '';
+  for (const z of list) {
+    const b = document.createElement('button');
+    b.className = 'btn' + (z.here ? '' : ' teal');
+    b.disabled = z.here;
+    b.textContent = z.here ? z.name + ' (ici)' : z.name;
+    b.addEventListener('click', () => { closeTravel(); Game.travel(z.idx); });
+    box.appendChild(b);
+  }
+  $('#ov-travel').classList.remove('hidden');
+  Game.setPaused(true);
+}
+function closeTravel() {
+  $('#ov-travel').classList.add('hidden');
+  Game.setPaused(false);
 }
 
 function spellSlots(spells) {
@@ -380,12 +533,12 @@ function onBanner(title, sub) {
 }
 
 function togglePause() {
-  if (!inGame || !$('#ov-levelup').classList.contains('hidden') || !$('#ov-end').classList.contains('hidden')) return;
+  if (!inGame || ['#ov-levelup', '#ov-end', '#ov-dialog', '#ov-travel'].some((s) => !$(s).classList.contains('hidden'))) return;
   const ov = $('#ov-pause');
   const willPause = ov.classList.contains('hidden');
   const q = $('#btn-quit');
   delete q.dataset.armed;
-  q.textContent = 'Abandonner';
+  q.textContent = worldGame ? 'Sauvegarder et quitter' : 'Abandonner';
   if (willPause) $('#pause-build').innerHTML = $('#hud-spells').innerHTML + $('#hud-passives').innerHTML;
   ov.classList.toggle('hidden', !willPause);
   Game.setPaused(willPause);
@@ -433,7 +586,7 @@ function applyGfx(mode) {
 function boot() {
   Save.load();
   document.title = GAME_TITLE;
-  Game.init($('#game'), { onHud, onLevelUp, onBanner, onEnd, onPauseKey: togglePause }, $('#game3d'));
+  Game.init($('#game'), { onHud, onLevelUp, onBanner, onEnd, onPauseKey: togglePause, onDialog, onZaap, onSave: saveAdventure }, $('#game3d'));
   // Rendu 2D ou 3D : choix sauvegardé, ou forcé par ?gfx=3d / ?gfx=2d dans l'adresse
   const forced = (location.search.match(/[?&]gfx=(2d|3d)/) || [])[1];
   applyGfx(forced || Save.data.gfx);
@@ -446,12 +599,22 @@ function boot() {
   });
 
   $$('[data-go]').forEach((b) => b.addEventListener('click', () => show(b.dataset.go)));
+  $('#btn-adventure').addEventListener('click', () => { playMode = 'world'; show('class'); });
+  $('#btn-arena').addEventListener('click', () => { playMode = 'arena'; show('class'); });
+  $('#btn-act').addEventListener('click', () => Game.interact());
+  $('#btn-dlg').addEventListener('click', closeDialog);
+  $('#btn-travel-close').addEventListener('click', closeTravel);
+  addEventListener('keydown', (e) => {
+    if (!$('#ov-dialog').classList.contains('hidden') && ['Enter', 'Space', 'KeyE', 'Escape'].includes(e.code)) { e.preventDefault(); closeDialog(); }
+    else if (!$('#ov-travel').classList.contains('hidden') && e.code === 'Escape') closeTravel();
+  });
+  addEventListener('pagehide', () => { if (inGame && worldGame) saveAdventure(); });
   $('#btn-pause').addEventListener('click', togglePause);
   $('#btn-resume').addEventListener('click', togglePause);
   // confirmation en deux clics (les boîtes confirm() sont bloquées dans certains cadres)
   $('#btn-quit').addEventListener('click', () => {
     const q = $('#btn-quit');
-    if (q.dataset.armed) quitToMenu();
+    if (q.dataset.armed || worldGame) quitToMenu();
     else { q.dataset.armed = '1'; q.textContent = 'Confirmer l’abandon (kamas perdus)'; }
   });
   $('#btn-again').addEventListener('click', startGame);

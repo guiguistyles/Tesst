@@ -24,13 +24,14 @@
     <div class="home">
       <div class="home-main">
         <h1 class="logo">Zaap<span>Survie</span></h1>
-        <div class="logo-sub"><span class="version">2.0</span><span>Survivez aux hordes du Monde des Douze</span></div>
+        <div class="logo-sub"><span class="version">2.0</span><span>Le Réveil des Zaaps</span></div>
         <div class="home-buttons">
-          <button class="btn primary big" data-go="class">
+          <button class="btn primary big" id="btn-adventure">
             <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
-            Jouer
+            Aventure
           </button>
           <div class="grid2">
+            <button class="btn teal span2" id="btn-arena">Arène · survie par vagues</button>
             <button class="btn" data-go="shop">Boutique</button>
             <button class="btn" data-go="dofus">Mes Dofus</button>
             <button class="btn span2" data-go="help">Comment jouer</button>
@@ -141,7 +142,8 @@
       <p><b>Déplacement</b> : ZQSD, WASD ou flèches. Sur mobile, posez le doigt n’importe où et glissez.</p>
       <p><b>Attaque</b> : vos sorts se lancent tout seuls. Concentrez-vous sur l’esquive !</p>
       <p><b>Expérience</b> : ramassez les cristaux lâchés par les monstres pour monter de niveau et choisir un nouveau sort ou une caractéristique. Vous pouvez relancer les choix 2 fois et bannir 1 amélioration par partie.</p>
-      <p><b>Boss</b> : un boss apparaît à 3:00 et 6:00 et lâche un coffre. Le gardien de la zone arrive à 8:00 : battez-le pour gagner la partie, activer le zaap suivant et obtenir un Dofus.</p>
+      <p><b>Aventure</b> : explore le Monde des Douze d’ouest en est. Parle aux personnages marqués d’un <b>!</b> (touche E ou bouton d’action) pour recevoir les quêtes. Les groupes de monstres attaquent quand tu t’approches. Bats le gardien d’une zone pour lever la barrière vers la suivante. Active les zaaps pour voyager et réapparaître. Ton héros, son niveau et ses sorts sont sauvegardés.</p>
+      <p><b>Arène</b> : un boss apparaît à 3:00 et 6:00 et lâche un coffre. Le gardien de la zone arrive à 8:00 : battez-le pour gagner la partie, activer le zaap suivant et obtenir un Dofus.</p>
       <p><b>Kamas</b> : dépensez-les à la boutique ou pour débloquer de nouvelles classes.</p>
       <p><b>Pause</b> : Échap ou P.</p>
     </div>
@@ -158,6 +160,7 @@
     </div>
     <div class="hud-center">
       <div id="timer">0:00</div>
+      <div id="quest" class="hidden"><div id="q-zone"></div><b id="q-title"></b><span id="q-goal"></span></div>
       <div id="boss-bar" class="hidden"><span id="boss-name"></span><div><div id="boss-fill"></div></div></div>
     </div>
     <div class="hud-right">
@@ -167,6 +170,8 @@
       </div>
       <button id="btn-pause" class="hud-btn" aria-label="Pause"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg></button>
     </div>
+    <canvas id="minimap" class="hidden" width="360" height="100" aria-label="Carte du monde"></canvas>
+    <button id="btn-act" class="hidden"></button>
     <div class="hud-bar">
       <div id="hud-spells"></div>
       <div class="hud-sep"></div>
@@ -202,6 +207,25 @@
     </div>
   </div>
 
+  <div id="ov-dialog" class="overlay hidden">
+    <div class="panel dialog">
+      <div class="npc-head"><div id="dlg-avatar" class="avatar"></div><div><b id="dlg-name"></b><span id="dlg-role"></span></div></div>
+      <div class="eyebrow" id="dlg-title"></div>
+      <div id="dlg-lines"></div>
+      <div id="dlg-reward" class="reward hidden"></div>
+      <button class="btn primary" id="btn-dlg">Continuer</button>
+    </div>
+  </div>
+
+  <div id="ov-travel" class="overlay hidden">
+    <div class="panel">
+      <h2>Zaap</h2>
+      <p class="hint">Choisis ta destination. Tu réapparaîtras ici si tu tombes au combat.</p>
+      <div id="travel-list" class="menu-buttons"></div>
+      <button class="btn" id="btn-travel-close">Rester ici</button>
+    </div>
+  </div>
+
   <div id="ov-end" class="overlay hidden">
     <div class="panel">
       <h2 id="end-title">Victoire !</h2>
@@ -215,6 +239,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="js/data.js"></script>
+  <script src="js/world.js"></script>
   <script src="js/models/core.js"></script>
   <script src="js/models/modo.js"></script>
   <script src="js/models/bestiaire.js"></script>

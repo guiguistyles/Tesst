@@ -787,6 +787,299 @@ const Render3D = (() => {
     }
   }
 
+
+  // ---------------------------------------------------------------- Monde ouvert
+  // Sol coloré par zone, décor fixe, zaaps, personnages, repaires et barrière.
+  let W3 = null;
+  const zoneCol = new Map();
+  function zcol(hex) { if (!zoneCol.has(hex)) zoneCol.set(hex, new THREE.Color(hex)); return zoneCol.get(hex); }
+
+  /** Modèles de décor (fusionnés en une géométrie à couleurs de sommets). */
+  const DECOR = {
+    tree(c) {
+      const g = new THREE.Group();
+      g.add(at(cyl(0.18, 0.26, 1.4, 6, mat(0x6a4a2a)), 0, 0.7, 0));
+      g.add(at(sph(0.95, 7, 5, mat(c[0])), 0, 1.9, 0));
+      g.add(at(sph(0.62, 7, 5, mat(0x5c9a3a)), 0.42, 2.35, 0.18));
+      g.add(at(sph(0.55, 7, 5, mat(c[0])), -0.45, 2.2, -0.25));
+      return g;
+    },
+    bush(c) {
+      const g = new THREE.Group();
+      g.add(at(sph(0.5, 6, 4, mat(c[0])), 0, 0.32, 0));
+      g.add(at(sph(0.36, 6, 4, mat(0x6aa040)), 0.38, 0.26, 0.1));
+      g.add(at(sph(0.1, 5, 4, mat(c[2] || 0xff9ab0)), 0.1, 0.78, 0.2));
+      return g;
+    },
+    wheat(c) {
+      const g = new THREE.Group();
+      for (let i = 0; i < 7; i++) {
+        const a = i * 2.4, r = 0.12 + (i % 3) * 0.14;
+        g.add(at(cone(0.06, 0.9 + (i % 2) * 0.25, 4, mat(c[0])), Math.cos(a) * r, 0.5, Math.sin(a) * r, 0.1 * Math.cos(a), 0, 0.1 * Math.sin(a)));
+      }
+      return g;
+    },
+    oak(c) {
+      const g = new THREE.Group();
+      g.add(at(cyl(0.3, 0.45, 2.2, 6, mat(0x4a3424)), 0, 1.1, 0));
+      g.add(at(cyl(0.1, 0.16, 1.1, 5, mat(0x4a3424)), 0.5, 2.2, 0, 0, 0, -0.8));
+      g.add(at(sph(1.3, 7, 5, mat(c[0])), 0, 3, 0));
+      g.add(at(sph(0.9, 7, 5, mat(0x3a5a2a)), 0.9, 2.7, 0.3));
+      g.add(at(sph(0.8, 7, 5, mat(c[0])), -0.8, 2.6, -0.4));
+      return g;
+    },
+    mushroom() {
+      const g = new THREE.Group();
+      g.add(at(cyl(0.1, 0.14, 0.4, 6, mat(0xe8dcc0)), 0, 0.2, 0));
+      g.add(at(sph(0.3, 7, 4, mat(0xb03a3a)), 0, 0.4, 0));
+      g.add(at(cyl(0.07, 0.1, 0.26, 6, mat(0xe8dcc0)), 0.3, 0.13, 0.12));
+      g.add(at(sph(0.2, 7, 4, mat(0x8a5ab0)), 0.3, 0.27, 0.12));
+      return g;
+    },
+    rock(c) {
+      const g = new THREE.Group();
+      g.add(at(mesh(new THREE.DodecahedronGeometry(0.8, 0), mat(c[0])), 0, 0.45, 0, 0.3, 0.5, 0.1));
+      g.add(at(mesh(new THREE.DodecahedronGeometry(0.45, 0), mat(c[1])), 0.75, 0.25, 0.3, 0.8, 0.2, 0));
+      return g;
+    },
+    spire(c) {
+      const g = new THREE.Group();
+      g.add(at(cone(0.7, 2.6, 5, mat(c[2])), 0, 1.3, 0));
+      g.add(at(cone(0.45, 1.6, 5, mat(c[0])), 0.7, 0.8, 0.2, 0, 0, -0.2));
+      return g;
+    },
+    pine(c) {
+      const g = new THREE.Group();
+      g.add(at(cyl(0.14, 0.2, 0.8, 5, mat(0x5a4030)), 0, 0.4, 0));
+      for (let i = 0; i < 3; i++) {
+        g.add(at(cone(1.0 - i * 0.25, 1.2, 7, mat(c[1])), 0, 1.1 + i * 0.7, 0));
+        g.add(at(cone(0.55 - i * 0.14, 0.45, 7, mat(0xffffff)), 0, 1.45 + i * 0.7, 0));
+      }
+      return g;
+    },
+    ice(c) {
+      const g = new THREE.Group();
+      g.add(at(crystal(0.35, 1.8, mat(c[0], 0.25)), 0, 0.7, 0, 0.1, 0, 0.1));
+      g.add(at(crystal(0.25, 1.1, mat(0xd8f0ff, 0.25)), 0.45, 0.4, 0.15, 0, 0, -0.35));
+      g.add(at(sph(0.6, 6, 4, mat(0xffffff)), -0.2, 0, 0.2));
+      return g;
+    },
+  };
+  // Décor de chaque type de zone : [modèle, part, échelle min, échelle max]
+  const DECOR_SET = {
+    grass: [['tree', 0.35, 0.9, 1.3], ['bush', 0.65, 0.8, 1.3]],
+    field: [['wheat', 0.55, 0.9, 1.4], ['tree', 0.2, 0.9, 1.2], ['bush', 0.25, 0.8, 1.2]],
+    forest: [['oak', 0.55, 0.9, 1.5], ['mushroom', 0.25, 0.8, 1.5], ['bush', 0.2, 0.8, 1.2]],
+    rock: [['rock', 0.6, 0.7, 1.8], ['spire', 0.4, 0.8, 1.5]],
+    snow: [['pine', 0.55, 0.9, 1.5], ['ice', 0.45, 0.7, 1.4]],
+  };
+  const BORDER_SET = { grass: 'tree', field: 'tree', forest: 'oak', rock: 'spire', snow: 'pine' };
+
+  function buildZaap() {
+    const g = new THREE.Group();
+    const stone = mat(0x8a7aa0), dark = mat(0x5a4a70), gold = mat(0xc8a060);
+    g.add(at(cyl(2.1, 2.3, 0.3, 10, dark), 0, 0.15, 0));
+    g.add(at(cyl(1.7, 1.9, 0.2, 10, stone), 0, 0.38, 0));
+    g.add(at(torus(1.45, 0.24, 6, 18, gold), 0, 2.0, 0));
+    g.add(at(box(0.5, 1.2, 0.5, stone), -1.5, 0.9, 0));
+    g.add(at(box(0.5, 1.2, 0.5, stone), 1.5, 0.9, 0));
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; g.add(at(crystal(0.12, 0.4, mat(0x7fe1e4, 0.8)), Math.cos(a) * 1.45, 2.0 + Math.sin(a) * 1.45, 0)); }
+    const portal = new THREE.Mesh(new THREE.CircleGeometry(1.25, 24), new THREE.MeshBasicMaterial({ color: 0x4fc3c7, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+    portal.position.set(0, 2.0, 0);
+    g.add(portal);
+    const swirl = new THREE.Mesh(new THREE.RingGeometry(0.3, 1.1, 24, 1, 0, Math.PI * 1.2), new THREE.MeshBasicMaterial({ color: 0xd8ffff, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
+    swirl.position.set(0, 2.0, 0.01);
+    g.add(swirl);
+    return { root: g, portal, swirl };
+  }
+
+  function buildMark() {
+    const g = new THREE.Group();
+    const m = new THREE.MeshBasicMaterial({ color: 0xf2c14e });
+    g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.6, 0.22), m), 0, 0.45, 0));
+    g.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), m), 0, 0, 0));
+    return g;
+  }
+
+  function buildWorld3D() {
+    const group = new THREE.Group();
+    scene.add(group);
+    // Sol : damier complet (deux parités) recoloré selon la zone sous chaque case
+    const n = (TILES * 2 + 1) ** 2 * 2;
+    const wt = new THREE.InstancedMesh(new THREE.BoxGeometry(TILE / Math.SQRT2, 0.02, TILE / Math.SQRT2), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), n);
+    wt.receiveShadow = true;
+    wt.frustumCulled = false;
+    const offs = [];
+    let i = 0;
+    tmpQ.setFromEuler(tmpE.set(0, Math.PI / 4, 0));
+    for (let par = 0; par < 2; par++) for (let a = -TILES; a <= TILES; a++) for (let b = -TILES; b <= TILES; b++) {
+      const ox = a * TILE + par * TILE / 2, oz = b * TILE + par * TILE / 2;
+      tmpM.compose(tmpP.set(ox, 0.01, oz), tmpQ, tmpS.set(1.02, 1, 1.02));
+      wt.setMatrixAt(i, tmpM);
+      wt.setColorAt(i, WHITE);
+      offs.push(ox, oz, par);
+      i++;
+    }
+    group.add(wt);
+
+    // Décor fixe, généré une fois pour tout le monde (graine fixe)
+    let seed = 12345;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const place = new Map();
+    const push = (kind, zi, x, z, sc) => {
+      const key = kind + '|' + zi;
+      if (!place.has(key)) place.set(key, []);
+      place.get(key).push(x, z, sc, rnd() * Math.PI * 2);
+    };
+    const avoid = [];
+    for (const z of WORLD.zones) {
+      avoid.push([z.zaap.x, z.zaap.y, 300], [z.npc.x, z.npc.y, 200], [z.lair.x, z.lair.y, 300], [z.arena.x, z.arena.y, 360]);
+      for (const c of z.camps) avoid.push([c.x, c.y, 170]);
+    }
+    const CELL = 150;
+    for (let cx = 0; cx < WORLD.WIDTH; cx += CELL) {
+      for (let cy = -WORLD.HALF_H; cy < WORLD.HALF_H; cy += CELL) {
+        if (rnd() > 0.3) continue;
+        const x = cx + rnd() * CELL, y = cy + rnd() * CELL;
+        if (avoid.some(([ax, ay, r]) => Math.hypot(ax - x, ay - y) < r)) continue;
+        const z = WORLD.zoneAt(x), set = DECOR_SET[z.decoType] || DECOR_SET.grass;
+        let k = rnd(), pick = set[0];
+        for (const d of set) { if (k < d[1]) { pick = d; break; } k -= d[1]; }
+        push(pick[0], z.idx, x / U, y / U, pick[2] + rnd() * (pick[3] - pick[2]));
+      }
+    }
+    // Bordures : rangées serrées au nord et au sud, et aux deux extrémités
+    for (let x = -60; x < WORLD.WIDTH + 60; x += 70) {
+      const z = WORLD.zoneAt(Math.max(0, x)), kind = BORDER_SET[z.decoType] || 'tree';
+      for (const sgn of [-1, 1]) for (let row = 0; row < 3; row++) {
+        push(kind, z.idx, (x + rnd() * 40) / U, sgn * (WORLD.HALF_H + 30 + row * 75 + rnd() * 40) / U, 1.3 + rnd() * 0.9 + row * 0.25);
+      }
+    }
+    for (const [ex, zi] of [[-50, 0], [WORLD.WIDTH + 50, WORLD.zones.length - 1]]) {
+      const kind = BORDER_SET[WORLD.zones[zi].decoType];
+      for (let y = -WORLD.HALF_H - 200; y < WORLD.HALF_H + 200; y += 70) for (let row = 0; row < 3; row++)
+        push(kind, zi, (ex + Math.sign(ex) * row * 75 + rnd() * 30) / U, (y + rnd() * 40) / U, 1.4 + rnd() * 0.8);
+    }
+    const decorMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.85 });
+    for (const [key, arr] of place) {
+      const [kind, zi] = key.split('|');
+      const z = WORLD.zones[+zi];
+      // mergeModel ramène le modèle à un rayon de 1 : on lui rend sa taille d'origine
+      const src = DECOR[kind](z.deco.map((c) => new THREE.Color(c).getHex()));
+      const bb = new THREE.Box3().setFromObject(src);
+      const rad = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2 || 1;
+      const geo = mergeModel(src).scale(rad, rad, rad);
+      const cnt = arr.length / 4;
+      const im = new THREE.InstancedMesh(geo, decorMat, cnt);
+      im.castShadow = true;
+      for (let j = 0; j < cnt; j++) {
+        const sc = arr[j * 4 + 2];
+        tmpQ.setFromEuler(tmpE.set(0, arr[j * 4 + 3], 0));
+        tmpM.compose(tmpP.set(arr[j * 4], 0, arr[j * 4 + 1]), tmpQ, tmpS.set(sc, sc, sc));
+        im.setMatrixAt(j, tmpM);
+      }
+      im.computeBoundingSphere && im.computeBoundingSphere();
+      im.frustumCulled = false;
+      group.add(im);
+    }
+
+    // Zaaps, personnages, repaires
+    const zaaps = [], npcs = [], marks = [];
+    for (const z of WORLD.zones) {
+      const zp = buildZaap();
+      zp.root.position.set(z.zaap.x / U, 0, z.zaap.y / U);
+      group.add(zp.root);
+      zaaps.push(zp);
+      let inst = null;
+      const fn = HERO_BUILD[z.npc.look] && window[HERO_BUILD[z.npc.look]];
+      try { if (typeof fn === 'function') inst = fn({ hero: true }); } catch (e) { inst = null; }
+      if (inst) {
+        inst.root.position.set(z.npc.x / U, 0, z.npc.y / U);
+        inst.root.rotation.y = 0.3;
+        group.add(inst.root, inst.fx);
+      }
+      npcs.push(inst);
+      const mk = buildMark();
+      mk.position.set(z.npc.x / U, 2.9, z.npc.y / U);
+      group.add(mk);
+      marks.push(mk);
+      for (const l of [z.lair, z.arena]) {
+        const big = l === z.arena;
+        const rg = new THREE.Mesh(new THREE.RingGeometry((big ? 250 : 180) / U, (big ? 262 : 190) / U, 48), new THREE.MeshBasicMaterial({ color: big ? 0xff5a3a : 0xf2c14e, transparent: true, opacity: 0.45, depthWrite: false }));
+        rg.rotation.x = -Math.PI / 2;
+        rg.position.set(l.x / U, 0.04, l.y / U);
+        group.add(rg);
+        // Bornes de pierre autour du repaire
+        for (let k = 0; k < (big ? 8 : 6); k++) {
+          const a = (k / (big ? 8 : 6)) * Math.PI * 2, R = (big ? 290 : 215) / U;
+          const st = at(box(0.5, big ? 1.6 : 1.1, 0.5, mat(big ? 0x6a3a3a : 0x7a6a50)), l.x / U + Math.cos(a) * R, big ? 0.8 : 0.55, l.y / U + Math.sin(a) * R, 0, a, 0);
+          group.add(st);
+        }
+      }
+    }
+    // Barrière vers la zone suivante
+    const gateMat = new THREE.MeshBasicMaterial({ color: 0x9a5aff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false });
+    const gate = new THREE.Mesh(new THREE.PlaneGeometry((WORLD.HALF_H * 2) / U, 6), gateMat);
+    gate.rotation.y = Math.PI / 2;
+    group.add(gate);
+    W3 = { group, wt, offs, anchor: null, unlocked: -1, zaaps, npcs, marks, gate, gateMat, sky: new THREE.Color(), lastZone: -1 };
+  }
+
+  /** Recolore le damier quand le joueur change de case. */
+  function paintTiles(ax, az, unlocked) {
+    const { wt, offs } = W3;
+    const gateX = unlocked * WORLD.ZONE_W;
+    for (let i = 0, j = 0; i < offs.length; i += 3, j++) {
+      const x = (ax + offs[i]) * U, y = (az + offs[i + 1]) * U, par = offs[i + 2];
+      const z = WORLD.zoneAt(x);
+      if (Math.abs(y) > WORLD.HALF_H + 20 || x < -20 || x > WORLD.WIDTH + 20) tmpC.copy(zcol(z.ground)).multiplyScalar(0.55);
+      else tmpC.copy(zcol(par ? z.ground2 : z.ground));
+      if (x > gateX) tmpC.multiplyScalar(0.6);
+      wt.setColorAt(j, tmpC);
+    }
+    wt.instanceColor.needsUpdate = true;
+  }
+
+  function updateWorld3D(S, dt, px, pz) {
+    const w = S.world;
+    if (!W3 || !w) return;
+    const unlocked = WORLD.unlockedZones(w.quest);
+    const ax = Math.round(px / TILE) * TILE, az = Math.round(pz / TILE) * TILE;
+    const key = ax + ',' + az + ',' + unlocked;
+    W3.wt.position.set(ax, 0, az);
+    if (key !== W3.anchor) { W3.anchor = key; paintTiles(ax, az, unlocked); }
+    // Ciel et brouillard : fondu vers la teinte de la zone courante
+    const z = S.zone;
+    const target = tmpC.set(z.ground).lerp(WHITE, 0.55);
+    if (W3.lastZone < 0) W3.sky.copy(target); else W3.sky.lerp(target, Math.min(1, dt * 1.5));
+    W3.lastZone = z.idx;
+    scene.background.copy(W3.sky);
+    scene.fog.color.copy(W3.sky);
+    ground.material.color.set(z.ground).multiplyScalar(0.6);
+    // Zaaps (activés ou éteints), personnages proches, marque de quête
+    const alert = WORLD.QUESTS[w.quest] && !w.qAccepted ? WORLD.QUESTS[w.quest].zone : -1;
+    WORLD.zones.forEach((zz, i) => {
+      const zp = W3.zaaps[i], on = w.zaaps.has(i);
+      zp.portal.material.opacity = on ? 0.5 + 0.15 * Math.sin(time * 3) : 0.12;
+      zp.swirl.material.opacity = on ? 0.75 : 0.1;
+      zp.swirl.rotation.z = -time * (on ? 2.5 : 0.3);
+      const near = Math.abs(zz.npc.x / U - px) < 40;
+      const npc = W3.npcs[i];
+      if (npc && near) npc.update('idle', time + i, dt);
+      const mk = W3.marks[i];
+      mk.visible = alert === i;
+      if (mk.visible) { mk.position.y = 2.9 + Math.sin(time * 3) * 0.15; mk.rotation.y = time * 1.5; }
+      if (on && near && Math.random() < 0.3) part(zz.zaap.x / U + (Math.random() - 0.5) * 2, 0.6, zz.zaap.y / U + (Math.random() - 0.5) * 0.4, '#7fe1e4', { vy: 1.6, life: 0.9, s: 0.1 });
+    });
+    W3.gate.visible = unlocked < WORLD.zones.length;
+    if (W3.gate.visible) {
+      W3.gate.position.set((unlocked * WORLD.ZONE_W) / U, 3, 0);
+      W3.gateMat.opacity = 0.32 + 0.1 * Math.sin(time * 2);
+      if (Math.abs(W3.gate.position.x - px) < 30 && Math.random() < 0.6)
+        part(W3.gate.position.x, Math.random() * 5, pz + (Math.random() - 0.5) * 30, '#c49aff', { vy: 0.8, life: 0.8, s: 0.12 });
+    }
+  }
+
   // ---------------------------------------------------------------- Début / fin de partie
   function begin(S) {
     if (!ready) return;
@@ -797,6 +1090,10 @@ const Render3D = (() => {
     scene.background = sky;
     scene.fog.color.copy(sky);
     end();
+    const world = S.mode === 'world';
+    if (world && !W3) buildWorld3D();
+    if (W3) { W3.group.visible = world; W3.anchor = null; W3.lastZone = -1; }
+    tiles.visible = !world;
     hero = buildHero(S.cls);
     parts.length = 0;
     for (const v of vfx) v.cleanup && v.cleanup();
@@ -891,6 +1188,7 @@ const Render3D = (() => {
     const px = p.x / U, pz = p.y / U;
     placeCamera(px, pz);
     beginPools();
+    if (S.mode === 'world') updateWorld3D(S, dt, px, pz);
     if (hero) updateHero(S, dt);
 
     // Monstres : un lot par type ; les monstres ordinaires ont leur modèle, les boss restent des blocs (étape 4)
