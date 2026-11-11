@@ -10,10 +10,17 @@ const Game = (() => {
   const joy = { id: null, sx: 0, sy: 0, x: 0, y: 0 };
 
   const MAX_ENEMIES = 380;
-  const GOD_MODE = /[?&]debug\b/.test(location.search); // invincibilité pour les tests
+  // Mode test « vague N » : ?vague=30&vitesse=3 ou #vague30 / #vague30x3 (le lien d'un artefact ne garde que le #)
+  const TEST = (() => {
+    const q = location.search.match(/[?&]vague=(\d+)/), v = location.search.match(/[?&]vitesse=(\d+)/);
+    const h = location.hash.match(/^#vague(\d+)(?:x(\d))?$/);
+    const wave = q ? +q[1] : h ? +h[1] : 0;
+    return { wave, speed: Math.min(4, Math.max(1, v ? +v[1] : h && h[2] ? +h[2] : 1)) };
+  })();
+  const GOD_MODE = /[?&]debug\b/.test(location.search) || TEST.wave > 0; // invincibilité pour les tests
   // Tests de fluidité : ?stress / #stress remplit l'écran de monstres, ?fps / #fps affiche le compteur
   const STRESS = /[?&]stress\b/.test(location.search) || location.hash === '#stress';
-  const SHOW_FPS = STRESS || /[?&]fps\b/.test(location.search) || location.hash === '#fps';
+  const SHOW_FPS = STRESS || TEST.wave > 0 || /[?&]fps\b/.test(location.search) || location.hash === '#fps';
   let r3 = null;          // moteur 3D actif (Render3D) ou null pour le rendu 2D
   let canvas3d = null;
   let fps = 0, fpsAcc = 0, fpsFrames = 0, renderMs = 0;
@@ -173,6 +180,7 @@ const Game = (() => {
     if (r3) r3.begin(S);
     r3RadiusAt = -1;
     addSpell(cls.spells[0]);
+    if (TEST.wave) jumpToWave(TEST.wave);
     paused = false;
     lastT = performance.now();
     cancelAnimationFrame(raf);
@@ -183,6 +191,25 @@ const Game = (() => {
   function stop() { cancelAnimationFrame(raf); if (r3) r3.end(); S = null; }
   function setPaused(v) { paused = v; if (!v) lastT = performance.now(); }
 
+  /**
+   * Mode test : démarre à la vague N (une horde par minute, donc à N minutes de jeu),
+   * avec le héros monté de niveau automatiquement et le gardien de la zone déjà là.
+   */
+  function jumpToWave(n) {
+    S.t = n * 60;
+    S.nextWave = S.t + 2;
+    S.bossIdx = BOSS_TIMES.findIndex((b) => b.kind === 'boss');
+    const levels = Math.min(60, 8 + n);
+    for (let i = 0; i < levels; i++) {
+      S.level++;
+      S.pending++;
+      const c = genChoices();
+      choose(c[(Math.random() * c.length) | 0]);
+    }
+    S.xpNext = xpFor(S.level);
+    S.p.hp = S.p.maxHp;
+  }
+
   function xpFor(lvl) { return Math.floor(3 + lvl * 2.5 + Math.pow(lvl, 1.6)); }
 
   // ------------------------------------------------------------ Boucle
@@ -192,7 +219,8 @@ const Game = (() => {
     lastT = now;
     if (dt > 0.05) dt = 0.05;
     if (!S) return;
-    if (!paused && !S.choosing) update(dt);
+    // Mode test accéléré : plusieurs pas de simulation par image
+    if (!paused && !S.choosing) for (let i = 0; i < TEST.speed && !S.choosing; i++) update(dt);
     draw(dt);
     if (SHOW_FPS) {
       fpsAcc += dt; fpsFrames++;
