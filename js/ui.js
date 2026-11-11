@@ -96,7 +96,7 @@ function renderClassDetail() {
   const adv = Save.data.adventures[id];
   if (owned && playMode === 'world') {
     action = adv
-      ? `<button class="btn primary" id="btn-adv">Continuer · niv. ${adv.level} · ${esc(WORLD.zoneAt(adv.pos ? adv.pos.x : 0).name)}</button>
+      ? `<button class="btn primary" id="btn-adv">Continuer · niv. ${adv.level} · ${esc(ZONES[advZone(adv)].name)}</button>
          <button class="btn small danger" id="btn-adv-new">Recommencer l’aventure</button>`
       : '<button class="btn primary" id="btn-adv">Commencer l’aventure</button>';
   } else if (owned) action = '<button class="btn primary" id="btn-choose">Choisir mon zaap</button>';
@@ -271,6 +271,8 @@ function startAdventure() {
   if (!Save.data.unlocked.includes(selectedClass)) return;
   Save.data.lastClass = selectedClass;
   const adv = Save.data.adventures[selectedClass] || { cls: selectedClass, level: 1 };
+  // Ancienne sauvegarde (monde continu) : on la ramène au zaap de sa zone
+  if (adv.zone === undefined) { adv.zone = advZone(adv); adv.pos = null; }
   enterHud(true);
   const c = CLASSES[selectedClass];
   $('#hud-portrait').style.background = c.color;
@@ -372,30 +374,66 @@ function onWorldHud(w) {
 }
 
 function drawMinimap(w) {
-  const cv = $('#minimap'), g = cv.getContext('2d');
-  const Wd = cv.width, Hd = cv.height, sx = Wd / WORLD.WIDTH, sy = Hd / (WORLD.HALF_H * 2);
-  const X = (x) => x * sx, Y = (y) => (y + WORLD.HALF_H) * sy;
-  for (const z of WORLD.zones) {
-    g.fillStyle = z.ground;
-    g.fillRect(X(z.x0), 0, X(z.x1) - X(z.x0) + 1, Hd);
-    if (z.idx >= w.unlocked) { g.fillStyle = 'rgba(20,8,40,.72)'; g.fillRect(X(z.x0), 0, X(z.x1) - X(z.x0) + 1, Hd); }
+  const cv = $('#minimap'), g = cv.getContext('2d'), m = w.map;
+  // Taille du canevas selon les proportions de la carte (zone ou donjon)
+  const Wd = 360, Hd = Math.round(Wd * (m.h * 2) / m.w);
+  if (cv.height !== Hd) cv.height = Hd;
+  const sx = Wd / m.w, sy = Hd / (m.h * 2);
+  const X = (x) => x * sx, Y = (y) => (y + m.h) * sy;
+  const dungeon = m.kind === 'dungeon';
+  g.fillStyle = dungeon ? '#3a3346' : ZONES[m.zone].ground;
+  g.fillRect(0, 0, Wd, Hd);
+  for (const c of w.camps) {
+    const diff = c.lvl - w.level;
+    g.fillStyle = diff >= 6 ? '#ff5a4a' : diff >= 3 ? '#ffb347' : diff <= -4 ? '#8fd9a0' : '#ffffff';
+    g.globalAlpha = 0.8;
+    g.beginPath(); g.arc(X(c.x), Y(c.y), 3, 0, Math.PI * 2); g.fill();
   }
-  g.fillStyle = 'rgba(0,0,0,.25)';
-  for (let i = 1; i < WORLD.zones.length; i++) g.fillRect(X(i * WORLD.ZONE_W) - 1, 0, 2, Hd);
+  g.globalAlpha = 1;
   for (const b of w.bosses) {
     g.fillStyle = b.kind === 'boss' ? '#ff4a3a' : '#f2a03a';
-    g.beginPath(); g.arc(X(b.x), Y(b.y), b.kind === 'boss' ? 6 : 4.5, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.arc(X(b.x), Y(b.y), b.kind === 'boss' ? 7 : 5.5, 0, Math.PI * 2); g.fill();
   }
-  for (const z of WORLD.zones) {
-    g.fillStyle = w.zaaps.includes(z.idx) ? '#4fc3c7' : '#6a5a80';
-    g.fillRect(X(z.zaap.x) - 4, Y(z.zaap.y) - 4, 8, 8);
-    if (w.npcAlert === z.idx) {
-      g.fillStyle = '#f2c14e'; g.font = 'bold 22px system-ui, sans-serif'; g.textAlign = 'center';
-      g.fillText('!', X(z.npc.x), Y(z.npc.y) + 6);
+  if (!dungeon) {
+    g.fillStyle = '#4fc3c7'; g.fillRect(X(m.zaap.x) - 5, Y(m.zaap.y) - 5, 10, 10);
+    g.fillStyle = '#120c18'; g.fillRect(X(m.door.x) - 7, Y(m.door.y) - 7, 14, 14);
+    g.strokeStyle = '#ffd0a0'; g.lineWidth = 2; g.strokeRect(X(m.door.x) - 7, Y(m.door.y) - 7, 14, 14);
+    if (w.npcAlert) {
+      g.fillStyle = '#f2c14e'; g.font = 'bold 24px system-ui, sans-serif'; g.textAlign = 'center';
+      g.fillText('!', X(m.npc.x), Y(m.npc.y) + 8);
     }
+  } else {
+    g.fillStyle = '#b46cff'; g.fillRect(X(m.exit.x) - 5, Y(m.exit.y) - 5, 10, 10);
   }
   g.fillStyle = '#fff'; g.strokeStyle = '#1e1530'; g.lineWidth = 3;
-  g.beginPath(); g.arc(X(w.px), Y(w.py), 5.5, 0, Math.PI * 2); g.stroke(); g.fill();
+  g.beginPath(); g.arc(X(w.px), Y(w.py), 6, 0, Math.PI * 2); g.stroke(); g.fill();
+}
+
+function advZone(adv) { return adv.zone !== undefined ? adv.zone : Math.min(4, Math.floor(((adv.pos && adv.pos.x) || 0) / 3200)); }
+
+/** Petite notification (objet équipé ou revendu). */
+function onToast(title, color, sub) {
+  const box = $('#toasts');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.style.borderColor = color;
+  el.innerHTML = `<b style="color:${color}">${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}`;
+  box.prepend(el);
+  while (box.children.length > 4) box.lastChild.remove();
+  setTimeout(() => el.classList.add('out'), 3200);
+  setTimeout(() => el.remove(), 3700);
+}
+
+/** Équipement porté, affiché dans le menu pause. */
+function equipHtml() {
+  const eq = Game.equipment();
+  const rows = Object.keys(WORLD.SLOTS).map((slot) => {
+    const it = eq[slot];
+    return `<div class="eq-row"><span class="eq-slot">${WORLD.SLOTS[slot].label}</span>${it
+      ? `<div><b style="color:${it.color}">${esc(it.name)}</b><small>Niv. ${it.lvl} · ${esc(WORLD.itemDesc(it))}</small></div>`
+      : '<div><small>Aucun</small></div>'}</div>`;
+  }).join('');
+  return `<div class="equip"><div class="eyebrow">Équipement</div>${rows}</div>`;
 }
 
 function onDialog(d) {
@@ -410,14 +448,27 @@ function onDialog(d) {
   const r = $('#dlg-reward');
   r.classList.toggle('hidden', !d.reward);
   r.textContent = d.reward || '';
+  // Fin de donjon : choix de la suite
+  const box = $('#dlg-choices');
+  box.innerHTML = '';
+  dialogChoice = !!d.choices;
+  $('#btn-dlg').classList.toggle('hidden', dialogChoice);
+  for (const c of d.choices || []) {
+    const b = document.createElement('button');
+    b.className = 'btn ' + (c.main ? 'primary' : 'teal');
+    b.innerHTML = `${esc(c.label)}${c.sub ? `<small>${esc(c.sub)}</small>` : ''}`;
+    b.addEventListener('click', () => { dialogChoice = false; dialogAt = 0; closeDialog(); Game.worldChoice(c.id); });
+    box.appendChild(b);
+  }
   $('#ov-dialog').classList.remove('hidden');
   dialogAt = performance.now();
   Game.setPaused(true);
 }
-let dialogAt = 0;
-function closeDialog() {
+let dialogAt = 0, dialogChoice = false;
+function closeDialog(fromKey = false) {
+  if (dialogChoice) return;   // il faut choisir une des options
   // la touche qui a ouvert le dialogue ne doit pas le refermer aussitôt
-  if ($('#ov-dialog').classList.contains('hidden') || performance.now() - dialogAt < 300) return;
+  if ($('#ov-dialog').classList.contains('hidden') || (fromKey && performance.now() - dialogAt < 300)) return;
   $('#ov-dialog').classList.add('hidden');
   Game.setPaused(false);
 }
@@ -427,9 +478,9 @@ function onZaap(list) {
   box.innerHTML = '';
   for (const z of list) {
     const b = document.createElement('button');
-    b.className = 'btn' + (z.here ? '' : ' teal');
-    b.disabled = z.here;
-    b.textContent = z.here ? z.name + ' (ici)' : z.name;
+    b.className = 'btn' + (z.here || !z.open ? '' : ' teal');
+    b.disabled = z.here || !z.open;
+    b.innerHTML = `${esc(z.name)}${z.here ? ' (ici)' : ''}<small>${z.open ? `Monstres niv. ${z.lvl[0]}–${z.lvl[1]}` : 'Bats le gardien précédent pour y accéder'}</small>`;
     b.addEventListener('click', () => { closeTravel(); Game.travel(z.idx); });
     box.appendChild(b);
   }
@@ -539,7 +590,7 @@ function togglePause() {
   const q = $('#btn-quit');
   delete q.dataset.armed;
   q.textContent = worldGame ? 'Sauvegarder et quitter' : 'Abandonner';
-  if (willPause) $('#pause-build').innerHTML = $('#hud-spells').innerHTML + $('#hud-passives').innerHTML;
+  if (willPause) $('#pause-build').innerHTML = $('#hud-spells').innerHTML + $('#hud-passives').innerHTML + (worldGame ? equipHtml() : '');
   ov.classList.toggle('hidden', !willPause);
   Game.setPaused(willPause);
 }
@@ -586,7 +637,7 @@ function applyGfx(mode) {
 function boot() {
   Save.load();
   document.title = GAME_TITLE;
-  Game.init($('#game'), { onHud, onLevelUp, onBanner, onEnd, onPauseKey: togglePause, onDialog, onZaap, onSave: saveAdventure }, $('#game3d'));
+  Game.init($('#game'), { onHud, onLevelUp, onBanner, onEnd, onPauseKey: togglePause, onDialog, onZaap, onSave: saveAdventure, onToast }, $('#game3d'));
   // Rendu 2D ou 3D : choix sauvegardé, ou forcé par ?gfx=3d / ?gfx=2d dans l'adresse
   const forced = (location.search.match(/[?&]gfx=(2d|3d)/) || [])[1];
   applyGfx(forced || Save.data.gfx);
@@ -602,10 +653,10 @@ function boot() {
   $('#btn-adventure').addEventListener('click', () => { playMode = 'world'; show('class'); });
   $('#btn-arena').addEventListener('click', () => { playMode = 'arena'; show('class'); });
   $('#btn-act').addEventListener('click', () => Game.interact());
-  $('#btn-dlg').addEventListener('click', closeDialog);
+  $('#btn-dlg').addEventListener('click', () => closeDialog());
   $('#btn-travel-close').addEventListener('click', closeTravel);
   addEventListener('keydown', (e) => {
-    if (!$('#ov-dialog').classList.contains('hidden') && ['Enter', 'Space', 'KeyE', 'Escape'].includes(e.code)) { e.preventDefault(); closeDialog(); }
+    if (!$('#ov-dialog').classList.contains('hidden') && ['Enter', 'Space', 'KeyE', 'Escape'].includes(e.code)) { e.preventDefault(); closeDialog(true); }
     else if (!$('#ov-travel').classList.contains('hidden') && e.code === 'Escape') closeTravel();
   });
   addEventListener('pagehide', () => { if (inGame && worldGame) saveAdventure(); });

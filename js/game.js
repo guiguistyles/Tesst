@@ -142,6 +142,16 @@ const Game = (() => {
     st.cd *= Math.pow(0.93, P.pa || 0);
     st.armor = 1 - (1 - st.armor) * Math.pow(0.94, P.resistance || 0);
     st.regen += 0.5 * (P.soin || 0);
+    // Équipement porté (aventure)
+    for (const slot in S.equip || {}) {
+      const it = S.equip[slot].stats;
+      st.dmg *= 1 + (it.dmg || 0);
+      st.hp *= 1 + (it.hp || 0);
+      st.speed *= 1 + (it.speed || 0);
+      st.crit += it.crit || 0;
+      st.cd *= 1 - (it.cd || 0);
+      st.armor = 1 - (1 - st.armor) * (1 - (it.armor || 0));
+    }
     S.stats = st;
     const newMax = Math.round(CLASSES[S.cls].hp * st.hp);
     if (S.p.maxHp) S.p.hp += Math.max(0, newMax - S.p.maxHp);
@@ -193,8 +203,7 @@ const Game = (() => {
     lastT = performance.now();
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(loop);
-    if (adv) cb.onBanner(S.zone.name, 'Le Réveil des Zaaps');
-    else cb.onBanner(S.zone.name, 'Survivez et vainquez ' + MONSTERS[S.zone.boss].name + ' !');
+    if (!adv) cb.onBanner(S.zone.name, 'Survivez et vainquez ' + MONSTERS[S.zone.boss].name + ' !');
   }
 
   function stop() { cancelAnimationFrame(raf); if (r3) r3.end(); S = null; }
@@ -222,21 +231,22 @@ const Game = (() => {
 
   // L'aventure dure bien plus qu'une partie d'arène : la courbe d'expérience y est plus longue
   function xpFor(lvl) {
-    if (S && S.mode === 'world') return Math.floor(12 + lvl * 9 + Math.pow(lvl, 1.85));
+    if (S && S.mode === 'world') return Math.floor(8 + lvl * 6 + Math.pow(lvl, 1.75));
     return Math.floor(3 + lvl * 2.5 + Math.pow(lvl, 1.6));
   }
 
 
-  // ============================================================ Monde ouvert
+  // ============================================================ Aventure (une carte par zone + donjons)
   /** Démarre (ou reprend) l'aventure avec la sauvegarde du héros. */
-  function startWorld(clsId, save, adv) { start(clsId, 0, save, adv); }
+  function startWorld(clsId, save, adv) { start(clsId, Math.min(4, adv.zone || 0), save, adv); }
 
-  /** Restaure le héros (niveau, sorts, caractéristiques, position) et prépare camps, repaires et quêtes. */
+  /** Restaure le héros (niveau, sorts, caractéristiques, équipement) et charge sa zone. */
   function initWorld(adv) {
     S.level = adv.level || 1;
     S.xp = adv.xp || 0;
     S.xpNext = xpFor(S.level);
     S.passives = Object.assign({}, adv.passives || {});
+    S.equip = Object.assign({}, adv.equip || {});
     recomputeStats();
     if (adv.spells && adv.spells.length) {
       S.spells = [];
@@ -248,62 +258,72 @@ const Game = (() => {
         sp.s = spellStats(sp);
       }
     }
-    const z0 = WORLD.zones[adv.lastZaap || 0];
-    const pos = adv.pos || { x: z0.zaap.x + 140, y: 40 };
-    S.p.x = pos.x; S.p.y = pos.y;
     S.p.hp = S.p.maxHp;
-    S.zone = WORLD.zoneAt(S.p.x);
-    S.zoneIdx = S.zone.idx;
     S.world = {
       quest: adv.quest || 0, qProgress: adv.qProgress || 0, qAccepted: !!adv.qAccepted,
       bossKilled: Object.assign({}, adv.bossKilled || {}),
-      zaaps: new Set(adv.zaaps || [0]), lastZaap: adv.lastZaap || 0,
-      camps: [], lairs: [], dead: 0, combatT: 10, playTime: adv.playTime || 0,
+      map: null, camps: [], lairs: [], dead: 0, combatT: 10, playTime: adv.playTime || 0,
     };
-    for (const z of WORLD.zones) {
-      for (const c of z.camps) S.world.camps.push({ def: c, members: [], respawnAt: 0 });
-      S.world.lairs.push({ def: z.lair, zone: z, kind: 'mini', e: null, nextAt: 0 });
-      S.world.lairs.push({ def: z.arena, zone: z, kind: 'boss', e: null, nextAt: 0 });
-    }
+    const m = WORLD.zones[Math.min(4, adv.zone || 0)];
+    const pos = adv.pos && adv.pos.x > 0 && adv.pos.x < m.w && Math.abs(adv.pos.y) < m.h ? adv.pos : null;
+    loadMap(m, pos);
+  }
+
+  /** Charge une carte (zone ou donjon) : vide les alentours et place le héros. */
+  function loadMap(m, pos) {
+    const w = S.world;
+    // Le butin resté au sol est ramassé avant de partir
+    for (const g of S.gems) if (g.kind !== 'heal' && g.kind !== 'magnet') collect(g);
+    S.gems = [];
+    for (const e of S.enemies) e.dead = true;
+    S.enemies = []; S.eprojs = []; S.projs = []; S.strikes = []; S.traps = []; S.glyphs = [];
+    S.boss = null;
+    w.map = m;
+    S.zone = ZONES[m.zone];
+    S.zoneIdx = m.zone;
+    w.camps = m.camps.map((def) => ({ def, members: [], respawnAt: 0 }));
+    w.lairs = (m.kind === 'zone' ? [m.lair] : [m.boss]).map((def) => ({ def, e: null, nextAt: 0 }));
+    const at = pos || (m.kind === 'zone' ? { x: m.zaap.x + 140, y: 40 } : { x: m.exit.x + 170, y: 0 });
+    S.p.x = at.x; S.p.y = at.y;
+    r3RadiusAt = -1;
+    if (m.kind === 'zone') cb.onBanner(m.name, `Monstres niv. ${m.lvl[0]} à ${m.lvl[1]}`);
+    else cb.onBanner(m.name, 'Le gardien vous attend au fond du donjon…');
   }
 
   function updateWorld(dt) {
-    const w = S.world, p = S.p;
+    const w = S.world, p = S.p, m = w.map;
     w.playTime += dt;
-    const z = WORLD.zoneAt(p.x);
-    if (z.idx !== S.zoneIdx) {
-      S.zone = z; S.zoneIdx = z.idx;
-      cb.onBanner(z.name, z.sub);
-    }
     if (w.dead > 0) {
       w.dead -= dt;
       if (w.dead <= 0) respawnAtZaap();
       return;
     }
-    // Camps : les monstres apparaissent à l'approche et disparaissent quand on s'éloigne
+    const dungeon = m.kind === 'dungeon';
+    // Camps : en zone, les monstres apparaissent à l'approche et disparaissent quand on s'éloigne ;
+    // dans le donjon, toutes les salles sont peuplées dès l'entrée et ne se repeuplent pas.
     for (const c of w.camps) {
       const d = Math.hypot(c.def.x - p.x, c.def.y - p.y);
-      if (!c.members.length && S.t >= c.respawnAt && d < 1500 && d > 420) {
+      if (!c.members.length && S.t >= c.respawnAt && (dungeon || (d < 1500 && d > 420))) {
         c.def.ids.forEach((id, i) => {
           const a = (i / c.def.ids.length) * Math.PI * 2;
-          const e = spawnEnemy(id, c.def.x + Math.cos(a) * 60, c.def.y + Math.sin(a) * 60, 1, WORLD.zones[c.def.zone]);
+          const e = spawnEnemy(id, c.def.x + Math.cos(a) * 60, c.def.y + Math.sin(a) * 60, 1, null, c.def.lvl + (Math.random() < 0.35 ? 1 : 0));
           e.camp = c; e.hx = e.x; e.hy = e.y;
           c.members.push(e);
         });
-      } else if (c.members.length && d > 2200 && !c.members.some((e) => e.aggro)) {
+      } else if (!dungeon && c.members.length && d > 2200 && !c.members.some((e) => e.aggro)) {
         for (const e of c.members) e.dead = true;
         c.members = [];
       }
     }
-    // Repaires : boss intermédiaire et gardien de chaque zone
+    // Boss intermédiaire (repaire de la zone) ou gardien (fond du donjon)
     let fight = null;
     for (const l of w.lairs) {
       const d = Math.hypot(l.def.x - p.x, l.def.y - p.y);
       if (!l.e && S.t >= l.nextAt && d < 1300) {
-        const e = spawnEnemy(l.def.id, l.def.x, l.def.y, 1, l.zone);
-        e.kind = l.kind; e.lair = l; e.hx = e.x; e.hy = e.y;
+        const e = spawnEnemy(l.def.id, l.def.x, l.def.y, 1, null, l.def.lvl);
+        e.kind = l.def.kind; e.lair = l; e.hx = e.x; e.hy = e.y;
         l.e = e;
-      } else if (l.e && d > 2300 && !l.e.aggro) {
+      } else if (l.e && !dungeon && d > 2300 && !l.e.aggro) {
         l.e.dead = true;
         l.e = null;
       }
@@ -312,7 +332,7 @@ const Game = (() => {
     S.boss = fight;
   }
 
-  /** Comportement d'un monstre du monde : rôde près de son camp, attaque à l'approche, abandonne s'il est entraîné trop loin. */
+  /** Comportement d'un monstre : rôde près de son camp, attaque à l'approche, abandonne s'il est entraîné trop loin. */
   function worldAggro(e, dist, dt) {
     if (!e.aggro) {
       if (dist < (e.boss ? 520 : 340) || e.hp < e.maxHp) {
@@ -341,147 +361,171 @@ const Game = (() => {
   }
 
   function worldKill(e) {
-    const w = S.world;
+    const w = S.world, dungeon = w.map.kind === 'dungeon';
     if (e.camp) {
       e.camp.members = e.camp.members.filter((m) => m !== e);
-      if (!e.camp.members.length) e.camp.respawnAt = S.t + 60;
+      if (!e.camp.members.length) e.camp.respawnAt = dungeon ? Infinity : S.t + 60;
     }
     if (e.lair) {
       e.lair.e = null;
       e.lair.nextAt = S.t + e.lair.def.respawn;
     }
+    // Équipement : rare sur les monstres, assuré sur les boss (meilleure rareté)
+    if (e.boss) {
+      const n = e.kind === 'boss' ? 2 : 1;
+      for (let i = 0; i < n; i++) S.gems.push({ kind: 'item', item: WORLD.makeItem(e.lvl, S.zoneIdx, 1), x: e.x + rand(-40, 40), y: e.y + rand(-40, 40), v: 0 });
+    } else if (Math.random() < (dungeon ? 0.07 : 0.035)) {
+      S.gems.push({ kind: 'item', item: WORLD.makeItem(e.lvl, S.zoneIdx), x: e.x, y: e.y, v: 0 });
+    }
+    let first = false;
+    if (e.boss) {
+      first = !w.bossKilled[e.id];
+      w.bossKilled[e.id] = true;
+      if (e.kind === 'boss') {
+        const owned = S.save.dofus.concat(S.found);
+        const free = S.zone.dofus.filter((d) => !owned.includes(d));
+        if (free.length && (first || Math.random() < 0.1)) S.gems.push({ kind: 'dofus', id: pick(free), x: e.x, y: e.y, v: 0 });
+      } else S.gems.push({ kind: 'chest', x: e.x, y: e.y, v: 0 });
+    }
+    // Quête
     const q = WORLD.QUESTS[w.quest];
-    if (!q || !w.qAccepted) return;
-    if (q.goal.kill === e.id) {
-      w.qProgress++;
-      if (w.qProgress >= q.goal.n) completeQuest();
-    } else if (q.goal.boss === e.id) completeQuest();
+    let done = null;
+    if (q && w.qAccepted && ((q.goal.kill === e.id && ++w.qProgress >= q.goal.n) || q.goal.boss === e.id)) done = completeQuest();
+    if (e.kind === 'boss') guardianChoice(e, done, first);
+    else if (done) cb.onDialog(done);
+    if (done || e.boss) cb.onSave();
   }
 
-  /** Butin d'un boss du monde : kamas, coffre pour le boss intermédiaire, Dofus pour le gardien. */
-  function worldBossDrop(e, z) {
-    const first = !S.world.bossKilled[e.id];
-    S.world.bossKilled[e.id] = true;
-    if (e.kind === 'boss') {
-      const owned = S.save.dofus.concat(S.found);
-      const free = z.dofus.filter((d) => !owned.includes(d));
-      if (free.length && (first || Math.random() < 0.1)) S.gems.push({ kind: 'dofus', id: pick(free), x: e.x, y: e.y, v: 0 });
-      cb.onBanner(e.def.name + ' est vaincu !', first ? 'Le gardien de la zone est tombé' : '');
+  /** Gardien vaincu au fond du donjon : passer à la zone suivante ou rester. */
+  function guardianChoice(e, done, first) {
+    const zi = S.zoneIdx, next = WORLD.zones[zi + 1];
+    const d = done || { npc: WORLD.NPCS[zi], title: e.def.name + ' est vaincu !', lines: ['Le donjon est libéré. Le gardien reviendra la prochaine fois que tu entreras.'] };
+    d.lines = d.lines.slice();
+    if (next) {
+      if (first) d.lines.push(`La route ${/^[AEIOUÉ]/.test(next.name) ? 'd’' : 'de '}${next.name} est ouverte.`);
+      d.lines.push(`Là-bas, les monstres sont de niveau ${next.lvl[0]} à ${next.lvl[1]} : bien plus durs à tuer, mais leur équipement est meilleur.`);
+      d.choices = [
+        { id: 'next', label: `Aller vers ${next.name}`, sub: `Monstres niv. ${next.lvl[0]}–${next.lvl[1]}`, main: true },
+        { id: 'stay', label: 'Rester ici', sub: `Continuer à t’équiper : ${S.zone.name}` },
+      ];
     } else {
-      S.gems.push({ kind: 'chest', x: e.x, y: e.y, v: 0 });
+      d.choices = [{ id: 'stay', label: 'Sortir du donjon', main: true }];
     }
+    cb.onDialog(d);
+  }
+
+  /** Réponse au choix de fin de donjon. */
+  function worldChoice(id) {
+    if (!S || S.mode !== 'world') return;
+    const zi = S.zoneIdx;
+    if (id === 'next' && WORLD.zones[zi + 1]) loadMap(WORLD.zones[zi + 1]);
+    else loadMap(WORLD.zones[zi], { x: WORLD.zones[zi].door.x - 170, y: 40 });
+    cb.onSave();
   }
 
   function questText(q, w) {
     if (!q) return 'Explore librement le Monde des Douze';
-    if (!w.qAccepted) return 'Parle à ' + WORLD.NPCS[q.zone].name + ' (' + WORLD.zones[q.zone].name + ')';
+    if (!w.qAccepted) return 'Parle à ' + WORLD.NPCS[q.zone].name + ' (' + ZONES[q.zone].name + ')';
     if (q.goal.kill) return `Vaincre des ${MONSTERS[q.goal.kill].name.toLowerCase()}s : ${w.qProgress} / ${q.goal.n}`;
+    if (q.goal.boss === ZONES[q.zone].boss) return 'Vaincre ' + MONSTERS[q.goal.boss].name + ' au fond du donjon';
     return 'Vaincre ' + MONSTERS[q.goal.boss].name;
   }
 
+  /** Termine la quête en cours, donne la récompense et renvoie le dialogue à afficher. */
   function completeQuest() {
     const w = S.world, q = WORLD.QUESTS[w.quest];
     gainXp(q.xp);
     S.kamas += q.kamas;
-    const opened = q.goal.boss && w.quest % 3 === 2;
     w.quest++;
     w.qProgress = 0;
     const next = WORLD.QUESTS[w.quest];
     // Les quêtes d'une même zone s'enchaînent ; la suivante se reçoit auprès du personnage de la nouvelle zone
     w.qAccepted = !!next && next.zone === q.zone;
-    const npc = WORLD.NPCS[q.zone];
-    cb.onDialog({ npc, title: 'Quête terminée : ' + q.title, reward: `+${q.xp} XP · +${q.kamas} kamas`,
-      lines: [...q.done, ...(w.qAccepted ? next.intro : [])], next: w.qAccepted ? next.title : null });
-    if (opened && w.quest < WORLD.QUESTS.length) cb.onBanner('La barrière s’est levée !', 'Direction ' + WORLD.zones[q.zone + 1].name);
-    cb.onSave();
+    return { npc: WORLD.NPCS[q.zone], title: 'Quête terminée : ' + q.title, reward: `+${q.xp} XP · +${q.kamas} kamas`,
+      lines: [...q.done, ...(w.qAccepted ? next.intro : [])], next: w.qAccepted ? next.title : null };
   }
 
-  /** Personnage ou zaap à portée du héros (pour le bouton d'action). */
+  /** Lieu à portée du héros (pour le bouton d'action). */
   function nearby() {
-    const p = S.p;
-    for (const z of WORLD.zones) {
-      if (Math.hypot(z.npc.x - p.x, z.npc.y - p.y) < 130) return { kind: 'npc', zone: z, label: 'Parler à ' + z.npc.name };
-      if (Math.hypot(z.zaap.x - p.x, z.zaap.y - p.y) < 130) return { kind: 'zaap', zone: z, label: S.world.zaaps.has(z.idx) ? 'Utiliser le zaap' : 'Activer le zaap' };
-    }
+    const p = S.p, m = S.world.map, near = (o, r = 130) => Math.hypot(o.x - p.x, o.y - p.y) < r;
+    if (m.kind === 'zone') {
+      if (near(m.npc)) return { kind: 'npc', label: 'Parler à ' + m.npc.name };
+      if (near(m.zaap)) return { kind: 'zaap', label: 'Utiliser le zaap' };
+      if (near(m.door, 170)) return { kind: 'door', label: 'Entrer dans le donjon' };
+    } else if (near(m.exit, 150)) return { kind: 'exit', label: 'Quitter le donjon' };
     return null;
   }
 
-  /** Touche E / bouton d'action : parler au personnage ou utiliser le zaap. */
+  /** Touche E / bouton d'action. */
   function interact() {
     if (!S || S.mode !== 'world' || S.over) return;
     const n = nearby();
     if (!n) return;
-    const w = S.world, q = WORLD.QUESTS[w.quest];
+    const w = S.world, m = w.map, q = WORLD.QUESTS[w.quest];
     if (n.kind === 'npc') {
-      const npc = n.zone.npc;
-      if (q && q.zone === n.zone.idx && !w.qAccepted) {
+      const npc = m.npc;
+      if (q && q.zone === m.zone && !w.qAccepted) {
         w.qAccepted = true;
         cb.onDialog({ npc, title: 'Nouvelle quête : ' + q.title, lines: q.intro });
         cb.onSave();
-      } else if (q && q.zone === n.zone.idx) {
+      } else if (q && q.zone === m.zone) {
         cb.onDialog({ npc, title: q.title, lines: ['Tu n’as pas encore fini ? ' + questText(q, w) + '.'] });
-      } else if (!q || q.zone > n.zone.idx) {
-        cb.onDialog({ npc, title: npc.name, lines: [!q ? 'Grâce à toi, la brume a disparu. Merci, héros !' : 'Merci pour ton aide ! Continue vers l’est, d’autres ont besoin de toi.'] });
+      } else if (q && q.zone < m.zone) {
+        cb.onDialog({ npc, title: npc.name, lines: ['Tu es en avance ! ' + WORLD.NPCS[q.zone].name + ' a encore besoin de toi à ' + ZONES[q.zone].name + '.'] });
+      } else {
+        cb.onDialog({ npc, title: npc.name, lines: [!q ? 'Grâce à toi, la brume a disparu. Merci, héros !' : 'Merci pour ton aide ! D’autres ont besoin de toi plus loin.'] });
       }
-    } else {
-      if (!w.zaaps.has(n.zone.idx)) {
-        w.zaaps.add(n.zone.idx);
-        cb.onBanner('Zaap activé', n.zone.name);
-      }
-      w.lastZaap = n.zone.idx;
+    } else if (n.kind === 'zaap') {
+      cb.onZaap(WORLD.zones.map((z, i) => ({ idx: i, name: z.name, lvl: z.lvl, here: i === m.zone, open: WORLD.unlocked(i, w.bossKilled) })));
+    } else if (n.kind === 'door') {
+      loadMap(m.dungeon);
+    } else if (n.kind === 'exit') {
+      const z = WORLD.zones[m.zone];
+      loadMap(z, { x: z.door.x - 170, y: 40 });
       cb.onSave();
-      cb.onZaap([...w.zaaps].sort((a, b) => a - b).map((i) => ({ idx: i, name: WORLD.zones[i].name, here: i === n.zone.idx })));
     }
   }
 
-  /** Voyage instantané vers un zaap activé. */
+  /** Voyage par zaap vers une zone débloquée. */
   function travel(i) {
-    if (!S || S.mode !== 'world' || !S.world.zaaps.has(i)) return;
-    S.world.lastZaap = i;
-    placeAt(WORLD.zones[i].zaap.x + 140, WORLD.zones[i].zaap.y + 40);
+    if (!S || S.mode !== 'world' || !WORLD.zones[i] || !WORLD.unlocked(i, S.world.bossKilled)) return;
+    loadMap(WORLD.zones[i]);
     cb.onSave();
   }
 
-  /** Téléporte le héros et vide les alentours (les camps réapparaîtront à l'approche). */
-  function placeAt(x, y) {
-    S.p.x = x; S.p.y = y;
-    for (const e of S.enemies) e.dead = true;
-    S.enemies = [];
-    S.eprojs = []; S.projs = []; S.strikes = []; S.traps = []; S.glyphs = [];
-    for (const c of S.world.camps) c.members = [];
-    for (const l of S.world.lairs) l.e = null;
-    S.boss = null;
-    r3RadiusAt = -1;
-  }
-
   function respawnAtZaap() {
-    const z = WORLD.zones[S.world.lastZaap];
-    placeAt(z.zaap.x + 140, z.zaap.y + 40);
+    loadMap(WORLD.zones[S.zoneIdx]);
     S.p.hp = S.p.maxHp;
     S.over = false;
     cb.onSave();
   }
 
-  /** Données du monde pour l'interface (quête, action possible, mini-carte). */
+  /** Données pour l'interface (quête, action possible, mini-carte). */
   function worldHud() {
-    const w = S.world, q = WORLD.QUESTS[w.quest], n = nearby();
+    const w = S.world, q = WORLD.QUESTS[w.quest], n = nearby(), m = w.map;
     return {
-      zone: S.zone.name, quest: q ? q.title : 'Le Monde des Douze est sauvé', goal: questText(q, w),
-      action: n ? n.label : null, px: S.p.x, py: S.p.y, unlocked: WORLD.unlockedZones(w.quest), zaaps: [...w.zaaps],
-      npcAlert: q && !w.qAccepted ? q.zone : -1,
-      bosses: w.lairs.filter((l) => S.t >= l.nextAt).map((l) => ({ x: l.def.x, y: l.def.y, kind: l.kind })),
+      zone: m.kind === 'zone' ? m.name : 'Donjon · ' + m.name, quest: q ? q.title : 'Le Monde des Douze est sauvé', goal: questText(q, w),
+      action: n ? n.label : null, px: S.p.x, py: S.p.y, map: m, level: S.level,
+      npcAlert: q && !w.qAccepted && q.zone === m.zone && m.kind === 'zone',
+      camps: w.camps.filter((c) => c.members.length || S.t >= c.respawnAt).map((c) => c.def),
+      bosses: w.lairs.filter((l) => S.t >= l.nextAt).map((l) => l.def),
     };
   }
+
+  /** Équipement porté (pour l'écran de pause). */
+  function equipment() { return S && S.equip ? S.equip : {}; }
 
   /** Sauvegarde du héros et de sa progression (sans le butin, voir takeLoot). */
   function worldSnapshot() {
     if (!S || S.mode !== 'world') return null;
-    const w = S.world;
+    const w = S.world, m = w.map, z = WORLD.zones[S.zoneIdx];
+    // Dans un donjon, on reprendra devant son entrée
+    const pos = m.kind === 'zone' ? { x: Math.round(S.p.x), y: Math.round(S.p.y) } : { x: z.door.x - 170, y: 40 };
     return {
-      cls: S.cls, level: S.level, xp: S.xp, passives: Object.assign({}, S.passives),
-      spells: S.spells.map((sp) => ({ id: sp.id, lvl: sp.lvl })), pos: { x: Math.round(S.p.x), y: Math.round(S.p.y) },
+      cls: S.cls, level: S.level, xp: S.xp, passives: Object.assign({}, S.passives), equip: Object.assign({}, S.equip),
+      spells: S.spells.map((sp) => ({ id: sp.id, lvl: sp.lvl })), zone: S.zoneIdx, pos,
       quest: w.quest, qProgress: w.qProgress, qAccepted: w.qAccepted, bossKilled: Object.assign({}, w.bossKilled),
-      zaaps: [...w.zaaps], lastZaap: w.lastZaap, playTime: Math.round(w.playTime),
+      playTime: Math.round(w.playTime),
     };
   }
   /** Kamas et Dofus gagnés depuis la dernière sauvegarde (remis à zéro). */
@@ -491,6 +535,20 @@ const Game = (() => {
     S.kamas -= loot.kamas;
     S.found = [];
     return loot;
+  }
+
+  /** Objet ramassé : équipé s'il est meilleur que celui porté, sinon revendu. */
+  function pickItem(it) {
+    const cur = S.equip[it.slot];
+    if (!cur || it.power > cur.power) {
+      S.equip[it.slot] = it;
+      recomputeStats();
+      cb.onToast(`Équipé : ${it.name}`, it.color, WORLD.itemDesc(it));
+    } else {
+      const k = Math.ceil(it.power * 3 * S.zone.kamas);
+      S.kamas += k;
+      cb.onToast(`${it.name} revendu`, '#bdb3d6', `+${k} kamas (moins bon que ton équipement)`);
+    }
   }
 
   // ------------------------------------------------------------ Boucle
@@ -527,7 +585,7 @@ const Game = (() => {
       t: S.t, kills: S.kills, kamas: Math.floor(S.kamas), spells: S.spells, passives: S.passives,
       cls: S.cls, rerolls: S.rerolls, banishes: S.banishes,
       cds: S.spells.map((sp) => (sp.s.cd ? clamp(sp.timer / (sp.s.cd * S.stats.cd), 0, 1) : 0)),
-      boss: S.boss && !S.boss.dead && (S.mode !== 'world' || S.boss.aggro) ? { name: S.boss.def.name, hp: S.boss.hp, maxHp: S.boss.maxHp } : null,
+      boss: S.boss && !S.boss.dead && (S.mode !== 'world' || S.boss.aggro) ? { name: S.boss.def.name + (S.boss.lvl ? ' · niv. ' + S.boss.lvl : ''), hp: S.boss.hp, maxHp: S.boss.maxHp } : null,
       world: S.mode === 'world' ? worldHud() : null,
     };
   }
@@ -577,10 +635,10 @@ const Game = (() => {
       p.walk += dt * 10;
     }
     if (S.mode === 'world') {
-      // Bords du monde et barrière de la prochaine zone (tant que son gardien n'est pas vaincu)
-      const maxX = WORLD.unlockedZones(S.world.quest) * WORLD.ZONE_W - 40;
-      p.x = clamp(p.x, 40, Math.min(WORLD.WIDTH - 40, maxX));
-      p.y = clamp(p.y, -WORLD.HALF_H + 40, WORLD.HALF_H - 40);
+      // Bords de la carte
+      const m = S.world.map;
+      p.x = clamp(p.x, 40, m.w - 40);
+      p.y = clamp(p.y, -m.h + 40, m.h - 40);
       // Hors combat depuis 4 s : la vie remonte vite
       S.world.combatT += dt;
       if (S.world.combatT > 4 && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.08 * dt);
@@ -612,7 +670,7 @@ const Game = (() => {
         p.hp = 0;
         S.over = true;
         S.world.dead = 2;
-        cb.onBanner('K.O. !', 'Retour au dernier zaap…');
+        cb.onBanner('K.O. !', 'Retour au zaap de la zone…');
       } else {
         p.hp = 0;
         S.over = true;
@@ -671,7 +729,7 @@ const Game = (() => {
     return Math.hypot(W, H) / 2 / zoom + 50;
   }
 
-  function spawnEnemy(id, x, y, hpMul = 1, zone = null) {
+  function spawnEnemy(id, x, y, hpMul = 1, zone = null, lvl = 0) {
     const def = MONSTERS[id], z = zone || S.zone;
     const world = S.mode === 'world';
     const scale = def.boss || world ? 1 : 1 + S.t / 200;
@@ -679,10 +737,12 @@ const Game = (() => {
       const a = rand(0, Math.PI * 2), R = viewRadius();
       x = S.p.x + Math.cos(a) * R; y = S.p.y + Math.sin(a) * R;
     }
-    const hp = def.hp * z.hpMul * scale * hpMul;
+    // Aventure : chaque niveau au-dessus du minimum de la zone rend le monstre plus solide
+    const lk = world ? Math.max(0, lvl - WORLD.LEVELS[S.zoneIdx][0]) : 0;
+    const hp = def.hp * z.hpMul * scale * hpMul * (1 + 0.07 * lk);
     const e = {
       id, def, x, y, r: def.r, hp, maxHp: hp, speed: def.speed * rand(0.9, 1.1),
-      dmg: def.dmg * z.dmgMul * (world ? 1 : 1 + S.t / 400), xp: def.xp * (world ? 1 + z.idx * 0.6 : 1), boss: def.boss || 0, zoneRef: z,
+      dmg: def.dmg * z.dmgMul * (world ? 1 + 0.04 * lk : 1 + S.t / 400), xp: def.xp * (world ? (def.boss ? 1 + lvl * 0.15 : 2 + lvl * 0.6) : 1), boss: def.boss || 0, lvl,
       kvx: 0, kvy: 0, slow: 0, slowT: 0, poison: 0, poisonT: 0, poisonAcc: 0, atk: 0, flash: 0,
       seed: Math.random() * 10, shot: rand(1, 2), hitT: {}, ab: 3, charge: 0, cx: 0, cy: 0,
     };
@@ -755,8 +815,7 @@ const Game = (() => {
   function kill(e) {
     e.dead = true;
     S.kills++;
-    const z = e.zoneRef || S.zone;
-    if (S.mode === 'world') worldKill(e);
+    const z = S.zone;
     gainXp(e.xp, e.x, e.y);
     if (e.gold || Math.random() < 0.07) {
       S.gems.push({ kind: 'kamas', x: e.x + rand(-6, 6), y: e.y + rand(-6, 6), v: Math.ceil(rand(1, 4) * z.kamas) });
@@ -772,7 +831,7 @@ const Game = (() => {
       }
       if (S.boss === e) S.boss = null;
       if (S.mode === 'world') {
-        worldBossDrop(e, z);
+        // butin géré par worldKill
       } else if (e.kind === 'boss') {
         const owned = S.save.dofus.concat(S.found);
         const free = z.dofus.filter((d) => !owned.includes(d));
@@ -786,6 +845,29 @@ const Game = (() => {
       } else {
         S.gems.push({ kind: 'chest', x: e.x, y: e.y, v: 0 });
       }
+    }
+    if (S.mode === 'world') worldKill(e);
+  }
+
+  /** Étiquettes de l'aventure : nom du personnage, niveau des groupes de monstres. */
+  function worldLabels(proj) {
+    const w = S.world, m = w.map, p = S.p;
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.75)';
+    const label = (txt, x, y, h, color, font) => {
+      const q = proj(x, y, h);
+      ctx.font = font; ctx.fillStyle = color;
+      ctx.strokeText(txt, q.x, q.y); ctx.fillText(txt, q.x, q.y);
+    };
+    if (m.kind === 'zone' && Math.abs(m.npc.x - p.x) < 1400) label(m.npc.name, m.npc.x, m.npc.y, 2.55, '#f2c14e', 'bold 13px system-ui, sans-serif');
+    if (m.kind === 'zone' && Math.abs(m.door.x - p.x) < 1400) label('Donjon : ' + m.dungeon.name, m.door.x, m.door.y, 3.6, '#ffd0a0', 'bold 13px system-ui, sans-serif');
+    for (const c of w.camps) {
+      const alive = c.members.filter((e) => !e.dead);
+      if (!alive.length || alive.some((e) => e.aggro)) continue;
+      if (Math.hypot(c.def.x - p.x, c.def.y - p.y) > 1100) continue;
+      const lv = c.def.lvl, diff = lv - S.level;
+      const col = diff >= 6 ? '#ff5a4a' : diff >= 3 ? '#ffb347' : diff <= -4 ? '#8fd9a0' : '#ffffff';
+      label('Niv. ' + lv, alive[0].x, alive[0].y, 1.9, col, 'bold 12px system-ui, sans-serif');
     }
   }
 
@@ -1126,6 +1208,7 @@ const Game = (() => {
         S.kamas += 30 * S.zone.kamas * S.stats.kamas;
         cb.onBanner('Coffre !', '+2 améliorations');
         break;
+      case 'item': pickItem(g.item); break;
       case 'dofus':
         S.found.push(g.id);
         cb.onBanner(DOFUS[g.id].name + ' !', DOFUS[g.id].desc);
@@ -1246,17 +1329,7 @@ const Game = (() => {
         ctx.restore();
       }
     }
-    if (S.mode === 'world') {
-      // Nom des personnages de l'histoire
-      ctx.font = 'bold 13px system-ui, sans-serif';
-      for (const z of WORLD.zones) {
-        const n = z.npc;
-        if (Math.abs(n.x - p.x) > 1200) continue;
-        const q = r3.project(n.x, n.y, 2.55);
-        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.fillStyle = '#f2c14e';
-        ctx.strokeText(n.name, q.x, q.y); ctx.fillText(n.name, q.x, q.y);
-      }
-    }
+    if (S.mode === 'world') worldLabels((x, y, h) => r3.project(x, y, h));
     screenOverlay(p);
   }
 
@@ -1445,6 +1518,10 @@ const Game = (() => {
       }
     }
 
+    if (S.mode === 'world') {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      worldLabels((x, y, h) => ({ x: (x - p.x) * zoom + W / 2, y: (y - p.y - h * 22) * zoom + H / 2 }));
+    }
     screenOverlay(p);
   }
 
@@ -1481,69 +1558,84 @@ const Game = (() => {
   // ------------------------------------------------------------ Sol isométrique
   function drawGround(x0, y0, x1, y1) {
     if (S.mode !== 'world') return drawZoneGround(S.zone, x0, y0, x1, y1);
-    // Monde ouvert : chaque bande de zone a son sol et son décor
-    ctx.fillStyle = '#120c1e';
+    const m = S.world.map, z = S.zone, dungeon = m.kind === 'dungeon';
+    // Hors de la carte : falaise sombre
+    ctx.fillStyle = dungeon ? '#0e0a16' : shade(z.ground, 0.45);
     ctx.fillRect(x0 - 10, y0 - 10, x1 - x0 + 20, y1 - y0 + 20);
-    for (const z of WORLD.zones) {
-      if (z.x1 < x0 || z.x0 > x1) continue;
-      const bx0 = Math.max(x0 - 10, z.x0), bx1 = Math.min(x1 + 10, z.x1);
-      const by0 = Math.max(y0 - 10, -WORLD.HALF_H), by1 = Math.min(y1 + 10, WORLD.HALF_H);
-      if (by1 <= by0) continue;
+    const bx0 = Math.max(x0 - 10, 0), bx1 = Math.min(x1 + 10, m.w);
+    const by0 = Math.max(y0 - 10, -m.h), by1 = Math.min(y1 + 10, m.h);
+    if (bx1 > bx0 && by1 > by0) {
       ctx.save();
       ctx.beginPath(); ctx.rect(bx0, by0, bx1 - bx0, by1 - by0); ctx.clip();
-      ctx.fillStyle = z.ground;
-      ctx.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
-      drawZoneGround(z, bx0, by0, bx1, by1);
+      if (dungeon) {
+        ctx.fillStyle = '#3a3346';
+        ctx.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
+        ctx.fillStyle = '#332c3e';
+        const T = 64;
+        for (let gy = Math.floor(by0 / T) * T; gy < by1; gy += T)
+          for (let gx = Math.floor(bx0 / T) * T; gx < bx1; gx += T) if (((gx + gy) / T) & 1) ctx.fillRect(gx, gy, T, T);
+      } else {
+        ctx.fillStyle = z.ground;
+        ctx.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
+        drawZoneGround(z, bx0, by0, bx1, by1);
+      }
       ctx.restore();
     }
-    drawWorldPlaces(x0, y0, x1, y1);
+    if (dungeon) {
+      // Murs et torches du donjon
+      ctx.fillStyle = '#241d30';
+      ctx.fillRect(x0 - 10, -m.h - 60, x1 - x0 + 20, 60);
+      ctx.fillRect(x0 - 10, m.h, x1 - x0 + 20, 30);
+      ctx.fillStyle = '#ff9a3a';
+      for (let tx = Math.floor(x0 / 300) * 300 + 150; tx < x1; tx += 300) { ctx.beginPath(); ctx.arc(tx, -m.h - 20, 6 + Math.sin(S.t * 9 + tx) * 1.5, 0, Math.PI * 2); ctx.fill(); }
+    }
+    drawWorldPlaces();
   }
 
-  /** Zaaps, personnages, repaires et barrière (rendu 2D). */
-  function drawWorldPlaces(x0, y0, x1, y1) {
-    const w = S.world, vis = (o, m) => o.x > x0 - m && o.x < x1 + m && o.y > y0 - m && o.y < y1 + m;
-    const alert = WORLD.QUESTS[w.quest] && !w.qAccepted ? WORLD.QUESTS[w.quest].zone : -1;
-    for (const z of WORLD.zones) {
-      if (vis(z.zaap, 120)) {
-        const on = w.zaaps.has(z.idx), zx = z.zaap.x, zy = z.zaap.y;
-        ctx.fillStyle = '#5a4a6a'; isoEllipse(zx, zy, 62); ctx.fill();
-        ctx.strokeStyle = on ? '#4fc3c7' : '#8a7a9a'; ctx.lineWidth = 4; isoEllipse(zx, zy, 52); ctx.stroke();
-        ctx.fillStyle = '#7a6a8a'; ctx.fillRect(zx - 40, zy - 70, 10, 70); ctx.fillRect(zx + 30, zy - 70, 10, 70);
-        ctx.beginPath(); ctx.ellipse(zx, zy - 70, 40, 18, 0, Math.PI, 0); ctx.lineWidth = 9; ctx.strokeStyle = '#7a6a8a'; ctx.stroke();
-        ctx.globalAlpha = on ? 0.45 + 0.2 * Math.sin(S.t * 3) : 0.12;
-        ctx.fillStyle = '#4fc3c7';
-        ctx.beginPath(); ctx.ellipse(zx, zy - 38, 28, 36, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 1;
+  function shade(hex, k) {
+    const n = parseInt(hex.slice(1), 16);
+    return `rgb(${((n >> 16) & 255) * k | 0},${((n >> 8) & 255) * k | 0},${(n & 255) * k | 0})`;
+  }
+
+  function drawPortal(x, y, color) {
+    ctx.fillStyle = '#5a4a6a'; isoEllipse(x, y, 62); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 4; isoEllipse(x, y, 52); ctx.stroke();
+    ctx.fillStyle = '#7a6a8a'; ctx.fillRect(x - 40, y - 70, 10, 70); ctx.fillRect(x + 30, y - 70, 10, 70);
+    ctx.beginPath(); ctx.ellipse(x, y - 70, 40, 18, 0, Math.PI, 0); ctx.lineWidth = 9; ctx.strokeStyle = '#7a6a8a'; ctx.stroke();
+    ctx.globalAlpha = 0.45 + 0.2 * Math.sin(S.t * 3);
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.ellipse(x, y - 38, 28, 36, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  /** Zaap, personnage, repaire, entrée et sortie du donjon (rendu 2D). */
+  function drawWorldPlaces() {
+    const w = S.world, m = w.map;
+    if (m.kind === 'zone') {
+      drawPortal(m.zaap.x, m.zaap.y, '#4fc3c7');
+      const n = m.npc, q = WORLD.QUESTS[w.quest];
+      ctx.fillStyle = 'rgba(0,0,0,.25)'; isoEllipse(n.x, n.y, 14); ctx.fill();
+      ctx.fillStyle = CLASSES[n.look] ? CLASSES[n.look].color : '#c9a'; ctx.fillRect(n.x - 9, n.y - 30, 18, 26);
+      ctx.fillStyle = '#f2d2b0'; ctx.beginPath(); ctx.arc(n.x, n.y - 38, 9, 0, Math.PI * 2); ctx.fill();
+      if (q && !w.qAccepted && q.zone === m.zone) {
+        ctx.font = 'bold 26px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#f2c14e';
+        ctx.fillText('!', n.x, n.y - 54 + Math.sin(S.t * 4) * 4);
       }
-      const n = z.npc;
-      if (vis(n, 80)) {
-        ctx.fillStyle = 'rgba(0,0,0,.25)'; isoEllipse(n.x, n.y, 14); ctx.fill();
-        ctx.fillStyle = CLASSES[n.look] ? CLASSES[n.look].color : '#c9a'; ctx.fillRect(n.x - 9, n.y - 30, 18, 26);
-        ctx.fillStyle = '#f2d2b0'; ctx.beginPath(); ctx.arc(n.x, n.y - 38, 9, 0, Math.PI * 2); ctx.fill();
-        ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center';
-        ctx.fillStyle = '#fff'; ctx.fillText(n.name, n.x, n.y + 16);
-        if (alert === z.idx) {
-          ctx.font = 'bold 26px system-ui, sans-serif'; ctx.fillStyle = '#f2c14e';
-          ctx.fillText('!', n.x, n.y - 54 + Math.sin(S.t * 4) * 4);
-        }
-      }
-      for (const l of [z.lair, z.arena]) {
-        if (!vis(l, 300)) continue;
-        ctx.globalAlpha = 0.3; ctx.strokeStyle = l === z.arena ? '#ff5a3a' : '#f2c14e'; ctx.lineWidth = 6;
-        isoEllipse(l.x, l.y, l === z.arena ? 260 : 190); ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-    }
-    // Barrière vers la zone suivante
-    const u = WORLD.unlockedZones(w.quest);
-    if (u < WORLD.zones.length) {
-      const gx = u * WORLD.ZONE_W;
-      if (gx > x0 - 40 && gx < x1 + 40) {
-        const g = ctx.createLinearGradient(gx - 60, 0, gx, 0);
-        g.addColorStop(0, 'rgba(120,60,200,0)'); g.addColorStop(1, 'rgba(150,80,255,.55)');
-        ctx.fillStyle = g; ctx.fillRect(gx - 60, y0, 60, y1 - y0);
-        ctx.fillStyle = 'rgba(30,10,50,.85)'; ctx.fillRect(gx, y0, x1 - gx + 20, y1 - y0);
-      }
+      ctx.globalAlpha = 0.3; ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 6;
+      isoEllipse(m.lair.x, m.lair.y, 190); ctx.stroke();
+      ctx.globalAlpha = 1;
+      // Entrée du donjon : arche de pierre et torches
+      const d = m.door;
+      ctx.fillStyle = '#5a5060'; ctx.beginPath(); ctx.ellipse(d.x, d.y - 30, 120, 90, 0, Math.PI, 0); ctx.fill();
+      ctx.fillRect(d.x - 120, d.y - 30, 240, 30);
+      ctx.fillStyle = '#120c18'; ctx.beginPath(); ctx.ellipse(d.x, d.y - 4, 50, 70, 0, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = '#ff9a3a';
+      for (const sx of [-70, 70]) { ctx.beginPath(); ctx.arc(d.x + sx, d.y - 60 + Math.sin(S.t * 9 + sx) * 2, 7, 0, Math.PI * 2); ctx.fill(); }
+    } else {
+      drawPortal(m.exit.x, m.exit.y, '#b46cff');
+      ctx.globalAlpha = 0.35; ctx.strokeStyle = '#ff5a3a'; ctx.lineWidth = 6;
+      isoEllipse(m.boss.x, m.boss.y, 250); ctx.stroke();
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -1675,6 +1767,16 @@ const Game = (() => {
         ctx.fillStyle = '#ffd84a'; ctx.fillRect(x - 3, y - 10, 6, 7);
         ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 2; ctx.strokeRect(x - 14, y - 16, 28, 24);
         break;
+      case 'item': {
+        const c = g.item.color;
+        ctx.save();
+        ctx.shadowColor = c; ctx.shadowBlur = 14;
+        ctx.fillStyle = '#3a2a4a'; ctx.fillRect(x - 9, y - 18, 18, 18);
+        ctx.strokeStyle = c; ctx.lineWidth = 3; ctx.strokeRect(x - 9, y - 18, 18, 18);
+        ctx.restore();
+        ctx.globalAlpha = 0.35; ctx.fillStyle = c; ctx.fillRect(x - 2, y - 60, 4, 42); ctx.globalAlpha = 1;
+        break;
+      }
       case 'dofus': {
         const c = DOFUS[g.id].color;
         ctx.save();
@@ -2038,5 +2140,5 @@ const Game = (() => {
   /** Mesures de fluidité (affichées avec ?fps) : images/s, coût du rendu, nombre de monstres. */
   const perf = () => ({ fps, renderMs, enemies: S ? S.enemies.length : 0 });
 
-  return { init, start, stop, setPaused, choose, reroll, banish, counts, setRenderMode, renderMode, perf, startWorld, interact, travel, worldSnapshot, takeLoot, peek: () => S, _hit: (e, d) => hitEnemy(e, d, {}) };
+  return { init, start, stop, setPaused, choose, reroll, banish, counts, setRenderMode, renderMode, perf, startWorld, interact, travel, worldChoice, worldSnapshot, takeLoot, equipment, peek: () => S, _hit: (e, d) => hitEnemy(e, d, {}) };
 })();
