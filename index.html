@@ -12,12 +12,13 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <canvas id="game3d" aria-hidden="true"></canvas>
   <canvas id="game"></canvas>
 
   <!-- ===== Accueil ===== -->
   <section id="screen-menu" class="screen active">
     <div class="topbar">
-      <span class="eyebrow">Sauvegarde locale</span>
+      <button class="btn small" id="btn-gfx" title="Changer le rendu du jeu">Graphismes : 2D</button>
       <span class="kamas-pill"><b class="k">K</b> <span data-kamas>0</span></span>
     </div>
     <div class="home">
@@ -212,7 +213,9 @@
     </div>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="js/data.js"></script>
+  <script src="js/render3d.js"></script>
   <script src="js/game.js"></script>
   <script src="js/ui.js"></script>
 </body>

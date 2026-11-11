@@ -19,7 +19,7 @@ const Save = {
   load() {
     let d = null;
     try { d = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { /* stockage indisponible */ }
-    this.data = Object.assign({ kamas: 0, unlocked: [], cleared: [], dofus: [], upgrades: {}, best: {}, lastClass: null }, d || {});
+    this.data = Object.assign({ kamas: 0, unlocked: [], cleared: [], dofus: [], upgrades: {}, best: {}, lastClass: null, gfx: '2d' }, d || {});
     for (const id in CLASSES) if (!CLASSES[id].cost && !this.data.unlocked.includes(id)) this.data.unlocked.push(id);
   },
   store() {
@@ -424,10 +424,26 @@ function onEnd(r) {
 }
 
 // ------------------------------------------------------------ Démarrage
+function applyGfx(mode) {
+  const got = Game.setRenderMode(mode);
+  $('#btn-gfx').textContent = 'Graphismes : ' + got.toUpperCase();
+  return got;
+}
+
 function boot() {
   Save.load();
   document.title = GAME_TITLE;
-  Game.init($('#game'), { onHud, onLevelUp, onBanner, onEnd, onPauseKey: togglePause });
+  Game.init($('#game'), { onHud, onLevelUp, onBanner, onEnd, onPauseKey: togglePause }, $('#game3d'));
+  // Rendu 2D ou 3D : choix sauvegardé, ou forcé par ?gfx=3d / ?gfx=2d dans l'adresse
+  const forced = (location.search.match(/[?&]gfx=(2d|3d)/) || [])[1];
+  applyGfx(forced || Save.data.gfx);
+  $('#btn-gfx').addEventListener('click', () => {
+    const want = Game.renderMode() === '3d' ? '2d' : '3d';
+    const got = applyGfx(want);
+    Save.data.gfx = got;
+    Save.store();
+    if (want === '3d' && got !== '3d') onBanner('3D indisponible', 'Ton navigateur ne gère pas WebGL : le jeu reste en 2D.');
+  });
 
   $$('[data-go]').forEach((b) => b.addEventListener('click', () => show(b.dataset.go)));
   $('#btn-pause').addEventListener('click', togglePause);

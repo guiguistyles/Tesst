@@ -11,6 +11,12 @@ const Game = (() => {
 
   const MAX_ENEMIES = 380;
   const GOD_MODE = /[?&]debug\b/.test(location.search); // invincibilité pour les tests
+  // Tests de fluidité : ?stress / #stress remplit l'écran de monstres, ?fps / #fps affiche le compteur
+  const STRESS = /[?&]stress\b/.test(location.search) || location.hash === '#stress';
+  const SHOW_FPS = STRESS || /[?&]fps\b/.test(location.search) || location.hash === '#fps';
+  let r3 = null;          // moteur 3D actif (Render3D) ou null pour le rendu 2D
+  let canvas3d = null;
+  let fps = 0, fpsAcc = 0, fpsFrames = 0, renderMs = 0;
   const BOSS_TIMES = [
     { t: 180, kind: 'mini', hp: 1 },
     { t: 360, kind: 'mini', hp: 1.8 },
@@ -29,8 +35,9 @@ const Game = (() => {
   }
 
   // ------------------------------------------------------------ Initialisation
-  function init(c, callbacks) {
+  function init(c, callbacks, c3) {
     canvas = c;
+    canvas3d = c3 || null;
     ctx = c.getContext('2d');
     cb = callbacks;
     resize();
@@ -65,6 +72,23 @@ const Game = (() => {
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     zoom = clamp(Math.min(W, H) / 640, 0.62, 1.15);
+    if (r3) r3.resize(W, H, dpr, zoom);
+    r3RadiusAt = -1;
+  }
+
+  /** Choisit le rendu : '3d' si WebGL est disponible, sinon '2d'. Renvoie le mode réellement actif. */
+  function setRenderMode(mode) {
+    if (mode === '3d' && canvas3d && typeof Render3D !== 'undefined' && Render3D.init(canvas3d)) {
+      r3 = Render3D;
+      r3.resize(W, H, dpr, zoom);
+      if (S) r3.begin(S);
+      r3RadiusAt = -1;
+    } else {
+      if (r3) r3.end();
+      r3 = null;
+    }
+    if (canvas3d) canvas3d.style.display = r3 ? 'block' : 'none';
+    return r3 ? '3d' : '2d';
   }
 
   // ------------------------------------------------------------ Statistiques
@@ -146,6 +170,8 @@ const Game = (() => {
     };
     recomputeStats();
     S.p.hp = S.p.maxHp;
+    if (r3) r3.begin(S);
+    r3RadiusAt = -1;
     addSpell(cls.spells[0]);
     paused = false;
     lastT = performance.now();
@@ -154,7 +180,7 @@ const Game = (() => {
     cb.onBanner(S.zone.name, 'Survivez et vainquez ' + MONSTERS[S.zone.boss].name + ' !');
   }
 
-  function stop() { cancelAnimationFrame(raf); S = null; }
+  function stop() { cancelAnimationFrame(raf); if (r3) r3.end(); S = null; }
   function setPaused(v) { paused = v; if (!v) lastT = performance.now(); }
 
   function xpFor(lvl) { return Math.floor(3 + lvl * 2.5 + Math.pow(lvl, 1.6)); }
@@ -167,7 +193,19 @@ const Game = (() => {
     if (dt > 0.05) dt = 0.05;
     if (!S) return;
     if (!paused && !S.choosing) update(dt);
-    render();
+    draw(dt);
+    if (SHOW_FPS) {
+      fpsAcc += dt; fpsFrames++;
+      if (fpsAcc >= 0.5) { fps = fpsFrames / fpsAcc; fpsAcc = 0; fpsFrames = 0; }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.font = 'bold 13px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(0,0,0,.6)';
+      ctx.fillRect(8, H - 58, 196, 46);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(`${fps.toFixed(0)} img/s · ${r3 ? '3D' : '2D'} · ${S.enemies.length} monstres`, 16, H - 38);
+      ctx.fillText(`rendu : ${renderMs.toFixed(1)} ms/image`, 16, H - 20);
+    }
     hudTimer -= dt;
     if (hudTimer <= 0) { hudTimer = 0.1; cb.onHud(hudData()); }
   }
@@ -297,7 +335,15 @@ const Game = (() => {
   }
 
   // ------------------------------------------------------------ Apparition des monstres
-  function viewRadius() { return Math.hypot(W, H) / 2 / zoom + 50; }
+  // Distance d'apparition des monstres : juste hors de l'écran (calculée par la caméra en 3D)
+  let r3Radius = 0, r3RadiusAt = -1;
+  function viewRadius() {
+    if (r3 && S) {
+      if (S.t - r3RadiusAt > 0.5 || r3RadiusAt < 0) { r3Radius = r3.viewRadius(S.p.x, S.p.y); r3RadiusAt = S.t; }
+      return r3Radius;
+    }
+    return Math.hypot(W, H) / 2 / zoom + 50;
+  }
 
   function spawnEnemy(id, x, y, hpMul = 1) {
     const def = MONSTERS[id], z = S.zone;
@@ -323,6 +369,7 @@ const Game = (() => {
     const avail = z.monsters.slice(0, Math.min(z.monsters.length, 1 + Math.floor(t / 40)));
     const rate = 0.9 + t / 28;
     S.spawnAcc += rate * dt;
+    if (STRESS) S.spawnAcc = Math.max(S.spawnAcc, MAX_ENEMIES - S.enemies.length);
     while (S.spawnAcc >= 1) {
       S.spawnAcc -= 1;
       if (S.enemies.length < MAX_ENEMIES) spawnEnemy(pick(avail));
@@ -798,7 +845,7 @@ const Game = (() => {
       kamas: Math.floor(S.kamas), found: S.found.slice(), zoneIdx: S.zoneIdx, cls: S.cls,
     };
     cancelAnimationFrame(raf);
-    render();
+    draw(0);
     S.ended = true;
     cb.onEnd(res);
   }
@@ -815,6 +862,53 @@ const Game = (() => {
   }
 
   // ============================================================ Rendu
+  function draw(dt) {
+    const t0 = performance.now();
+    if (r3) { r3.render(S, dt); renderOverlay3D(); } else render();
+    renderMs = renderMs * 0.9 + (performance.now() - t0) * 0.1;
+  }
+
+  /** En 3D : le canvas 2D, transparent par-dessus, garde les chiffres de dégâts et les indicateurs. */
+  function renderOverlay3D() {
+    const p = S.p;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    for (const t of S.texts) {
+      const q = r3.project(t.x, t.y, 1.4 + (t.t / t.life) * 0.6);
+      ctx.globalAlpha = 1 - t.t / t.life;
+      ctx.font = (t.big ? 'bold 18px ' : 'bold 13px ') + 'system-ui, sans-serif';
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.7)';
+      ctx.strokeText(t.txt, q.x, q.y);
+      ctx.fillStyle = t.color;
+      ctx.fillText(t.txt, q.x, q.y);
+    }
+    ctx.globalAlpha = 1;
+    // Barre de vie au-dessus des monstres blessés
+    for (const e of S.enemies) {
+      if (e.boss || e.hp >= e.maxHp || e.dead) continue;
+      const q = r3.project(e.x, e.y, (e.r * 2.4) / r3.U + 0.15);
+      if (q.x < -20 || q.x > W + 20 || q.y < -20 || q.y > H + 20) continue;
+      const w = Math.max(16, e.r * 1.4);
+      ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(q.x - w / 2, q.y, w, 3);
+      ctx.fillStyle = '#ff4a4a'; ctx.fillRect(q.x - w / 2, q.y, w * Math.max(0, e.hp / e.maxHp), 3);
+    }
+    // Flèche vers le boss quand il est hors de l'écran
+    if (S.boss && !S.boss.dead) {
+      const q = r3.project(S.boss.x, S.boss.y, 1);
+      if (q.x < 0 || q.x > W || q.y < 0 || q.y > H) {
+        const c = r3.project(p.x, p.y, 1);
+        const a = Math.atan2(q.y - c.y, q.x - c.x);
+        const ex = clamp(q.x, 24, W - 24), ey = clamp(q.y, 24, H - 24);
+        ctx.save(); ctx.translate(ex, ey); ctx.rotate(a);
+        ctx.fillStyle = '#ff3b3b';
+        ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, -10); ctx.lineTo(-8, 10); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+    }
+    screenOverlay(p);
+  }
+
   function render() {
     if (!S) return;
     const p = S.p;
@@ -994,6 +1088,11 @@ const Game = (() => {
       }
     }
 
+    screenOverlay(p);
+  }
+
+  /** Joystick tactile et vignette rouge de dégâts, communs aux rendus 2D et 3D. */
+  function screenOverlay(p) {
     // joystick tactile
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (joy.id !== null) {
@@ -1511,5 +1610,9 @@ const Game = (() => {
 
   const counts = () => (S ? { rerolls: S.rerolls, banishes: S.banishes, level: S.level } : null);
 
-  return { init, start, stop, setPaused, choose, reroll, banish, counts };
+  const renderMode = () => (r3 ? '3d' : '2d');
+  /** Mesures de fluidité (affichées avec ?fps) : images/s, coût du rendu, nombre de monstres. */
+  const perf = () => ({ fps, renderMs, enemies: S ? S.enemies.length : 0 });
+
+  return { init, start, stop, setPaused, choose, reroll, banish, counts, setRenderMode, renderMode, perf };
 })();
