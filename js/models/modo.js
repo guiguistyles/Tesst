@@ -276,6 +276,33 @@ function addModo(r, P, o = {}) {
   };
 }
 
+/**
+ * Habillage léger des héros jouables (version normale, sans aura ni cornes) :
+ * épaulettes simples et cape courte qui ondule.
+ */
+function heroDress(r, P) {
+  for (const s of [-1, 1]) {
+    const pad = joint('epaulette', r.torso, s * (0.33 * r.w + 0.1), 0.56, 0);
+    pad.add(at(box(0.26, 0.08, 0.28, P.metal), 0, 0, 0, 0, 0, s * -0.3));
+    pad.add(at(box(0.27, 0.03, 0.29, P.gold), 0, 0.05, 0, 0, 0, s * -0.3));
+  }
+  const capes = [];
+  let cp = joint('cape', r.torso, 0, 0.6, -0.23);
+  for (let i = 0; i < 2; i++) {
+    const seg = joint('cape_' + i, cp, 0, i ? -0.32 : 0, 0);
+    seg.add(at(box(0.56 * r.w - i * 0.04, 0.32, 0.03, P.cape), 0, -0.16, 0));
+    capes.push(seg);
+    cp = seg;
+  }
+  capes[1].add(at(box(0.52 * r.w, 0.035, 0.035, P.gold), 0, -0.31, 0));
+  return {
+    capes,
+    update(t, dt, mode) {
+      capes.forEach((c, i) => { c.rotation.x = mode === 'still' ? 0.06 : 0.1 + Math.sin(t * 2.6 - i * 0.8) * (mode === 'move' ? 0.25 : 0.07) + (mode === 'move' ? 0.35 : 0); });
+    },
+  };
+}
+
 /** Pose et animation de base communes : respiration (Idle), marche lourde (Move). */
 function animBase(r, mode, t) {
   for (const j of r.joints) j.rotation.set(0, 0, 0);
@@ -363,10 +390,10 @@ function buildBouftou(scale = 1, wool = 0xf4efe6) {
 }
 
 /* ---------------------------------------------------------------- Iop Modo */
-function buildModoIop() {
+function buildModoIop(o = {}) {
   const P = palette({ body: 0xb0221a, body2: 0x7a1410, legs: 0x2c2c3a, cape: 0x7a1410, glow: 0xffcf3a, eye: 0xffe066, horn: 0x3a2a24 });
-  const r = rigHumanoid('ModoIop', P, { bulk: 1.4, scale: 1.55 });
-  const modo = addModo(r, P, { horns: { rz: -1.1, bz: 0.45, bx: -0.2, len: 0.17 } });
+  const r = rigHumanoid(o.hero ? 'HerosIop' : 'ModoIop', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.4, scale: 1.55 });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -1.1, bz: 0.45, bx: -0.2, len: 0.17 } });
   // Crinière de feu en piques
   const hair = mat(0xd62828), hair2 = mat(0xff6a1a, 0.4);
   for (let i = 0; i < 9; i++) {
@@ -416,15 +443,15 @@ function buildModoIop() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }
 
 /* ---------------------------------------------------------------- Cra Modo */
-function buildModoCra() {
+function buildModoCra(o = {}) {
   const P = palette({ body: 0x2f6b3f, body2: 0x1f4a2b, legs: 0x3a2a1e, legs2: 0x4a3626, metal: 0xc9d1d9, metal2: 0x8f99a6, cape: 0x1f4a2b, glow: 0x5dff8a, eye: 0xb6ffcf, horn: 0xe8e2d0 });
-  const r = rigHumanoid('ModoCra', P, { bulk: 1.25, scale: 1.55 });
+  const r = rigHumanoid(o.hero ? 'HerosCra' : 'ModoCra', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.25, scale: 1.55 });
   // Bois de cerf (cornes ramifiées)
-  const modo = addModo(r, P, { horns: { rz: -0.35, bz: 0.25, bx: -0.25, len: 0.2, segs: 5, r: 0.05 }, crownY: 0.4 });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -0.35, bz: 0.25, bx: -0.25, len: 0.2, segs: 5, r: 0.05 }, crownY: 0.4 });
   for (const s of [-1, 1]) r.head.add(at(cone(0.03, 0.22, 4, P.horn), s * 0.32, 0.6, -0.05, -0.2, 0, s * -0.9));
   // Capuche verte à pointe
   r.head.add(at(box(0.46, 0.08, 0.44, P.body2), 0, 0.42, -0.01));
@@ -501,14 +528,14 @@ function buildModoCra() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }
 
 /* ---------------------------------------------------------------- Féca Modo */
-function buildModoFeca() {
+function buildModoFeca(o = {}) {
   const P = palette({ body: 0x2f5fb8, body2: 0x1d3f80, legs: 0x22324f, legs2: 0x2d4166, metal: 0xe8edf5, metal2: 0xb8c2d2, cape: 0x1d3f80, glow: 0x7fd7ff, eye: 0xcfefff, horn: 0xf4f1de });
-  const r = rigHumanoid('ModoFeca', P, { bulk: 1.45, scale: 1.55 });
-  const modo = addModo(r, P, { horns: { rz: -1.5, bz: 0.7, bx: 0.15, len: 0.13, segs: 5, r: 0.07, y: 0.3 } });
+  const r = rigHumanoid(o.hero ? 'HerosFeca' : 'ModoFeca', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.45, scale: 1.55 });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -1.5, bz: 0.7, bx: 0.15, len: 0.13, segs: 5, r: 0.07, y: 0.3 } });
   // Casque
   r.head.add(at(box(0.46, 0.1, 0.44, P.metal), 0, 0.4, 0));
   for (const s of [-1, 1]) r.head.add(at(box(0.06, 0.3, 0.3, P.metal), s * 0.23, 0.2, 0.02));
@@ -567,14 +594,14 @@ function buildModoFeca() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }
 
 /* ---------------------------------------------------------------- Eniripsa Modo */
-function buildModoEniripsa() {
+function buildModoEniripsa(o = {}) {
   const P = palette({ skin: 0xf6d5b8, body: 0xe07bb5, body2: 0xb85a92, legs: 0x8a3f6a, legs2: 0xa24f7e, metal: 0xf5f0ff, metal2: 0xd8cce8, cape: 0xf2b8d8, glow: 0xff9ad5, eye: 0xffd6ef, horn: 0xf2c14e, boots: 0x6a2a50 });
-  const r = rigHumanoid('ModoEniripsa', P, { bulk: 1.2, scale: 1.5 });
-  const modo = addModo(r, P, { horns: { rz: -1.2, bz: 0.6, len: 0.1, segs: 4, r: 0.05 } });
+  const r = rigHumanoid(o.hero ? 'HerosEniripsa' : 'ModoEniripsa', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.2, scale: 1.5 });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -1.2, bz: 0.6, len: 0.1, segs: 4, r: 0.05 } });
   // Auréole
   const halo = joint('aureole', r.head, 0, 0.72, -0.05);
   halo.add(at(torus(0.24, 0.035, 6, 24, mat(0xffe08a, 0.7)), 0, 0, 0, Math.PI / 2));
@@ -635,14 +662,14 @@ function buildModoEniripsa() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }
 
 /* ---------------------------------------------------------------- Sram Modo */
-function buildModoSram() {
+function buildModoSram(o = {}) {
   const P = palette({ skin: 0xe9d8c4, body: 0x3c2f4f, body2: 0x2b2238, legs: 0x241c30, legs2: 0x302640, metal: 0x6b6280, metal2: 0x4a4260, cape: 0x1e1626, glow: 0xb07cff, eye: 0xff3b6b, horn: 0x1a1420, boots: 0x1a1420 });
-  const r = rigHumanoid('ModoSram', P, { bulk: 1.25, scale: 1.55 });
-  const modo = addModo(r, P, { horns: { rz: -0.5, bz: 0.1, bx: -0.45, len: 0.2, segs: 5, r: 0.07 }, crown: false });
+  const r = rigHumanoid(o.hero ? 'HerosSram' : 'ModoSram', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.25, scale: 1.55 });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -0.5, bz: 0.1, bx: -0.45, len: 0.2, segs: 5, r: 0.07 }, crown: false });
   // Masque crâne + capuche
   const bone = mat(0xf2ead8);
   r.head.add(at(box(0.42, 0.34, 0.06, bone), 0, 0.22, 0.2));
@@ -699,14 +726,14 @@ function buildModoSram() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }
 
 /* ---------------------------------------------------------------- Xélor Modo */
-function buildModoXelor() {
+function buildModoXelor(o = {}) {
   const P = palette({ skin: 0xefe8d8, body: 0x2d5a8c, body2: 0x22406a, legs: 0x1f3550, legs2: 0x29466a, metal: 0xd9c27a, metal2: 0xa8924a, cape: 0x22406a, glow: 0x7ab8ff, eye: 0xffd84a, horn: 0xd9c27a });
-  const r = rigHumanoid('ModoXelor', P, { bulk: 1.25, scale: 1.55 });
-  const modo = addModo(r, P, { horns: { rz: -0.7, bz: -0.05, bx: -0.3, len: 0.2, segs: 3, r: 0.06 }, crownY: 0.44 });
+  const r = rigHumanoid(o.hero ? 'HerosXelor' : 'ModoXelor', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.25, scale: 1.55 });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -0.7, bz: -0.05, bx: -0.3, len: 0.2, segs: 3, r: 0.06 }, crownY: 0.44 });
   // Bandelettes de momie
   const band = mat(0xc9bfa8);
   for (let i = 0; i < 4; i++) r.head.add(at(box(0.42, 0.035, 0.4, band), 0, 0.06 + i * 0.1, 0, 0, 0, (i % 2 ? 1 : -1) * 0.08));
@@ -779,15 +806,15 @@ function buildModoXelor() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }
 
 /* ---------------------------------------------------------------- Osamodas Modo */
-function buildModoOsamodas() {
+function buildModoOsamodas(o = {}) {
   const P = palette({ skin: 0xd8b48a, body: 0x4e9bb0, body2: 0x2f6070, legs: 0x2c4a52, legs2: 0x355a64, metal: 0xd8c8a8, metal2: 0xa8987a, cape: 0x2f6070, glow: 0x7cf0ff, eye: 0x7cf0ff, horn: 0xe8dcc0 });
-  const r = rigHumanoid('ModoOsamodas', P, { bulk: 1.4, scale: 1.55 });
+  const r = rigHumanoid(o.hero ? 'HerosOsamodas' : 'ModoOsamodas', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.4, scale: 1.55 });
   // Grandes cornes de bélier enroulées
-  const modo = addModo(r, P, { horns: { rz: -1.7, bz: 0.9, bx: 0.25, len: 0.15, segs: 7, r: 0.09, y: 0.3 } });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -1.7, bz: 0.9, bx: 0.25, len: 0.15, segs: 7, r: 0.09, y: 0.3 } });
   // Crinière de fourrure
   const fur = mat(0xf6d38a), fur2 = mat(0xd9b06a);
   for (let i = 0; i < 9; i++) { const a = (i / 8) * Math.PI; r.torso.add(at(sph(0.13, 6, 4, i % 2 ? fur : fur2), Math.cos(a) * 0.42, 0.66 + Math.sin(a) * 0.05, -0.05 - Math.sin(a) * 0.12)); }
@@ -833,14 +860,14 @@ function buildModoOsamodas() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }
 
 /* ---------------------------------------------------------------- Sacrieur Modo */
-function buildModoSacrieur() {
+function buildModoSacrieur(o = {}) {
   const P = palette({ skin: 0xc1121f, body: 0xc1121f, body2: 0x7a0c14, legs: 0x1a1a2a, legs2: 0x24243a, metal: 0x4a4a5a, metal2: 0x34343e, cape: 0x5a0f14, glow: 0xff2a3a, eye: 0xffd6a5, horn: 0x1a1414, boots: 0x1a1414 });
-  const r = rigHumanoid('ModoSacrieur', P, { bulk: 1.5, scale: 1.6 });
-  const modo = addModo(r, P, { horns: { rz: -1.25, bz: 0.15, bx: -0.15, len: 0.2, segs: 4, r: 0.08 } });
+  const r = rigHumanoid(o.hero ? 'HerosSacrieur' : 'ModoSacrieur', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.5, scale: 1.6 });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -1.25, bz: 0.15, bx: -0.15, len: 0.2, segs: 4, r: 0.08 } });
   // Tatouages noirs
   const ink = mat(0x1a0a0e);
   for (const [x, y, rz] of [[-0.18, 0.5, 0.5], [0.18, 0.5, -0.5], [0, 0.18, 0], [-0.25, 0.25, 0.2], [0.25, 0.25, -0.2]]) r.torso.add(at(box(0.05, 0.22, 0.02, ink), x, y, 0.255, 0, 0, rz));
@@ -882,14 +909,14 @@ function buildModoSacrieur() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }
 
 /* ---------------------------------------------------------------- Enutrof Modo */
-function buildModoEnutrof() {
+function buildModoEnutrof(o = {}) {
   const P = palette({ skin: 0xf0c8a0, body: 0x9a7a3a, body2: 0x6a4a1f, legs: 0x5a4228, legs2: 0x6a5032, metal: 0xa0a0a8, metal2: 0x7a7a82, cape: 0x6a4a1f, glow: 0xffd84a, eye: 0xffe9a0, horn: 0xd8c8a8 });
-  const r = rigHumanoid('ModoEnutrof', P, { bulk: 1.45, scale: 1.5 });
-  const modo = addModo(r, P, { horns: { rz: -1.0, bz: 0.3, len: 0.14, y: 0.5 }, crown: false });
+  const r = rigHumanoid(o.hero ? 'HerosEnutrof' : 'ModoEnutrof', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.45, scale: 1.5 });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -1.0, bz: 0.3, len: 0.14, y: 0.5 }, crown: false });
   // Barbe blanche en cascade
   const beard = mat(0xf2f2f2), beard2 = mat(0xdcdcdc);
   for (let i = 0; i < 5; i++) r.head.add(at(box(0.4 - i * 0.06, 0.12, 0.08, i % 2 ? beard2 : beard), 0, 0.06 - i * 0.1, 0.2 - i * 0.01));
@@ -942,14 +969,14 @@ function buildModoEnutrof() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }
 
 /* ---------------------------------------------------------------- Roublard Modo */
-function buildModoRoublard() {
+function buildModoRoublard(o = {}) {
   const P = palette({ skin: 0xf0c090, body: 0xc27b2a, body2: 0x8a5418, legs: 0x3a2a1a, legs2: 0x4a3622, metal: 0x6a6a72, metal2: 0x4a4a52, cape: 0x4a2e18, glow: 0xff8a2a, eye: 0xffe08a, horn: 0x2a1a12 });
-  const r = rigHumanoid('ModoRoublard', P, { bulk: 1.35, scale: 1.55 });
-  const modo = addModo(r, P, { horns: { rz: -0.9, bz: 0.2, bx: -0.3, len: 0.14 }, crown: false });
+  const r = rigHumanoid(o.hero ? 'HerosRoublard' : 'ModoRoublard', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.35, scale: 1.55 });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -0.9, bz: 0.2, bx: -0.3, len: 0.14 }, crown: false });
   // Bandana rouge + lunettes
   const bandana = mat(0xc03030);
   r.head.add(at(box(0.44, 0.12, 0.42, bandana), 0, 0.38, 0));
@@ -1001,14 +1028,14 @@ function buildModoRoublard() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }
 
 /* ---------------------------------------------------------------- Écaflip Modo */
-function buildModoEcaflip() {
+function buildModoEcaflip(o = {}) {
   const P = palette({ skin: 0xfff1e6, body: 0xc9472f, body2: 0x8a2a1a, legs: 0x3a1f1a, legs2: 0x4a2a22, metal: 0xd8d8e0, metal2: 0xa8a8b4, cape: 0x7a1a14, glow: 0xffcf3a, eye: 0x7dff6a, horn: 0xf2c14e });
-  const r = rigHumanoid('ModoEcaflip', P, { bulk: 1.3, scale: 1.55 });
-  const modo = addModo(r, P, { horns: { rz: -0.6, bz: 0.35, len: 0.1, segs: 3, x: 0.12, y: 0.4 }, crownY: 0.41 });
+  const r = rigHumanoid(o.hero ? 'HerosEcaflip' : 'ModoEcaflip', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.3, scale: 1.55 });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -0.6, bz: 0.35, len: 0.1, segs: 3, x: 0.12, y: 0.4 }, crownY: 0.41 });
   // Oreilles de chat, moustaches, museau
   const furO = mat(0xf48c06);
   for (const s of [-1, 1]) {
@@ -1078,14 +1105,14 @@ function buildModoEcaflip() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }
 
 /* ---------------------------------------------------------------- Pandawa Modo */
-function buildModoPandawa() {
+function buildModoPandawa(o = {}) {
   const P = palette({ skin: 0xf4f4f4, body: 0xf4f4f4, body2: 0xdedede, legs: 0x1e1e1e, legs2: 0x2a2a2a, metal: 0x7a5a3a, metal2: 0x5a4028, cape: 0x3e8a5a, glow: 0x9ef01a, eye: 0xffffff, horn: 0x3e8a5a, boots: 0x1e1e1e });
-  const r = rigHumanoid('ModoPandawa', P, { bulk: 1.6, scale: 1.55 });
-  const modo = addModo(r, P, { horns: { rz: -1.0, bz: 0.25, len: 0.13, segs: 4 } });
+  const r = rigHumanoid(o.hero ? 'HerosPandawa' : 'ModoPandawa', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.6, scale: 1.55 });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -1.0, bz: 0.25, len: 0.13, segs: 4 } });
   // Tête de panda : taches noires, oreilles
   const black = mat(0x1e1e1e);
   for (const s of [-1, 1]) {
@@ -1139,15 +1166,15 @@ function buildModoPandawa() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }
 
 /* ---------------------------------------------------------------- Sadida Modo */
-function buildModoSadida() {
+function buildModoSadida(o = {}) {
   const P = palette({ skin: 0x6b4a2a, body: 0x5f7f2a, body2: 0x3f5f1a, legs: 0x4a3a1e, legs2: 0x5a4826, metal: 0x8a6a3a, metal2: 0x6a4a28, cape: 0x3f5f1a, glow: 0xc8ff7a, eye: 0xffe066, horn: 0x6a4a28 });
-  const r = rigHumanoid('ModoSadida', P, { bulk: 1.4, scale: 1.6 });
+  const r = rigHumanoid(o.hero ? 'HerosSadida' : 'ModoSadida', P, o.hero ? { bulk: 1.15, scale: 0.78 } : { bulk: 1.4, scale: 1.6 });
   // Bois branchus en guise de cornes
-  const modo = addModo(r, P, { horns: { rz: -0.4, bz: 0.2, bx: -0.15, len: 0.2, segs: 5, r: 0.06 }, crown: false });
+  const modo = o.hero ? heroDress(r, P) : addModo(r, P, { horns: { rz: -0.4, bz: 0.2, bx: -0.15, len: 0.2, segs: 5, r: 0.06 }, crown: false });
   for (const s of [-1, 1]) for (let i = 0; i < 2; i++) r.head.add(at(cone(0.03, 0.24, 4, P.horn), s * (0.3 + i * 0.1), 0.62 + i * 0.12, -0.05, -0.2, 0, s * -1.1));
   // Couronne de feuilles
   const leaf = mat(0x7ab33a), leaf2 = mat(0x5a9a2a);
@@ -1197,5 +1224,5 @@ function buildModoSadida() {
     modo.update(t, dt, mode);
     if (mode !== 'still') fxA.update(dt);
   }
-  return { root: r.root, fx: r.fx, update };
+  return { root: r.root, fx: r.fx, update, rig: r };
 }

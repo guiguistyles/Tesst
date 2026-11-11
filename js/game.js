@@ -508,7 +508,11 @@ const Game = (() => {
       sp.timer -= dt;
       if (sp.timer > 0) continue;
       if (def.type === 'aura') { sp.timer = s.tick; auraTick(sp); continue; }
-      sp.timer = cast(sp, def, s) ? s.cd * S.stats.cd : 0.15;
+      S.aim = null;
+      const done = cast(sp, def, s);
+      sp.timer = done ? s.cd * S.stats.cd : 0.15;
+      // Dernier sort lancé : le rendu 3D s'en sert pour le geste du héros et les effets
+      if (done) S.lastCast = { id: sp.id, type: def.type, t: S.t, aim: S.aim, n: (S.lastCast ? S.lastCast.n : 0) + 1 };
     }
   }
 
@@ -518,6 +522,7 @@ const Game = (() => {
       case 'projectile': {
         const targets = nearest(p.x, p.y, s.range, s.spread ? 1 : Math.round(s.count));
         if (!targets.length) return false;
+        S.aim = Math.atan2(targets[0].y - p.y, targets[0].x - p.x);
         const n = Math.round(s.count);
         for (let i = 0; i < n; i++) {
           let a;
@@ -532,7 +537,7 @@ const Game = (() => {
             x: p.x, y: p.y - 6, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed,
             life: s.range / s.speed + 0.1, size: s.size, dmg: s.dmg, pierce: Math.round(s.pierce || 0),
             explode: s.explode ? s.explode * area : 0, knock: s.knock || 0, poison: s.poison || 0,
-            poisonDur: s.poisonDur || 0, gold: s.gold, gamble: s.gamble, color: def.color, hit: new Set(),
+            poisonDur: s.poisonDur || 0, gold: s.gold, gamble: s.gamble, color: def.color, id: sp.id, hit: new Set(),
           });
         }
         return true;
@@ -542,6 +547,7 @@ const Game = (() => {
         const t = nearest(p.x, p.y, range * 1.6, 1)[0];
         if (!t) return false;
         const a = Math.atan2(t.y - p.y, t.x - p.x);
+        S.aim = a;
         const dirs = s.double ? [a, a + Math.PI] : [a];
         for (const da of dirs) {
           query(p.x, p.y, range, (e) => {
@@ -567,7 +573,8 @@ const Game = (() => {
         for (let i = 0; i < n; i++) {
           // la première frappe vise le boss s’il est à portée
           const e = i === 0 && S.boss && cands.includes(S.boss) ? S.boss : pick(cands);
-          S.strikes.push({ x: e.x, y: e.y, r: s.radius * area, dmg: s.dmg, t: s.delay, life: s.delay, color: def.color, gamble: s.gamble });
+          S.strikes.push({ x: e.x, y: e.y, r: s.radius * area, dmg: s.dmg, t: s.delay, life: s.delay, color: def.color, gamble: s.gamble, id: sp.id, spin: Math.random() * 6 });
+          if (i === 0) S.aim = Math.atan2(e.y - p.y, e.x - p.x);
         }
         return true;
       }
@@ -583,7 +590,7 @@ const Game = (() => {
         return true;
       }
       case 'glyph':
-        S.glyphs.push({ x: p.x, y: p.y, r: s.radius * area, dmg: s.dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color });
+        S.glyphs.push({ x: p.x, y: p.y, r: s.radius * area, dmg: s.dmg, tick: s.tick, tt: 0, life: s.duration, max: s.duration, color: def.color, id: sp.id });
         return true;
       case 'heal': {
         const h = Math.min(s.heal, p.maxHp - p.hp);
