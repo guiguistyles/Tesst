@@ -457,7 +457,7 @@ const Game = (() => {
     e.dead = true;
     S.kills++;
     const z = S.zone;
-    dropXp(e.x, e.y, e.xp);
+    gainXp(e.xp, e.x, e.y);
     if (e.gold || Math.random() < 0.07) {
       S.gems.push({ kind: 'kamas', x: e.x + rand(-6, 6), y: e.y + rand(-6, 6), v: Math.ceil(rand(1, 4) * z.kamas) });
     }
@@ -479,7 +479,7 @@ const Game = (() => {
         S.victory = true;
         S.endTimer = 3.5;
         for (const g of S.gems) g.mag = true;
-        for (const o of S.enemies) if (!o.dead && o !== e) { o.dead = true; dropXp(o.x, o.y, o.xp); }
+        for (const o of S.enemies) if (!o.dead && o !== e) { o.dead = true; gainXp(o.xp, o.x, o.y); }
         cb.onBanner('Victoire !', e.def.name + ' est vaincu');
       } else {
         S.gems.push({ kind: 'chest', x: e.x, y: e.y, v: 0 });
@@ -487,10 +487,14 @@ const Game = (() => {
     }
   }
 
-  function dropXp(x, y, v) {
-    const xp = S.gems.filter((g) => g.kind === 'xp');
-    if (xp.length > 400) { pick(xp).v += v; return; }
-    S.gems.push({ kind: 'xp', x: x + rand(-4, 4), y: y + rand(-4, 4), v });
+  /**
+   * L'expérience est gagnée dès que le monstre meurt (plus de cristal à ramasser).
+   * Un petit cristal vole jusqu'au héros pour montrer le gain.
+   */
+  function gainXp(v, x, y) {
+    S.xp += v * S.stats.xp;
+    while (S.xp >= S.xpNext) { S.xp -= S.xpNext; S.level++; S.xpNext = xpFor(S.level); S.pending++; }
+    if (x !== undefined && S.fx.length < 260) S.fx.push({ type: 'xp', x, y, t: 0, life: 0.38, v });
   }
 
   function addText(x, y, txt, color, big) {
@@ -805,10 +809,7 @@ const Game = (() => {
   function collect(g) {
     const p = S.p;
     switch (g.kind) {
-      case 'xp':
-        S.xp += g.v * S.stats.xp;
-        while (S.xp >= S.xpNext) { S.xp -= S.xpNext; S.level++; S.xpNext = xpFor(S.level); S.pending++; }
-        break;
+      case 'xp': gainXp(g.v); break;
       case 'kamas': S.kamas += g.v * S.stats.kamas; break;
       case 'heal': {
         const h = p.maxHp * 0.3; p.hp = Math.min(p.maxHp, p.hp + h);
@@ -1093,6 +1094,12 @@ const Game = (() => {
       } else if (f.type === 'spark') {
         ctx.fillStyle = f.color;
         ctx.fillRect(f.x - 2, f.y - 2, 4, 4);
+      } else if (f.type === 'xp') {
+        // Cristal d'expérience qui file vers le héros
+        const e = k * k, x = f.x + (p.x - f.x) * e, y = f.y + (p.y - 20 - f.y) * e - Math.sin(k * Math.PI) * 30, s = f.v >= 10 ? 6 : f.v >= 3 ? 5 : 4;
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = f.v >= 10 ? '#ff5fa2' : f.v >= 3 ? '#4fd1ff' : '#7dff6a';
+        ctx.beginPath(); ctx.moveTo(x, y - s * 1.4); ctx.lineTo(x + s, y); ctx.lineTo(x, y + s * 1.4); ctx.lineTo(x - s, y); ctx.closePath(); ctx.fill();
       }
       ctx.globalAlpha = 1;
     }

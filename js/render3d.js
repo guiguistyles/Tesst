@@ -65,6 +65,9 @@ const Render3D = (() => {
   let shieldBubble;
   const pools = {};        // modèles réutilisés (effets peu nombreux)
   const parts = [];        // particules de traînée, soins, éclats
+  const vfx = [];          // effets de sorts en plusieurs temps (Épée Céleste, impacts…)
+  let shake = 0;           // secousse de la caméra (m), qui retombe toute seule
+  let prevStrikes = new Set();
 
   // ---------------------------------------------------------------- Formes des projectiles et des sorts
   const PROJ_STYLE = {
@@ -79,6 +82,7 @@ const Render3D = (() => {
     roublard: 'buildModoRoublard', ecaflip: 'buildModoEcaflip', pandawa: 'buildModoPandawa', sadida: 'buildModoSadida',
   };
   // Geste du héros et durée (s) selon le type de sort lancé
+  const GESTURE_FOR = { epee_celeste: 'strike', colere_iop: 'strike', pelle_jugement: 'strike', tremblement: 'nova' };
   const GESTURE_TIME = { melee: 0.3, projectile: 0.28, strike: 0.5, nova: 0.45, heal: 0.6, shield: 0.5, trap: 0.4, glyph: 0.5 };
 
   // ---------------------------------------------------------------- Initialisation
@@ -234,7 +238,7 @@ const Render3D = (() => {
   let modelPalette = null;
   const pal = () => modelPalette || (modelPalette = palette({}));
   const STRIKE_MAKE = {
-    sword() { const g = new THREE.Group(); const s = buildSword(pal(), 1.5); s.rotation.x = Math.PI; s.position.y = 2.1; g.add(s); g.scale.setScalar(1.3); return g; },
+    sword() { const g = new THREE.Group(); const s = buildSword(pal(), 1.5, mat(0xff7a2a, 0.9)); s.rotation.x = Math.PI; s.position.y = 2.1; g.add(s); g.scale.setScalar(1.9); return g; },
     arrow() {
       const g = new THREE.Group();
       g.add(at(cyl(0.03, 0.03, 1.2, 4, mat(0x5c3a24)), 0, 0.8, 0));
@@ -317,7 +321,7 @@ const Render3D = (() => {
   // ---------------------------------------------------------------- Particules (traînées, soins, éclats)
   function part(x, y, z, color, o = {}) {
     if (parts.length > 850) return;
-    parts.push({ x, y, z, vx: o.vx || 0, vy: o.vy || 0, vz: o.vz || 0, g: o.g || 0, life: o.life || 0.4, max: o.life || 0.4, s: o.s || 0.12, color, spin: Math.random() * 6 });
+    parts.push({ x, y, z, vx: o.vx || 0, vy: o.vy || 0, vz: o.vz || 0, g: o.g || 0, life: o.life || 0.4, max: o.life || 0.4, s: o.s || 0.12, grow: o.grow || 0, color, spin: Math.random() * 6 });
   }
   function updateParts(dt) {
     for (let i = parts.length - 1; i >= 0; i--) {
@@ -326,8 +330,9 @@ const Render3D = (() => {
       if (p.life <= 0) { parts.splice(i, 1); continue; }
       p.vy -= p.g * dt;
       p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+      if (p.y < 0.03) { p.y = 0.03; p.vy *= -0.3; p.vx *= 0.6; p.vz *= 0.6; }
       const k = p.life / p.max;
-      const s = p.s * Math.min(1, k * 1.5);
+      const s = p.s * Math.min(1, k * 1.5) * (1 + (1 - k) * p.grow);
       partB.add(p.x, p.y, p.z, p.spin + time * 4, s, s, s, tmpC.set(p.color));
     }
     partB.commit();
@@ -401,7 +406,7 @@ const Render3D = (() => {
     if (lc && lc.n !== h.castN) {
       h.castN = lc.n;
       h.castT = 0;
-      h.castType = lc.type;
+      h.castType = GESTURE_FOR[lc.id] || lc.type;
       h.aim = lc.aim;
       onCast(S, lc);
     }
@@ -438,11 +443,214 @@ const Render3D = (() => {
         const a = (i / 16) * Math.PI * 2;
         part(x + Math.cos(a) * 1.1, 0.2, z + Math.sin(a) * 1.1, col, { vy: 1.8, life: 0.6, s: 0.1 });
       }
+    } else if (lc.id === 'epee_celeste') {
+      const sp = S.spells.find((q) => q.id === lc.id);
+      vfxEpeeCeleste(x, z, sp ? (sp.s.radius * S.stats.area) / U : 3);
     } else if (lc.type === 'glyph' || lc.type === 'nova') {
-      for (let i = 0; i < 10; i++) {
-        const a = Math.random() * Math.PI * 2;
-        part(x, 0.3, z, col, { vx: Math.cos(a) * 3, vz: Math.sin(a) * 3, vy: 2, g: 6, life: 0.6, s: 0.1 });
+      const sp = S.spells.find((q) => q.id === lc.id);
+      const r = sp && sp.s.radius ? (sp.s.radius * S.stats.area) / U : 2.5;
+      burst(x, 0.3, z, [col, '#ffffff'], 16, { speed: r * 1.6, up: 2.5, s: 0.1, life: 0.55 });
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        part(x + Math.cos(a) * r * 0.9, 0.1, z + Math.sin(a) * r * 0.9, col, { vy: 2.4, life: 0.45, s: 0.1 });
       }
+    }
+  }
+
+  // ---------------------------------------------------------------- Effets de sorts détaillés
+  // Géométries partagées par les effets (créées une fois)
+  const G = {};
+  const geo = (k, make) => G[k] || (G[k] = make());
+  const RING_G = () => geo('ring', () => new THREE.TorusGeometry(1, 0.06, 6, 40));
+  const TUBE_G = () => geo('tube', () => new THREE.CylinderGeometry(1, 1, 1, 18, 1, true));
+  const DISC_G = () => geo('disc', () => new THREE.CylinderGeometry(1, 1, 0.03, 40));
+  const CRACK_G = () => geo('crack', () => { const g = new THREE.BoxGeometry(1, 0.05, 0.12); g.translate(0.5, 0, 0); return g; });
+
+  /** Maillage lumineux propre à un effet (sa transparence s'anime), retiré à la fin de l'effet. */
+  function fxMesh(g, color, opacity, list) {
+    const m = new THREE.Mesh(g, glow(opacity));
+    m.material.color.set(color);
+    m.material.transparent = true;
+    m.material.depthWrite = false;
+    if (g === TUBE_G()) m.material.side = THREE.DoubleSide;
+    scene.add(m);
+    list.push(m);
+    return m;
+  }
+  function dropMeshes(list) { for (const m of list) { scene.remove(m); m.material.dispose(); } list.length = 0; }
+  // Modèles réutilisés d'un effet à l'autre (épées célestes, épée plantée…)
+  const free = {};
+  function take(name, make) { const l = free[name] || (free[name] = []); const m = l.pop() || make(); m.visible = true; scene.add(m); return m; }
+  function give(name, m) { scene.remove(m); (free[name] || (free[name] = [])).push(m); }
+  /** Effet en plusieurs temps : tick(k, t) de 0 à life secondes, puis cleanup(). */
+  function addVfx(life, tick, cleanup) { vfx.push({ t: 0, life, tick, cleanup }); }
+  function updateVfx(dt) {
+    for (let i = vfx.length - 1; i >= 0; i--) {
+      const v = vfx[i];
+      v.t += dt;
+      v.tick(Math.min(1, v.t / v.life), v.t);
+      if (v.t >= v.life) { v.cleanup && v.cleanup(); vfx.splice(i, 1); }
+    }
+  }
+  function burst(x, y, z, colors, n, o = {}) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = (o.speed || 3) * (0.5 + Math.random() * 0.7);
+      part(x, y, z, colors[i % colors.length], { vx: Math.cos(a) * sp, vz: Math.sin(a) * sp, vy: (o.up || 3) * (0.5 + Math.random()), g: o.g ?? 9, life: (o.life || 0.7) * (0.7 + Math.random() * 0.5), s: o.s || 0.1, grow: o.grow || 0 });
+    }
+  }
+  /** Anneau qui s'élargit au sol, onde verticale optionnelle. */
+  function shockwave(x, z, r, color, life = 0.6, withWall = true) {
+    const meshes = [];
+    const rg = fxMesh(RING_G(), color, 0.95, meshes);
+    rg.rotation.x = Math.PI / 2;
+    rg.position.set(x, 0.08, z);
+    const wall = withWall ? fxMesh(TUBE_G(), color, 0.4, meshes) : null;
+    addVfx(life, (k) => {
+      const rr = r * (0.2 + smooth(k) * 1.1);
+      rg.scale.setScalar(rr);
+      rg.material.opacity = 0.95 * (1 - k);
+      if (wall) { wall.scale.set(rr, 0.9 * (1 - k) + 0.05, rr); wall.position.set(x, 0.45 * (1 - k), z); wall.material.opacity = 0.4 * (1 - k); }
+    }, () => dropMeshes(meshes));
+  }
+
+  /** IOP — Épée Céleste : 8 épées de lumière tombent en cercle autour du héros, onde dorée. */
+  function vfxEpeeCeleste(x, z, r) {
+    const swords = [], meshes = [];
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + 0.2;
+      const g = take('celeste', () => { const w = new THREE.Group(); const sw = buildSword(pal(), 1.1, mat(0xfff2a8, 0.9)); sw.rotation.x = Math.PI; sw.position.y = 1.6; w.add(sw); return w; });
+      g.position.set(x + Math.cos(a) * r, 3.2, z + Math.sin(a) * r);
+      g.rotation.set(0, -a, 0);
+      g.scale.setScalar(0.01);
+      swords.push(g);
+    }
+    const warn = fxMesh(RING_G(), '#fff2a8', 0.5, meshes);
+    warn.rotation.x = Math.PI / 2;
+    warn.position.set(x, 0.07, z);
+    warn.scale.setScalar(r);
+    const floor = fxMesh(DISC_G(), '#ffe680', 0.2, meshes);
+    floor.position.set(x, 0.05, z);
+    const pillars = [];
+    let hit = false;
+    addVfx(0.9, (k, t) => {
+      const fall = Math.min(1, Math.max(0, (t - 0.14) / 0.14));
+      swords.forEach((g, i) => {
+        const appear = Math.min(1, t / 0.12);
+        const fade = t > 0.6 ? Math.max(0.01, 1 - (t - 0.6) / 0.3) : 1;
+        g.scale.setScalar(1.0 * appear * fade);
+        g.position.y = 3.2 * (1 - fall * fall) - (t > 0.28 ? (t - 0.28) * 0.5 : 0);
+        if (t < 0.28) part(g.position.x, g.position.y + 0.4, g.position.z, i % 2 ? '#fff2a8' : '#ffd84a', { life: 0.25, s: 0.09, vy: 0.5 });
+      });
+      warn.material.opacity = t < 0.28 ? 0.5 + 0.4 * Math.sin(t * 40) : 0;
+      floor.scale.set(r * Math.min(1, t * 4), 1, r * Math.min(1, t * 4));
+      floor.material.opacity = 0.22 * (1 - k);
+      if (!hit && t >= 0.28) {
+        hit = true;
+        shake = Math.max(shake, 0.14);
+        shockwave(x, z, r * 1.25, '#ffe680', 0.55);
+        swords.forEach((g) => {
+          burst(g.position.x, 0.2, g.position.z, ['#ffffff', '#ffd84a', '#fff2a8'], 7, { speed: 2.2, up: 3, s: 0.08 });
+          const pl = fxMesh(TUBE_G(), '#fff2a8', 0.6, meshes);
+          pl.position.set(g.position.x, 1.3, g.position.z);
+          pl.scale.set(0.18, 2.6, 0.18);
+          pillars.push(pl);
+        });
+      }
+      pillars.forEach((pl) => { pl.material.opacity = 0.6 * (1 - k); pl.scale.x = pl.scale.z = 0.18 * (1 - k) + 0.02; });
+    }, () => { swords.forEach((g) => give('celeste', g)); dropMeshes(meshes); });
+  }
+
+  /** IOP — Colère de Iop, annonce : rayon du ciel et glyphe rouge sous la cible. */
+  function vfxColereAnnonce(s) {
+    const meshes = [];
+    const x = s.x / U, z = s.y / U, r = s.r / U;
+    const beam = fxMesh(TUBE_G(), '#ff7a2a', 0.0, meshes);
+    const core = fxMesh(TUBE_G(), '#fff2a8', 0.0, meshes);
+    const g = take('colere_glyphe', makeGlyph);
+    tintGlyph(g, '#ff3b1a', 0);
+    g.position.set(x, 0.05, z);
+    g.scale.set(r * 1.1, 1, r * 1.1);
+    addVfx(s.life, (k, t) => {
+      beam.position.set(x, 7, z);
+      beam.scale.set(r * (0.9 - 0.5 * k), 14, r * (0.9 - 0.5 * k));
+      beam.material.opacity = 0.32 * k;
+      core.position.set(x, 7, z);
+      core.scale.set(r * 0.18 * (1 - k * 0.5), 14, r * 0.18 * (1 - k * 0.5));
+      core.material.opacity = 0.6 * k;
+      tintGlyph(g, '#ff3b1a', Math.min(1, k * 2));
+      g.rotation.y = t * 3;
+      if (Math.random() < 0.6) part(x + (Math.random() - 0.5) * r, 0.1, z + (Math.random() - 0.5) * r, '#ff7a2a', { vy: 3, life: 0.4, s: 0.08 });
+    }, () => { give('colere_glyphe', g); dropMeshes(meshes); });
+  }
+
+  /** IOP — Colère de Iop, impact : cratère, fissures de lave, débris, poussière, épée plantée, secousse. */
+  function vfxColereImpact(x, z, r) {
+    shake = Math.max(shake, 0.4);
+    shockwave(x, z, r * 2.2, '#ff7a2a', 0.7);
+    shockwave(x, z, r * 1.4, '#ffd84a', 0.5, false);
+    const meshes = [];
+    const cracks = [];
+    for (let i = 0; i < 10; i++) {
+      const c = fxMesh(CRACK_G(), i % 2 ? '#ff5a1a' : '#ffb020', 0.95, meshes);
+      c.position.set(x, 0.06, z);
+      c.rotation.y = (i / 10) * Math.PI * 2 + Math.random() * 0.3;
+      cracks.push({ c, len: r * (1 + Math.random() * 0.8) });
+    }
+    const crater = fxMesh(DISC_G(), '#3a2a1a', 0.6, meshes);
+    crater.position.set(x, 0.04, z);
+    crater.scale.set(r * 0.9, 1, r * 0.9);
+    burst(x, 0.3, z, ['#6a4a2a', '#4a3a2a', '#8a6a4a'], 22, { speed: 4, up: 6, s: 0.2, life: 1.1 });
+    burst(x, 0.3, z, ['#ff7a2a', '#ffd84a', '#ff3b1a'], 24, { speed: 3, up: 4, s: 0.12, g: 2, life: 0.8 });
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * Math.PI * 2, rr = r * (0.4 + Math.random() * 0.8);
+      part(x + Math.cos(a) * rr, 0.2, z + Math.sin(a) * rr, i % 2 ? '#b8ab98' : '#d8cfc0', { vy: 0.6 + Math.random() * 0.6, life: 1.2, s: 0.3, grow: 2 });
+    }
+    // L'épée géante reste plantée puis s'enfonce
+    const stuck = take('epee_plantee', STRIKE_MAKE.sword);
+    stuck.position.set(x, -0.4, z);
+    stuck.rotation.set(0.12, Math.random() * 3, -0.1);
+    stuck.scale.setScalar(1);
+    addVfx(1.2, (k) => {
+      cracks.forEach(({ c, len }) => { c.scale.set(len * Math.min(1, k * 5), 1, 1 + k); c.material.opacity = 0.95 * (1 - k); });
+      crater.material.opacity = 0.6 * (1 - k);
+      stuck.position.y = -0.4 - k * k * 2.5;
+      stuck.scale.setScalar(Math.max(0.01, 1 - Math.max(0, k - 0.6) * 2.5));
+    }, () => { give('epee_plantee', stuck); dropMeshes(meshes); });
+  }
+
+  function onStrikeStart(s) {
+    if (s.id === 'colere_iop') vfxColereAnnonce(s);
+  }
+  /** Impact d'une frappe : un effet différent par type d'objet tombé. */
+  function onStrikeImpact(s) {
+    const x = s.x / U, z = s.y / U, r = s.r / U;
+    switch (STRIKE_STYLE[s.id] || 'orb') {
+      case 'sword': vfxColereImpact(x, z, r); break;
+      case 'arrow':
+        shockwave(x, z, r, s.color, 0.4, false);
+        burst(x, 0.2, z, [s.color, '#ffffff'], 6, { speed: 1.5, up: 2, s: 0.07, life: 0.5 });
+        break;
+      case 'hand':
+        shockwave(x, z, r * 1.3, '#7ab8ff', 0.6);
+        burst(x, 0.3, z, ['#ffe066', '#7ab8ff'], 12, { speed: 2.5, up: 3, s: 0.08 });
+        break;
+      case 'die':
+        shockwave(x, z, r * 1.2, '#ffcf3a', 0.5, false);
+        burst(x, 0.5, z, ['#ffffff', '#c9472f'], 16, { speed: 3.5, up: 5, s: 0.16, g: 7, life: 1 });
+        shake = Math.max(shake, 0.1);
+        break;
+      case 'bomb':
+        shake = Math.max(shake, 0.2);
+        shockwave(x, z, r * 1.4, '#ff8a2a', 0.6);
+        burst(x, 0.3, z, ['#ff8a2a', '#ffd84a', '#ff3d00'], 20, { speed: 3, up: 5, s: 0.14, g: 3, life: 0.7 });
+        for (let i = 0; i < 10; i++) part(x + (Math.random() - 0.5) * r, 0.3, z + (Math.random() - 0.5) * r, '#5a5048', { vy: 0.8 + Math.random(), life: 1.1, s: 0.25, grow: 2 });
+        break;
+      case 'thorn':
+        burst(x, 0.4, z, ['#7ab33a', '#c8ff7a', '#2f4a14'], 10, { speed: 2, up: 3, s: 0.1 });
+        break;
+      default:
+        shockwave(x, z, r, s.color, 0.5, false);
+        burst(x, 0.3, z, [s.color], 8, { speed: 2, up: 2.5, s: 0.08 });
     }
   }
 
@@ -458,6 +666,10 @@ const Render3D = (() => {
     end();
     hero = buildHero(S.cls);
     parts.length = 0;
+    for (const v of vfx) v.cleanup && v.cleanup();
+    vfx.length = 0;
+    prevStrikes = new Set();
+    shake = 0;
     time = 0;
     prewarm(S.cls);
   }
@@ -500,6 +712,7 @@ const Render3D = (() => {
     scene.fog.far = d * 1.75;
     camera.position.set(px, Math.sin(TILT) * d, pz + Math.cos(TILT) * d);
     camera.lookAt(px, 0, pz);
+    if (shake > 0) camera.position.add(tmpP.set((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake));
     sun.position.set(px + 14, 30, pz + 10);
     sun.target.position.set(px, 0, pz);
     ground.position.set(px, 0, pz);
@@ -596,6 +809,11 @@ const Render3D = (() => {
       if (Math.random() < 0.4) { const a = Math.random() * Math.PI * 2, rr = Math.random() * gl.r / U; part(gl.x / U + Math.cos(a) * rr, 0.1, gl.y / U + Math.sin(a) * rr, gl.color, { vy: 1.2, life: 0.6, s: 0.09 }); }
     }
 
+    // Frappes : début (annonce) et impact détectés par apparition / disparition dans la liste
+    const nowStrikes = new Set(S.strikes);
+    for (const s of nowStrikes) if (!prevStrikes.has(s)) onStrikeStart(s);
+    for (const s of prevStrikes) if (!nowStrikes.has(s)) onStrikeImpact(s);
+    prevStrikes = nowStrikes;
     // Frappes : cercle d'alerte au sol puis objet qui tombe du ciel (ou jaillit du sol)
     for (const s of S.strikes) {
       const k = 1 - s.t / s.life;
@@ -621,7 +839,8 @@ const Render3D = (() => {
         o.position.set(s.x / U, fall * 7, s.y / U);
         o.scale.setScalar(1);
         o.rotation.set(style === 'die' || style === 'bomb' ? time * 6 : 0, s.spin + (style === 'die' ? time * 4 : 0), 0);
-        if (Math.random() < 0.7) part(s.x / U, fall * 7 + 0.5, s.y / U, s.color, { life: 0.3, s: 0.12 });
+        const trailCol = style === 'sword' ? (Math.random() < 0.5 ? '#ff7a2a' : '#ffd84a') : s.color;
+        for (let i = 0; i < (style === 'sword' ? 3 : 1); i++) if (Math.random() < 0.7) part(s.x / U + (Math.random() - 0.5) * 0.4, fall * 7 + 0.5 + Math.random() * 2, s.y / U + (Math.random() - 0.5) * 0.4, trailCol, { life: 0.35, s: style === 'sword' ? 0.18 : 0.12, vy: 0.6 });
       }
     }
 
@@ -670,7 +889,7 @@ const Render3D = (() => {
         miscB.add(g.x / U, g.kind === 'chest' ? 0 : bob - 0.2, g.y / U, time, s, g.kind === 'dofus' ? s * 1.3 : s * 0.7, s, tmpC.set(col));
       }
     }
-    xpB.commit(); coinB.commit(); miscB.commit();
+    coinB.commit(); miscB.commit();
 
     // Effets : anneaux et ondes de choc, coups de mêlée, étincelles
     for (const f of S.fx) {
@@ -712,12 +931,24 @@ const Render3D = (() => {
         sl.position.set(f.x / U, 0.9, f.y / U);
         sl.rotation.set(-Math.PI / 2, 0, -f.a - f.arc / 2);
         sl.scale.setScalar((f.r / U) * 0.85);
+        if (k < 0.6 && Math.random() < 0.9) {
+          const aa = f.a + (Math.random() - 0.5) * f.arc, rr = (f.r / U) * (0.6 + Math.random() * 0.4);
+          part(f.x / U + Math.cos(aa) * rr, 0.6 + Math.random() * 0.6, f.y / U + Math.sin(aa) * rr, Math.random() < 0.5 ? '#ffffff' : f.color, { vy: 1, life: 0.3, s: 0.08 });
+        }
+      } else if (f.type === 'xp') {
+        // Cristal d'expérience qui file vers le héros
+        const e = k * k;
+        const s = f.v >= 10 ? 0.2 : f.v >= 3 ? 0.15 : 0.12;
+        xpB.add(lerpN(f.x, p.x, e) / U, 0.5 + Math.sin(k * Math.PI) * 1.2 + e * 0.5, lerpN(f.y, p.y, e) / U, time * 6, s * 0.7, s * 1.3, s * 0.7, tmpC.set(f.v >= 10 ? 0xff5fa2 : f.v >= 3 ? 0x4fd1ff : 0x7dff6a));
       } else if (f.type === 'spark') {
         sparkB.add(f.x / U, 0.4 + (1 - k) * 0.4, f.y / U, f.t * 6, 0.1, 0.1, 0.1, tmpC.set(f.color));
       }
     }
     sparkB.commit();
+    xpB.commit();
 
+    shake = Math.max(0, shake - dt * 1.4);
+    updateVfx(dt);
     updateParts(dt);
     endPools();
     renderer.render(scene, camera);
