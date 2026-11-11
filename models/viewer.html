@@ -116,6 +116,7 @@ button { font: inherit; color: inherit; }
 <script src="../js/models/cra-feu.js"></script>
 <script src="../js/models/modo.js"></script>
 <script src="../js/models/bestiaire.js"></script>
+<script src="../js/models/monstres.js"></script>
 <script>
 'use strict';
 /* =====================================================================
@@ -124,6 +125,40 @@ button { font: inherit; color: inherit; }
 const RARITY = {
   COMMUN: '#c9c4bb', RARE: '#5aa9ff', 'ÉPIQUE': '#b48cff', 'LÉGENDAIRE': '#f2a03c', MYTHIQUE: '#ff5f8a',
 };
+const MONSTER_NAMES = {
+  bouftou: 'Bouftou', tofu: 'Tofu', piou: 'Piou Rouge', larve_bleue: 'Larve Bleue', sanglier: 'Sanglier', arakne: 'Arakne',
+  moskito: 'Moskito', prespic: 'Prespic', abraknyde: 'Abraknyde', chafer: 'Chafer', chafer_archer: 'Chafer Archer',
+  fantome: 'Fantôme Pandore', craqueleur: 'Craqueleur', bwork: 'Bwork', gelee: 'Gelée Bleue', bwork_mage: 'Bwork Mage',
+  mansot: 'Mansot', boufmouth: 'Boufmouth', sapik: 'Sapik', fecorce: 'Fécorce',
+};
+/** Rayon de collision des monstres dans le jeu (pixels) : sert à les montrer à leur taille de partie. */
+const MONSTER_R = { bouftou: 14, tofu: 9, piou: 9, larve_bleue: 13, sanglier: 15, arakne: 11, moskito: 9, prespic: 14, abraknyde: 16, chafer: 12,
+  chafer_archer: 12, fantome: 11, craqueleur: 18, bwork: 14, gelee: 13, bwork_mage: 14, mansot: 13, boufmouth: 16, sapik: 15, fecorce: 13 };
+/** Monstre ordinaire dans la visionneuse : modèle complet (non fusionné) à sa taille de jeu, animé comme en partie. */
+function monsterCreature(id) {
+  const root = new THREE.Group();
+  root.name = 'monstre_' + id;
+  const holder = new THREE.Group();
+  const model = MONSTER_MODELS[id].build();
+  const box3 = new THREE.Box3().setFromObject(model);
+  const rad = Math.max(box3.max.x - box3.min.x, box3.max.z - box3.min.z) / 2 || 1;
+  const k = ((MONSTER_R[id] / 32) * 1.25) / rad;
+  model.scale.multiplyScalar(k);
+  model.position.set(-(box3.min.x + box3.max.x) / 2 * k, -box3.min.y * k, -(box3.min.z + box3.max.z) / 2 * k);
+  holder.add(model);
+  root.add(holder);
+  const h = (box3.max.y - box3.min.y) * k, pose = {};
+  return {
+    root, fx: new THREE.Group(),
+    update(mode, t) {
+      if (mode === 'still') { holder.position.set(0, 0, 0); holder.scale.set(1, 1, 1); holder.rotation.set(0, 0, 0); return; }
+      monsterPose(MONSTER_MODELS[id].anim, t * (mode === 'move' ? 1 : 0.5), 0, pose);
+      holder.position.y = pose.y * h;
+      holder.scale.set(pose.sx, pose.sy, pose.sz);
+      holder.rotation.set(pose.rx, pose.yaw, pose.rz, 'YXZ');
+    },
+  };
+}
 const CREATURES = [
   { id: 'cra_feu', name: 'Cra Feu', rarity: 'LÉGENDAIRE', drop: 0.5, round: 'r1', build: buildCraFeu },
   { id: 'modo_iop', name: 'Iop Modo', rarity: 'MYTHIQUE', drop: 0.1, round: 'r2', build: buildModoIop },
@@ -152,12 +187,17 @@ const CREATURES = [
   { id: 'craq_legendaire', name: 'Craqueleur Légendaire', rarity: 'LÉGENDAIRE', drop: 0.5, round: 'r4', build: buildCraqueleurLegendaire },
   { id: 'mansot_royal', name: 'Mansot Royal', rarity: 'ÉPIQUE', drop: 2, round: 'r4', build: buildMansotRoyal },
   { id: 'obsidiantre', name: 'Obsidiantre', rarity: 'LÉGENDAIRE', drop: 0.3, round: 'r4', build: buildObsidiantre },
+  // Monstres ordinaires du jeu, à leur taille réelle (tels qu'utilisés en partie)
+  ...['bouftou', 'tofu', 'piou', 'larve_bleue', 'sanglier', 'arakne', 'moskito', 'prespic', 'abraknyde', 'chafer', 'chafer_archer',
+    'fantome', 'craqueleur', 'bwork', 'gelee', 'bwork_mage', 'mansot', 'boufmouth', 'sapik', 'fecorce']
+    .map((id) => ({ id, name: MONSTER_NAMES[id], rarity: 'COMMUN', drop: null, round: 'r5', build: () => monsterCreature(id) })),
 ];
 const ROUNDS = [
   { id: 'r1', label: 'Round 1 · Légendaire' },
   { id: 'r2', label: 'Round 2 · Boss Modo' },
   { id: 'r3', label: 'Round 3 · Familiers' },
   { id: 'r4', label: 'Round 4 · Boss du jeu' },
+  { id: 'r5', label: 'Round 5 · Monstres' },
   { id: 'lineup', label: 'Full lineup' },
 ];
 
@@ -325,7 +365,7 @@ function updateInfo() {
   const r = document.getElementById('c-rarity');
   r.textContent = lineup ? 'TOUTES' : def.rarity;
   r.style.background = lineup ? '#f4ecdd' : RARITY[def.rarity];
-  document.getElementById('c-drop').textContent = lineup ? '—' : def.drop.toLocaleString('fr-FR') + ' %';
+  document.getElementById('c-drop').textContent = lineup || def.drop == null ? '—' : def.drop.toLocaleString('fr-FR') + ' %';
   for (const c of current) c.inst.update('still', 0, 0);
   const h = Math.max(...current.map((c) => sizeOf(c.inst.root).h));
   document.getElementById('c-size').textContent = h.toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' m';

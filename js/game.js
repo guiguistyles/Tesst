@@ -221,6 +221,8 @@ const Game = (() => {
     raf = requestAnimationFrame(loop);
     let dt = (now - lastT) / 1000;
     lastT = now;
+    // L'horodatage de la première image peut précéder le démarrage : jamais de pas négatif
+    if (dt < 0) dt = 0;
     if (dt > 0.05) dt = 0.05;
     if (!S) return;
     // Mode test accéléré : plusieurs pas de simulation par image

@@ -34,9 +34,10 @@ const Render3D = (() => {
     scene.add(m);
     return {
       mesh: m, n: 0, cap,
-      add(x, y, z, ry, sx, sy, sz, color, rx = 0) {
+      add(x, y, z, ry, sx, sy, sz, color, rx = 0, rz = 0) {
         if (this.n >= cap) return;
-        tmpE.set(rx, ry, 0);
+        // Ordre YXZ : inclinaisons dans le repère du modèle, puis orientation
+        tmpE.set(rx, ry, rz, 'YXZ');
         tmpQ.setFromEuler(tmpE);
         tmpM.compose(tmpP.set(x, y, z), tmpQ, tmpS.set(sx, sy, sz));
         m.setMatrixAt(this.n, tmpM);
@@ -58,6 +59,8 @@ const Render3D = (() => {
   const forward = (g) => { g.rotateX(Math.PI / 2); return g; };
 
   let monsters;            // Map id -> lot
+  let monsterMat;          // matériau à couleurs par sommet des monstres fusionnés
+  const pose = {};
   let projStyles;          // Map forme -> lot
   let eprojB, xpB, coinB, miscB, sparkB, partB;
   let ground, tiles;
@@ -128,6 +131,7 @@ const Render3D = (() => {
     scene.add(tiles);
 
     monsters = new Map();
+    monsterMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.8 });
     projStyles = new Map();
     eprojB = batch(new THREE.SphereGeometry(1, 8, 6), glow(), 300, false);
     xpB = batch(new THREE.OctahedronGeometry(1, 0), solid(), 500, false);
@@ -151,10 +155,17 @@ const Render3D = (() => {
     camera.updateProjectionMatrix();
   }
 
+  /** Lot d'un type de monstre : son modèle fusionné (js/models/monstres.js), ou un cube s'il n'en a pas encore. */
   function monsterBatch(id) {
     let b = monsters.get(id);
     if (!b) {
-      b = batch(up(new THREE.BoxGeometry(1, 1, 1)), solid(), 420);
+      const def = typeof MONSTER_MODELS !== 'undefined' && MONSTER_MODELS[id];
+      let geo = null;
+      if (def) { try { geo = mergeModel(def.build()); } catch (e) { geo = null; } }
+      b = batch(geo || up(new THREE.BoxGeometry(1, 1, 1)), geo ? monsterMat : solid(), 420);
+      b.model = !!geo;
+      b.anim = def ? def.anim : 'walk';
+      b.h = geo ? geo.boundingBox.max.y : 1;
       monsters.set(id, b);
     }
     return b;
@@ -801,11 +812,22 @@ const Render3D = (() => {
     beginPools();
     if (hero) updateHero(S, dt);
 
-    // Monstres : un lot par type (remplacés par de vrais modèles à l'étape 3)
+    // Monstres : un lot par type ; les monstres ordinaires ont leur modèle, les boss restent des blocs (étape 4)
     for (const b of monsters.values()) b.n = 0;
     for (const e of S.enemies) {
       if (e.dead) continue;
       const d = e.def, b = monsterBatch(e.id);
+      if (b.model) {
+        const R = (e.r / U) * 1.25;
+        monsterPose(b.anim, time, e.seed, pose);
+        // Teinte par instance : blanc quand touché, vert empoisonné, bleu ralenti
+        if (e.flash > 0) tmpC.setRGB(2.6, 2.6, 2.6);
+        else if (e.poisonT > 0) tmpC.setRGB(0.7, 1.45, 0.7);
+        else if (e.slowT > 0) tmpC.setRGB(0.75, 0.9, 1.4);
+        else tmpC.setRGB(1, 1, 1);
+        b.add(e.x / U, pose.y * b.h * R, e.y / U, Math.atan2(p.x - e.x, p.y - e.y) + pose.yaw, R * pose.sx, R * pose.sy, R * pose.sz, tmpC, pose.rx, pose.rz);
+        continue;
+      }
       const w = (e.r * 2) / U, h = (e.r * (e.boss ? 2.6 : 2.2)) / U;
       const hop = Math.abs(Math.sin(time * 8 + e.seed)) * 0.12 * h;
       const ry = Math.atan2(p.x - e.x, p.y - e.y);
