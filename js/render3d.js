@@ -363,7 +363,7 @@ const Render3D = (() => {
     const cls = CLASSES[clsId];
     let inst = null;
     const fn = HERO_BUILD[clsId] && window[HERO_BUILD[clsId]];
-    try { if (typeof fn === 'function') inst = fn({ hero: true }); } catch (e) { inst = null; }
+    try { if (typeof fn === 'function') inst = fn({ hero: true, modo: true }); } catch (e) { inst = null; }
     if (!inst || !inst.rig) {
       // Silhouette de secours si le modèle n'est pas disponible
       const g = new THREE.Group();
@@ -1047,81 +1047,135 @@ const Render3D = (() => {
   };
 
   /**
-   * Sol d'une carte de zone : un seul maillage coloré par sommet (taches d'herbe, terre,
-   * chemins aux bords doux, place pavée, berges), qui se relève en collines hors de la carte.
+   * Sol d'un archipel : chaque île est un disque irrégulier coloré par sommet (taches d'herbe,
+   * chemins, place pavée, berges) posé sur une falaise rocheuse qui s'effile vers le bas.
    */
   function buildGround3D(m, group) {
     const z = ZONES[m.zone], tone = GROUND_TONES[m.decoType] || GROUND_TONES.grass;
     const [rcHex, reHex] = WORLD.ROAD_COL[m.decoType] || WORLD.ROAD_COL.grass;
     const C = (h) => new THREE.Color(h);
     const base = C(z.ground), alt = C(z.ground2), patch = C(tone.patch), dry = C(tone.dry), dark = C(tone.dark);
-    const rc = C(rcHex), re = C(reHex), stone = C('#b9ad96'), stone2 = C('#a39882'), cliff = C(m.decoType === 'snow' ? '#dfe8f0' : '#7a6e60');
-    const x0 = -900, x1 = m.w + 900, y0 = -m.h - 1100, y1 = m.h + 520, STEP = 26;
-    const nx = Math.ceil((x1 - x0) / STEP) + 1, ny = Math.ceil((y1 - y0) / STEP) + 1;
-    const pos = new Float32Array(nx * ny * 3), col = new Float32Array(nx * ny * 3);
-    const c = new THREE.Color(), tmp = new THREE.Color();
+    const rc = C(rcHex), re = C(reHex), stone = C('#b9ad96'), stone2 = C('#a39882');
     const seed = 100 + m.zone * 17;
-    // Distance au chemin : précalculée sur une grille grossière puis interpolée (rapide)
-    for (let j = 0; j < ny; j++) {
-      for (let i = 0; i < nx; i++) {
-        const x = x0 + i * STEP, y = y0 + j * STEP, k = (j * nx + i) * 3;
-        const n1 = fbm(x / 520, y / 520, seed), n2 = noise2(x / 90, y / 90, seed + 3), n3 = noise2(x / 34, y / 34, seed + 5);
-        // Herbe : grandes taches claires/sèches, petites variations sombres
-        c.copy(base).lerp(alt, n2 * 0.6);
-        c.lerp(patch, sstep(0.55, 0.8, n1) * 0.55);
-        c.lerp(dry, sstep(0.68, 0.9, noise2(x / 300, y / 300, seed + 9)) * 0.45);
-        c.lerp(dark, sstep(0.6, 1, n3) * (m.decoType === 'snow' || m.decoType === 'rock' ? 0.45 : 0.25));
-        // Chemins : bord doux, gravier clair au centre
-        let h = 0;
-        const inside = x >= 0 && x <= m.w && y >= -m.h && y <= m.h;
-        if (inside || Math.abs(y) < m.h + 200) {
-          const d = WORLD.roadDist(m, x, y);
-          if (d < 62) {
-            tmp.copy(re).lerp(rc, sstep(46, 22, d));
-            tmp.lerp(stone, (n3 - 0.5) * 0.25 + 0.05);
-            c.lerp(tmp, sstep(62, 40, d));
-          }
-          // Place du zaap : pavés en anneaux
-          const pd = Math.hypot(x - m.plaza.x, y - m.plaza.y);
-          if (pd < m.plaza.r + 12) {
-            const ring = (pd % 46) < 5 ? stone2 : stone;
-            tmp.copy(ring).lerp(re, n3 * 0.25);
-            c.lerp(tmp, sstep(m.plaza.r + 12, m.plaza.r - 6, pd));
-          }
-          // Berges : sable (ou roche, neige) autour de l'eau, fond plus sombre dessous
-          for (const w of m.water) {
-            const ex = (x - w.x) / w.rx, ey = (y - w.y) / w.ry, e = Math.sqrt(ex * ex + ey * ey);
-            if (e > 1.45) continue;
-            const kd = WORLD.WATER_KIND[w.kind];
-            if (e < 1) c.copy(C(kd.fill)).multiplyScalar(0.55);
-            else c.lerp(C(kd.rim), sstep(1.45, 1.08, e) * 0.9);
-          }
-        }
-        // Hors de la carte : collines (hautes au nord, basses au sud côté caméra)
-        const ox = x < 0 ? -x : x > m.w ? x - m.w : 0;
-        const oyN = y < -m.h ? -m.h - y : 0, oyS = y > m.h ? y - m.h : 0;
-        const hn = sstep(40, 700, oyN) * (5 + n1 * 4), hs = sstep(60, 400, oyS) * 0.9, he = sstep(40, 600, ox) * (3 + n2 * 2);
-        h = Math.max(hn, hs, he) + (hn + he > 0.2 ? (n3 - 0.5) * 0.6 : 0);
-        if (h > 0.05) c.lerp(cliff, sstep(0.5, 5, h) * 0.6).multiplyScalar(1 - Math.min(0.25, h * 0.03));
-        pos[k] = x / U; pos[k + 1] = h; pos[k + 2] = y / U;
-        col[k] = c.r; col[k + 1] = c.g; col[k + 2] = c.b;
+    const tmp = new THREE.Color();
+    const colorAt = (x, y, c) => {
+      const n1 = fbm(x / 520, y / 520, seed), n2 = noise2(x / 90, y / 90, seed + 3), n3 = noise2(x / 34, y / 34, seed + 5);
+      c.copy(base).lerp(alt, n2 * 0.6);
+      c.lerp(patch, sstep(0.55, 0.8, n1) * 0.55);
+      c.lerp(dry, sstep(0.68, 0.9, noise2(x / 300, y / 300, seed + 9)) * 0.45);
+      c.lerp(dark, sstep(0.6, 1, n3) * (m.decoType === 'snow' || m.decoType === 'rock' ? 0.45 : 0.25));
+      const d = WORLD.roadDist(m, x, y);
+      if (d < 62) { tmp.copy(re).lerp(rc, sstep(46, 22, d)); tmp.lerp(stone, (n3 - 0.5) * 0.25 + 0.05); c.lerp(tmp, sstep(62, 40, d)); }
+      const pd = Math.hypot(x - m.plaza.x, y - m.plaza.y);
+      if (pd < m.plaza.r + 12) { tmp.copy(stone).lerp(stone2, n2).lerp(re, n3 * 0.2); c.lerp(tmp, sstep(m.plaza.r + 12, m.plaza.r - 6, pd)); }
+      for (const w of m.water) {
+        const ex = (x - w.x) / w.rx, ey = (y - w.y) / w.ry, e = Math.sqrt(ex * ex + ey * ey);
+        if (e > 1.45) continue;
+        const kd = WORLD.WATER_KIND[w.kind];
+        if (e < 1) c.copy(C(kd.fill)).multiplyScalar(0.55);
+        else c.lerp(C(kd.rim), sstep(1.45, 1.08, e) * 0.9);
       }
-    }
-    const idx = new Uint32Array((nx - 1) * (ny - 1) * 6);
-    let t = 0;
-    for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
-      const a = j * nx + i, b = a + 1, d = a + nx, e = d + 1;
-      idx[t++] = a; idx[t++] = d; idx[t++] = b; idx[t++] = b; idx[t++] = d; idx[t++] = e;
+      return c;
+    };
+    const cliffA = C(m.decoType === 'snow' ? '#c8d6e2' : m.decoType === 'rock' ? '#8a7a62' : '#8a6a48');
+    const cliffB = C(m.decoType === 'snow' ? '#9fb2c4' : m.decoType === 'rock' ? '#665a4a' : '#5e4a38');
+    const pos = [], col = [], idx = [];
+    const c = new THREE.Color();
+    const RINGS = 34, SEG = 128;
+    for (const isl of m.isles) {
+      const start = pos.length / 3;
+      // Dessus : anneaux du centre vers le bord
+      for (let ri = 0; ri <= RINGS; ri++) {
+        const k = ri / RINGS;
+        for (let si = 0; si < SEG; si++) {
+          const a = (si / SEG) * Math.PI * 2, wv = WORLD.wob(isl, a) * k;
+          const x = isl.x + Math.cos(a) * isl.rx * wv, y = isl.y + Math.sin(a) * isl.ry * wv;
+          colorAt(x, y, c);
+          if (k > 0.94) c.lerp(dark, 0.25);
+          pos.push(x / U, 0, y / U); col.push(c.r, c.g, c.b);
+          if (ri === 0) break;
+        }
+      }
+      // Anneau 0 = un seul point central
+      for (let si = 0; si < SEG; si++) idx.push(start, start + 1 + ((si + 1) % SEG), start + 1 + si);
+      for (let ri = 1; ri < RINGS; ri++) {
+        const r0 = start + 1 + (ri - 1) * SEG, r1 = start + 1 + ri * SEG;
+        for (let si = 0; si < SEG; si++) {
+          const a = r0 + si, b = r0 + ((si + 1) % SEG), d = r1 + si, e = r1 + ((si + 1) % SEG);
+          idx.push(a, b, d, b, e, d);
+        }
+      }
+      // Falaise : le bord descend en s'effilant, strates de roche
+      const top = start + 1 + (RINGS - 1) * SEG;
+      const levels = [[1.0, -0.6], [0.94, -2.4], [0.8, -5], [0.58, -9], [0.32, -13.5], [0.08, -17]];
+      let prev = top;
+      levels.forEach(([k, yy], li) => {
+        const ring = pos.length / 3;
+        for (let si = 0; si < SEG; si++) {
+          const a = (si / SEG) * Math.PI * 2, n = noise2(si * 0.35, li * 1.7, seed + isl.k);
+          const wv = WORLD.wob(isl, a) * k * (0.92 + n * 0.16);
+          const x = isl.x + Math.cos(a) * isl.rx * wv, y = isl.y + Math.sin(a) * isl.ry * wv;
+          c.copy(li % 2 ? cliffB : cliffA).lerp(cliffB, n * 0.5);
+          if (li === 0) c.copy(dark).lerp(cliffA, 0.5);
+          pos.push(x / U, yy + (n - 0.5) * 0.8, y / U); col.push(c.r, c.g, c.b);
+        }
+        for (let si = 0; si < SEG; si++) {
+          const a = prev + si, b = prev + ((si + 1) % SEG), d = ring + si, e = ring + ((si + 1) % SEG);
+          idx.push(a, b, d, b, e, d);
+        }
+        prev = ring;
+      });
     }
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx);
     g.computeVertexNormals();
-    const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+    const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: false }));
     mesh.receiveShadow = true;
+    mesh.castShadow = false;
     mesh.frustumCulled = false;
     group.add(mesh);
+    // Ponts de corde entre les îles
+    for (const b of m.spans) group.add(buildSpan(b));
+    // Nuages sous l'archipel et au loin
+    let s = 99 + m.zone;
+    const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+    const clouds = [];
+    for (let k = 0; k < 90; k++) {
+      clouds.push({ x: -1500 + rnd() * (m.w + 3000), z: -m.h - 1800 + rnd() * (m.h * 2 + 2600), y: -6 - rnd() * 22, s: 2.5 + rnd() * 5, sy: 0.9 + rnd(), c: '#ffffff' });
+    }
+    const puff = mergedWhite(() => {
+      const gg = new THREE.Group();
+      gg.add(at(sph(1, 8, 6, mat(0xffffff)), 0, 0, 0), at(sph(0.7, 8, 6, mat(0xffffff)), 0.9, -0.1, 0.2), at(sph(0.75, 8, 6, mat(0xffffff)), -0.9, -0.1, -0.1), at(sph(0.55, 8, 6, mat(0xffffff)), 0.2, 0.5, 0.3));
+      return gg;
+    });
+    W3.clouds = scatter(group, puff, clouds.map((o) => ({ ...o, sx: o.s, sy: o.s * 0.45 * o.sy, sz: o.s * 0.7 })), false,
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, emissive: 0x8090a0, emissiveIntensity: 0.35, transparent: true, opacity: 0.9 }));
+  }
+
+  /** Pont de planches et de cordes au-dessus du vide. */
+  function buildSpan(b) {
+    const g = new THREE.Group();
+    const L = Math.hypot(b.bx - b.ax, b.by - b.ay) / U, ang = Math.atan2(b.by - b.ay, b.bx - b.ax);
+    const wood = mat(0xa8743a), dark = mat(0x5a3818), rope = mat(0xd8c08a);
+    const n = Math.ceil(L / 0.7);
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, sag = Math.sin(t * Math.PI) * 0.35;
+      g.add(at(box(0.55, 0.1, 3.4, i % 5 === 0 ? dark : wood), -L / 2 + t * L, -sag + 0.05, 0, 0, (i % 3 - 1) * 0.03, 0));
+    }
+    for (const sz of [-1.7, 1.7]) {
+      for (let i = 0; i < 8; i++) {
+        const t0 = i / 8, t1 = (i + 1) / 8;
+        const x0 = -L / 2 + t0 * L, x1 = -L / 2 + t1 * L, y0 = 1.0 - Math.sin(t0 * Math.PI) * 0.35, y1 = 1.0 - Math.sin(t1 * Math.PI) * 0.35;
+        const seg = at(box(Math.hypot(x1 - x0, y1 - y0), 0.06, 0.06, rope), (x0 + x1) / 2, (y0 + y1) / 2, sz, 0, 0, Math.atan2(y1 - y0, x1 - x0));
+        g.add(seg);
+      }
+      for (const ex of [-L / 2, L / 2]) g.add(at(cyl(0.12, 0.14, 1.5, 6, dark), ex, 0.7, sz));
+    }
+    g.position.set((b.ax + b.bx) / 2 / U, 0, (b.ay + b.by) / 2 / U);
+    g.rotation.y = -ang;
+    return g;
   }
 
   /** Lot d'instances d'un petit modèle (couvert végétal, accessoires), teinté par instance. */
@@ -1311,14 +1365,14 @@ const Render3D = (() => {
     const type = m.decoType;
     let s = 4242 + m.zone * 101;
     const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
-    const free = (x, y, road = 48, pad = 12) => !WORLD.inWater(m, x, y, pad, false) && WORLD.roadDist(m, x, y) > road &&
+    const free = (x, y, road = 48, pad = 12) => !!WORLD.isleAt(m, x, y, 30) && !WORLD.inWater(m, x, y, pad, false) && WORLD.roadDist(m, x, y) > road &&
       !m.houses.some((hs) => Math.hypot(hs.x - x, hs.y - y) < 120) && Math.hypot(m.zaap.x - x, m.zaap.y - y) > 120;
     const tone = GROUND_TONES[type] || GROUND_TONES.grass, z = ZONES[m.zone];
     const grassCols = type === 'snow' ? ['#ffffff', '#e8f0f8', '#d4e2ee'] : type === 'rock' ? ['#a89a68', '#8a8458', '#b8a878']
       : type === 'forest' ? ['#3f6a2c', '#58823a', '#2f5222'] : ['#5f9a3a', '#78b048', '#4c8030', tone.patch];
     // Touffes d'herbe en nappes (plus denses dans les taches de bruit)
     const tufts = [];
-    for (let k = 0; k < 9000 && tufts.length < 4200; k++) {
+    for (let k = 0; k < 30000 && tufts.length < 4200; k++) {
       const x = rnd() * m.w, y = (rnd() * 2 - 1) * m.h;
       if (fbm(x / 400, y / 400, 31 + m.zone) < 0.42 && rnd() < 0.7) continue;
       if (!free(x, y)) continue;
@@ -1329,7 +1383,7 @@ const Render3D = (() => {
     // Fleurs (sauf montagne et neige)
     if (type !== 'snow' && type !== 'rock') {
       const fl = [], cols = type === 'forest' ? ['#b48cff', '#ff9ad0', '#ffffff'] : ['#ffffff', '#ff9ab0', '#ffd84a', '#b48cff', '#ff7a5a'];
-      for (let k = 0; k < 4000 && fl.length < 1300; k++) {
+      for (let k = 0; k < 14000 && fl.length < 1300; k++) {
         const x = rnd() * m.w, y = (rnd() * 2 - 1) * m.h;
         if (noise2(x / 260, y / 260, 55 + m.zone) < 0.55) continue;
         if (!free(x, y)) continue;
@@ -1345,7 +1399,7 @@ const Render3D = (() => {
         if (rnd() < 0.45) continue;
         const side = rnd() < 0.5 ? -1 : 1, off = 44 + rnd() * 18;
         const x = ax + ((bx - ax) * d) / len + nx * off * side, y = ay + ((by - ay) * d) / len + ny * off * side;
-        if (WORLD.inWater(m, x, y, 8, false)) continue;
+        if (WORLD.inWater(m, x, y, 8, false) || !WORLD.isleAt(m, x, y, 20) || Math.hypot(x - m.plaza.x, y - m.plaza.y) < m.plaza.r + 30) continue;
         peb.push({ x, z: y, s: 0.6 + rnd() * 0.9, ry: rnd() * 6.3, c: type === 'snow' ? '#c8d0d8' : rnd() < 0.5 ? '#a8a090' : '#8a8478' });
       }
     }
@@ -1373,7 +1427,7 @@ const Render3D = (() => {
     scatter(group, COVER.lily(), lilies);
     scatter(group, COVER.boulder(), shoreRocks, true);
     // Accessoires propres à chaque zone
-    const props = (n, fn) => { const out = []; for (let k = 0; k < n * 20 && out.length < n; k++) { const x = 300 + rnd() * (m.w - 600), y = (rnd() * 1.8 - 0.9) * m.h; if (!free(x, y, 90, 110) || m.camps.some((c) => Math.hypot(c.x - x, c.y - y) < 140)) continue; out.push(fn(x, y)); } return out; };
+    const props = (n, fn) => { const out = []; for (let k = 0; k < n * 60 && out.length < n; k++) { const x = 300 + rnd() * (m.w - 600), y = (rnd() * 1.8 - 0.9) * m.h; if (!free(x, y, 90, 110) || m.camps.some((c) => Math.hypot(c.x - x, c.y - y) < 140)) continue; out.push(fn(x, y)); } return out; };
     if (type === 'forest') {
       scatter(group, COVER.log(), props(26, (x, y) => ({ x, z: y, s: 0.9 + rnd() * 0.4, ry: rnd() * 6.3 })), true);
       W3.glow = scatter(group, COVER.shroom(), props(30, (x, y) => ({ x, z: y, s: 0.6 + rnd() * 0.9, ry: rnd() * 6.3 })), true);
@@ -1391,7 +1445,7 @@ const Render3D = (() => {
     const fences = [], lamps = [], main = m.roads[0];
     for (let i = 1; i < main.length; i++) {
       const [ax, ay] = main[i - 1], [bx, by] = main[i];
-      if (ax < m.plaza.x + m.plaza.r || ax > m.plaza.x + 1100) continue;
+      if (Math.hypot(ax - m.plaza.x, ay - m.plaza.y) < m.plaza.r + 20 || WORLD.isleE(m.isles[0], ax, ay) > 0.8 || WORLD.isleE(m.isles[0], bx, by) > 0.8) continue;
       const len = Math.hypot(bx - ax, by - ay), nx = -(by - ay) / len, ny = (bx - ax) / len, ry = -Math.atan2(by - ay, bx - ax);
       for (const side of [-1, 1]) fences.push({ x: (ax + bx) / 2 + nx * 72 * side, z: (ay + by) / 2 + ny * 72 * side, s: len / 64, sy: 1, sz: 1, ry, c: 0xffffff });
       if (i % 4 === 0) lamps.push({ x: ax + nx * 70, z: ay + ny * 70, s: 1, ry: ry + Math.PI / 2 });
@@ -1403,7 +1457,7 @@ const Render3D = (() => {
     scatter(group, COVER.sign(), [{ x: ly[0] - 60, z: ly[1] + 70, s: 1, ry: 0.4 }, { x: m.door.x - 360, z: m.door.y + 80, s: 1, ry: 0 }, { x: m.plaza.x + m.plaza.r + 40, z: 90, s: 1, ry: 0 }], true);
     if (type === 'field' || type === 'grass') {
       const mill = buildMill();
-      mill.root.position.set((m.zaap.x - 520) / U, 0, -180 / U);
+      mill.root.position.set((m.isles[0].x - m.isles[0].rx * 0.35) / U, 0, -m.isles[0].ry * 0.62 / U);
       mill.root.rotation.y = 0.3;
       group.add(mill.root);
       W3.mill = mill.hub;
@@ -1453,7 +1507,7 @@ const Render3D = (() => {
         if (rnd() > 0.3) continue;
         const x = cx + rnd() * CELL, y = cy + rnd() * CELL;
         if (avoid.some(([ax, ay, r]) => Math.hypot(ax - x, ay - y) < r)) continue;
-        if (WORLD.inWater(m, x, y, 40, false) || WORLD.roadDist(m, x, y) < 70) continue;
+        if (!WORLD.isleAt(m, x, y, 60) || WORLD.inWater(m, x, y, 40, false) || WORLD.roadDist(m, x, y) < 70) continue;
         let k = rnd(), pk = set[0];
         for (const d of set) { if (k < d[1]) { pk = d; break; } k -= d[1]; }
         push(pk[0], x / U, y / U, pk[2] + rnd() * (pk[3] - pk[2]));
@@ -1462,26 +1516,31 @@ const Render3D = (() => {
       const big = set[0][0], small = set.find((d) => d[0] === 'bush' || d[0] === 'mushroom' || d[0] === 'ice' || d[0] === 'spire' || d[0] === 'wheat') || set[set.length - 1];
       for (let c = 0, tries = 0; c < (z.decoType === 'forest' ? 26 : 16) && tries < 400; tries++) {
         const cx = 400 + rnd() * (W - 800), cy = (rnd() * 2 - 1) * (H - 150);
-        if (avoid.some(([ax, ay, r]) => Math.hypot(ax - cx, ay - cy) < r + 120) || WORLD.roadDist(m, cx, cy) < 200 || WORLD.inWater(m, cx, cy, 160, false)) continue;
+        if (avoid.some(([ax, ay, r]) => Math.hypot(ax - cx, ay - cy) < r + 120) || WORLD.roadDist(m, cx, cy) < 200 || WORLD.inWater(m, cx, cy, 160, false) || !WORLD.isleAt(m, cx, cy, 150)) continue;
         c++;
         const n = 7 + ((rnd() * 8) | 0);
         for (let k = 0; k < n; k++) {
           const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * 210;
           const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
-          if (WORLD.inWater(m, x, y, 40, false) || WORLD.roadDist(m, x, y) < 80) continue;
+          if (!WORLD.isleAt(m, x, y, 50) || WORLD.inWater(m, x, y, 40, false) || WORLD.roadDist(m, x, y) < 80) continue;
           const k = z.decoType === 'rock' ? 0.55 : 1;
           push(r < 150 ? big : small[0], x / U, y / U, (r < 150 ? 1 + rnd() * 0.6 : 0.8 + rnd() * 0.4) * k);
         }
       }
       // Lisière : rangées serrées tout autour de la carte
       // Au nord : grands arbres ; au sud (côté caméra) : décor bas pour ne pas masquer l'action
+      // Bord des îles : grands arbres au nord, décor bas au sud (côté caméra)
       const kind = BORDER_SET[z.decoType] || 'tree', low = LOW_BORDER[z.decoType] || 'bush';
-      for (let x = -120; x < W + 120; x += 70) for (let row = 0; row < 3; row++) {
-        push(kind, (x + rnd() * 40) / U, -(H + 30 + row * 75 + rnd() * 40) / U, 1.3 + rnd() * 0.9 + row * 0.25);
-        push(low, (x + rnd() * 40) / U, (H + 40 + row * 60 + rnd() * 30) / U, 0.9 + rnd() * 0.5);
+      for (const isl of m.isles) {
+        const per = Math.PI * (isl.rx + isl.ry);
+        for (let d = 0; d < per; d += 75) {
+          const a = (d / per) * Math.PI * 2 + rnd() * 0.03;
+          const [x, y] = WORLD.edgePoint(isl, a, 0.86 + rnd() * 0.08);
+          if (WORLD.roadDist(m, x, y) < 120 || avoid.some(([ax, ay, r]) => Math.hypot(ax - x, ay - y) < r) || WORLD.inWater(m, x, y, 40, false)) continue;
+          if (Math.sin(a) < 0.2) push(kind, x / U, y / U, 1.1 + rnd() * 0.6);
+          else if (rnd() < 0.7) push(low, x / U, y / U, 0.8 + rnd() * 0.4);
+        }
       }
-      for (const ex of [-40, W + 40]) for (let y = -H; y < H; y += 70) for (let row = 0; row < 3; row++)
-        push(kind, (ex + Math.sign(ex - 1) * row * 75 + rnd() * 30) / U, (y + rnd() * 40) / U, 1.4 + rnd() * 0.8);
     } else {
       // Donjon : éboulis le long des murs
       for (let x = 300; x < W - 150; x += 120) if (rnd() < 0.45) push('rock', x / U, (rnd() < 0.5 ? -1 : 1) * (H - 30 - rnd() * 50) / U, 0.5 + rnd() * 0.6);
@@ -1591,7 +1650,7 @@ const Render3D = (() => {
     if (key !== W3.anchor) { W3.anchor = key; paintTiles(ax, az); }
     // Ciel et brouillard
     const dungeon = m.kind === 'dungeon';
-    const target = dungeon ? tmpC.set(0x1c1626) : tmpC.set(S.zone.ground).lerp(WHITE, 0.55);
+    const target = dungeon ? tmpC.set(0x1c1626) : tmpC.set(m.decoType === 'snow' ? '#c8def0' : '#9fd2f2').lerp(zcol(S.zone.ground), 0.12);
     if (W3.first) { W3.sky.copy(target); W3.first = false; } else W3.sky.lerp(target, Math.min(1, dt * 2));
     scene.background.copy(W3.sky);
     scene.fog.color.copy(W3.sky);

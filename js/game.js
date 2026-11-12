@@ -420,7 +420,7 @@ const Game = (() => {
       map: null, camps: [], lairs: [], dead: 0, combatT: 10, playTime: adv.playTime || 0,
     };
     const m = WORLD.zones[Math.min(4, adv.zone || 0)];
-    const pos = adv.pos && adv.pos.x > 0 && adv.pos.x < m.w && Math.abs(adv.pos.y) < m.h ? adv.pos : null;
+    const pos = adv.pos && WORLD.walkable(m, adv.pos.x, adv.pos.y, 20) ? adv.pos : null;
     loadMap(m, pos);
   }
 
@@ -440,6 +440,7 @@ const Game = (() => {
     w.lairs = (m.kind === 'zone' ? [m.lair] : [m.boss]).map((def) => ({ def, e: null, nextAt: 0 }));
     const at = pos || (m.kind === 'zone' ? { x: m.zaap.x + 140, y: 40 } : { x: m.exit.x + 170, y: 0 });
     S.p.x = at.x; S.p.y = at.y;
+    w.isle = m.kind === 'zone' ? ((WORLD.isleAt(m, at.x, at.y) || { k: 0 }).k) : -1;
     r3RadiusAt = -1;
     if (m.kind === 'zone') cb.onBanner(m.name, `Monstres niv. ${m.lvl[0]} à ${m.lvl[1]}`);
     else cb.onBanner(m.name, 'Le gardien vous attend au fond du donjon…');
@@ -454,6 +455,13 @@ const Game = (() => {
       return;
     }
     const dungeon = m.kind === 'dungeon';
+    // Changement d'île : son nom et le niveau de ses monstres
+    const isl = !dungeon && WORLD.isleAt(m, p.x, p.y);
+    if (isl && isl.k !== w.isle) {
+      w.isle = isl.k;
+      if (isl.k) cb.onBanner(isl.name, `Monstres niv. ${isl.lvl[0]} à ${isl.lvl[1]} · ${[...new Set(isl.ids)].map((id) => MONSTERS[id].name).join(', ')}`);
+      else cb.onBanner(m.name, 'Île du zaap');
+    }
     // Camps : en zone, les monstres apparaissent à l'approche et disparaissent quand on s'éloigne ;
     // dans le donjon, toutes les salles sont peuplées dès l'entrée et ne se repeuplent pas.
     for (const c of w.camps) {
@@ -668,7 +676,7 @@ const Game = (() => {
   function worldHud() {
     const w = S.world, q = WORLD.QUESTS[w.quest], n = nearby(), m = w.map;
     return {
-      zone: m.kind === 'zone' ? m.name : 'Donjon · ' + m.name, quest: q ? q.title : 'Le Monde des Douze est sauvé', goal: questText(q, w),
+      zone: m.kind === 'zone' ? m.name + (w.isle ? ' · ' + m.isles[w.isle].name : '') : 'Donjon · ' + m.name, quest: q ? q.title : 'Le Monde des Douze est sauvé', goal: questText(q, w),
       action: n ? n.label : null, px: S.p.x, py: S.p.y, map: m, level: S.level,
       npcAlert: q && !w.qAccepted && q.zone === m.zone && m.kind === 'zone',
       camps: w.camps.filter((c) => c.members.length || S.t >= c.respawnAt).map((c) => c.def),
@@ -793,6 +801,7 @@ const Game = (() => {
     }
     const l = Math.hypot(mx, my);
     if (l > 1) { mx /= l; my /= l; }
+    const ox = p.x, oy = p.y;
     if (l > 0.05) {
       const sp = CLASSES[S.cls].speed * S.stats.speed;
       p.x += mx * sp * dt; p.y += my * sp * dt;
@@ -807,7 +816,11 @@ const Game = (() => {
       p.x = clamp(p.x, 40, m.w - 40);
       p.y = clamp(p.y, -m.h + 40, m.h - 40);
       // Eau, gouffres et maisons
-      if (m.kind === 'zone') [p.x, p.y] = WORLD.collide(m, p.x, p.y, p.r);
+      if (m.kind === 'zone') {
+        [p.x, p.y] = WORLD.collide(m, p.x, p.y, p.r);
+        // Archipel : on reste sur les îles et les ponts
+        [p.x, p.y] = WORLD.walk(m, ox, oy, p.x, p.y, p.r);
+      }
       // Hors combat depuis 6 s : la vie remonte
       S.world.combatT += dt;
       if (S.world.combatT > 6 && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.04 * dt);
@@ -1300,7 +1313,12 @@ const Game = (() => {
     }
     if (S.mode === 'world' && S.world.map.kind === 'zone') {
       const m = S.world.map;
-      for (const e of S.enemies) if (!e.dead) [e.x, e.y] = WORLD.collide(m, e.x, e.y, e.r * 0.8);
+      for (const e of S.enemies) {
+        if (e.dead) continue;
+        [e.x, e.y] = WORLD.collide(m, e.x, e.y, e.r * 0.8);
+        if (e.lx !== undefined) [e.x, e.y] = WORLD.walk(m, e.lx, e.ly, e.x, e.y, e.r * 0.6);
+        e.lx = e.x; e.ly = e.y;
+      }
     }
     S.enemies = S.enemies.filter((e) => !e.dead);
   }
@@ -1748,6 +1766,7 @@ const Game = (() => {
   function drawGround(x0, y0, x1, y1) {
     if (S.mode !== 'world') return drawZoneGround(S.zone, x0, y0, x1, y1);
     const m = S.world.map, z = S.zone, dungeon = m.kind === 'dungeon';
+    if (!dungeon) { drawIslands2D(m, z, x0, y0, x1, y1); drawWorldPlaces(); return; }
     // Hors de la carte : falaise sombre
     ctx.fillStyle = dungeon ? '#0e0a16' : shade(z.ground, 0.45);
     ctx.fillRect(x0 - 10, y0 - 10, x1 - x0 + 20, y1 - y0 + 20);
@@ -1764,9 +1783,9 @@ const Game = (() => {
         for (let gy = Math.floor(by0 / T) * T; gy < by1; gy += T)
           for (let gx = Math.floor(bx0 / T) * T; gx < bx1; gx += T) if (((gx + gy) / T) & 1) ctx.fillRect(gx, gy, T, T);
       } else {
-        ctx.fillStyle = z.ground;
-        ctx.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
-        drawZoneGround(z, bx0, by0, bx1, by1);
+        ctx.restore();
+        drawIslands2D(m, z, x0, y0, x1, y1);
+        ctx.save();
       }
       ctx.restore();
     }
@@ -1808,9 +1827,9 @@ const Game = (() => {
     }
     if (m.decoType !== 'snow' && m.decoType !== 'rock') {
       const cols = ['#ffffff', '#ff9ab0', '#ffd84a', '#b48cff', '#ff7a5a'];
-      for (let k = 0; k < 2500 && out.flowers.length < 900; k++) {
+      for (let k = 0; k < 9000 && out.flowers.length < 900; k++) {
         const x = rnd() * m.w, y = (rnd() * 2 - 1) * m.h;
-        if (WORLD.inWater(m, x, y, 10, false) || WORLD.roadDist(m, x, y) < 50) continue;
+        if (!WORLD.isleAt(m, x, y, 20) || WORLD.inWater(m, x, y, 10, false) || WORLD.roadDist(m, x, y) < 50) continue;
         out.flowers.push({ x, y, c: cols[(rnd() * cols.length) | 0] });
       }
     }
@@ -1894,6 +1913,48 @@ const Game = (() => {
     ctx.fillStyle = '#b5482e'; ctx.beginPath(); ctx.moveTo(w.x - 38, w.y - 46); ctx.lineTo(w.x, w.y - 70); ctx.lineTo(w.x + 38, w.y - 46); ctx.closePath(); ctx.fill();
   }
 
+  /** Archipel en 2D : ciel, falaises, îles, ponts de corde. */
+  function islandPath(m) {
+    if (m._path) return m._path;
+    const p = new Path2D();
+    for (const isl of m.isles) {
+      for (let k = 0; k <= 96; k++) {
+        const a = (k / 96) * Math.PI * 2, w = WORLD.wob(isl, a);
+        const x = isl.x + Math.cos(a) * isl.rx * w, y = isl.y + Math.sin(a) * isl.ry * w;
+        k ? p.lineTo(x, y) : p.moveTo(x, y);
+      }
+      p.closePath();
+    }
+    m._path = p;
+    return m._path;
+  }
+  function drawIslands2D(m, z, x0, y0, x1, y1) {
+    ctx.fillStyle = m.decoType === 'snow' ? '#c8def0' : '#9fd2f2';
+    ctx.fillRect(x0 - 10, y0 - 10, x1 - x0 + 20, y1 - y0 + 20);
+    const path = islandPath(m);
+    // Falaises : l'île décalée vers le bas, en strates
+    for (const [dy, col] of [[90, '#4e3a2c'], [60, '#6a5240'], [30, '#8a6a4a']]) {
+      ctx.save(); ctx.translate(0, dy); ctx.fillStyle = col; ctx.fill(path); ctx.restore();
+    }
+    // Ponts
+    for (const b of m.spans) {
+      const L = Math.hypot(b.bx - b.ax, b.by - b.ay), a = Math.atan2(b.by - b.ay, b.bx - b.ax);
+      ctx.save(); ctx.translate(b.ax, b.ay); ctx.rotate(a);
+      ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(0, -b.w / 2 + 30, L, b.w);
+      for (let t = 0; t < L; t += 24) { ctx.fillStyle = (t / 24) % 5 < 1 ? '#6a4220' : '#a8743a'; ctx.fillRect(t, -b.w / 2 + 6, 20, b.w - 12); }
+      ctx.strokeStyle = '#d8c08a'; ctx.lineWidth = 3;
+      for (const sy of [-b.w / 2 + 4, b.w / 2 - 4]) { ctx.beginPath(); ctx.moveTo(0, sy); ctx.quadraticCurveTo(L / 2, sy + 10, L, sy); ctx.stroke(); }
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.clip(path);
+    ctx.fillStyle = z.ground;
+    ctx.fillRect(x0 - 10, y0 - 10, x1 - x0 + 20, y1 - y0 + 20);
+    drawZoneGround(z, x0, y0, x1, y1);
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(40,28,20,.35)'; ctx.lineWidth = 4; ctx.stroke(path);
+  }
+
   function shade(hex, k) {
     const n = parseInt(hex.slice(1), 16);
     return `rgb(${((n >> 16) & 255) * k | 0},${((n >> 8) & 255) * k | 0},${(n & 255) * k | 0})`;
@@ -1966,7 +2027,7 @@ const Game = (() => {
         const h = hash(cx, cy, z.idx !== undefined ? z.idx + 1 : S.zoneIdx + 1);
         if (h > 0.55) continue;
         const x = cx * C + hash(cx, cy, 7) * C, y = cy * C + hash(cx, cy, 13) * C;
-        if (terrain && (WORLD.inWater(terrain, x, y, 30, false) || WORLD.roadDist(terrain, x, y) < 60)) continue;
+        if (terrain && (!WORLD.isleAt(terrain, x, y, 30) || WORLD.inWater(terrain, x, y, 30, false) || WORLD.roadDist(terrain, x, y) < 60)) continue;
         drawDeco(z, x, y, h / 0.55, hash(cx, cy, 21));
       }
     }

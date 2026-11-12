@@ -36,6 +36,19 @@ function buildMonstreLarve() {
   return g;
 }
 
+/** Pichon : petit poisson bleu qui sautille hors de l'eau. */
+function buildMonstrePichon() {
+  const g = mG(), b = mat(0x5ab0e8), d = mat(0x1f5f9a), belly = mat(0xe8f4ff);
+  const body = at(sph(0.32, 8, 6, b), 0, 0.36, 0); body.scale.set(0.8, 0.9, 1.25); g.add(body);
+  const bl = at(sph(0.24, 8, 6, belly), 0, 0.28, 0.06); bl.scale.set(0.75, 0.7, 1.1); g.add(bl);
+  g.add(at(cone(0.22, 0.3, 4, d), 0, 0.38, -0.5, -Math.PI / 2, Math.PI / 4));
+  g.add(at(cone(0.09, 0.26, 4, d), 0, 0.68, -0.02, -0.3, Math.PI / 4));
+  for (const k of [-1, 1]) g.add(at(cone(0.07, 0.18, 4, d), k * 0.25, 0.3, 0.05, 0, 0, k * 1.9));
+  g.add(at(box(0.16, 0.05, 0.04, mat(0xff8a9a)), 0, 0.27, 0.39));
+  mEyes(g, 0.12, 0.44, 0.3, 0.075);
+  return g;
+}
+
 /* ---------------------------------------------------------------- Amakna */
 /** Sanglier : corps trapu, groin, défenses, crête de poils. */
 function buildMonstreSanglier() {
@@ -249,6 +262,7 @@ const MONSTER_MODELS = {
   tofu: { build: buildMonstreTofu, anim: 'hop' },
   piou: { build: buildMonstrePiou, anim: 'hop' },
   larve_bleue: { build: buildMonstreLarve, anim: 'crawl' },
+  pichon: { build: buildMonstrePichon, anim: 'hop' },
   sanglier: { build: buildMonstreSanglier, anim: 'trot' },
   arakne: { build: buildMonstreArakne, anim: 'crawl' },
   moskito: { build: buildMonstreMoskito, anim: 'fly' },

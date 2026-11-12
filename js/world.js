@@ -152,6 +152,137 @@ const WORLD = (() => {
     m.well = { x: m.zaap.x - 110, y: 150 };
   }
 
+  /* ---------------------------------------------------------------- Archipels */
+  // Chaque monde est un archipel flottant : une île centrale (zaap, hameau, personnage)
+  // et quatre îles reliées par des ponts, chacune peuplée d'une seule famille de monstres.
+  const ISLES = [
+    { x: 950, y: 0, rx: 720, ry: 540 },       // 0 : île centrale
+    { x: 2450, y: -820, rx: 640, ry: 470 },   // 1
+    { x: 2450, y: 820, rx: 640, ry: 470 },    // 2
+    { x: 3900, y: 0, rx: 700, ry: 540 },      // 3 (repaire du boss intermédiaire)
+    { x: 5250, y: 0, rx: 720, ry: 580 },      // 4 (entrée du donjon)
+  ];
+  const LINKS = [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4]];
+  // Sous-zones : nom, monstres, plans d'eau
+  const SUBZONES = [
+    [{ name: 'Champs d’Astrub', ids: ['tofu', 'piou'] }, { name: 'Calanque d’Astrub', ids: ['pichon'], lake: 'water' },
+     { name: 'Forêt d’Astrub', ids: ['larve_bleue', 'piou'] }, { name: 'Tainéla', ids: ['bouftou'] }],
+    [{ name: 'Bois d’Amakna', ids: ['arakne'] }, { name: 'Marais d’Amakna', ids: ['moskito'], lake: 'swamp' },
+     { name: 'Champs de cawottes', ids: ['prespic', 'arakne'] }, { name: 'Territoire des sangliers', ids: ['sanglier'] }],
+    [{ name: 'Bois des fantômes', ids: ['fantome'] }, { name: 'Tour des archers', ids: ['chafer_archer'] },
+     { name: 'Bosquet ancien', ids: ['abraknyde'], lake: 'swamp' }, { name: 'Cimetière des chafers', ids: ['chafer', 'chafer_archer'] }],
+    [{ name: 'Lacs de gelée', ids: ['gelee'], lake: 'water' }, { name: 'Village bwork', ids: ['bwork'] },
+     { name: 'Tour des mages bworks', ids: ['bwork_mage', 'bwork'] }, { name: 'Mines des craqueleurs', ids: ['craqueleur'], lake: 'chasm' }],
+    [{ name: 'Banquise des mansots', ids: ['mansot'], lake: 'ice' }, { name: 'Pâturages gelés', ids: ['boufmouth'], lake: 'hole' },
+     { name: 'Forêt des sapiks', ids: ['sapik'] }, { name: 'Bois pétrifiés', ids: ['fecorce', 'sapik'] }],
+  ];
+  // Repaire du boss intermédiaire : île de sa famille
+  const LAIR_ISLE = [1, 3, 3, 3, 1];
+
+  /** Bord irrégulier d'une île (multiplicateur du rayon selon l'angle). */
+  function wob(isl, a) { return 1 + 0.07 * Math.sin(3 * a + isl.s) + 0.045 * Math.sin(5 * a + isl.s * 2.1) + 0.03 * Math.sin(9 * a + isl.s * 0.7); }
+  /** Distance « normalisée » au centre d'une île (1 = bord). */
+  function isleE(isl, x, y) {
+    const dx = (x - isl.x) / isl.rx, dy = (y - isl.y) / isl.ry;
+    return Math.sqrt(dx * dx + dy * dy) / wob(isl, Math.atan2(dy, dx));
+  }
+  function edgePoint(isl, a, k = 1) { const w = wob(isl, a) * k; return [isl.x + Math.cos(a) * isl.rx * w, isl.y + Math.sin(a) * isl.ry * w]; }
+  /** Île sous un point (ou null). */
+  function isleAt(m, x, y, pad = 0) {
+    if (!m.isles) return null;
+    for (const isl of m.isles) if (isleE(isl, x, y) < 1 - pad / Math.min(isl.rx, isl.ry)) return isl;
+    return null;
+  }
+  function onBridge(m, x, y, pad = 0) {
+    for (const b of m.spans || []) if (segDist(x, y, b.ax, b.ay, b.bx, b.by) < b.w / 2 - pad) return b;
+    return null;
+  }
+  /** Le point est-il sur la terre ferme (île ou pont) ? */
+  function walkable(m, x, y, r = 0) {
+    if (!m.isles) return true;
+    return !!(isleAt(m, x, y, r) || onBridge(m, x, y, r * 0.4));
+  }
+  /** Déplacement : glisse le long du bord au lieu de tomber dans le vide. */
+  function walk(m, ox, oy, nx, ny, r) {
+    if (walkable(m, nx, ny, r)) return [nx, ny];
+    if (walkable(m, nx, oy, r)) return [nx, oy];
+    if (walkable(m, ox, ny, r)) return [ox, ny];
+    return [ox, oy];
+  }
+
+  function genIslands(m, r, zi) {
+    const sub = SUBZONES[zi];
+    m.isles = ISLES.map((d, k) => ({ ...d, s: r() * 6.28, k, name: k ? sub[k - 1].name : m.name, ids: k ? sub[k - 1].ids : [], lake: k ? sub[k - 1].lake : null }));
+    const [l0, l1] = m.lvl, span = (l1 - l0 + 1) / 4;
+    m.isles.forEach((isl, k) => { if (k) isl.lvl = [l0 + Math.floor((k - 1) * span), Math.min(l1, l0 + Math.floor(k * span) - (k < 4 ? 1 : 0))]; });
+    // Ponts entre les îles (d'un bord à l'autre)
+    m.spans = LINKS.map(([a, b]) => {
+      const A = m.isles[a], B = m.isles[b];
+      const ang = Math.atan2(B.y - A.y, B.x - A.x);
+      const [ax, ay] = edgePoint(A, ang, 0.9), [bx, by] = edgePoint(B, ang + Math.PI, 0.9);
+      return { ax, ay, bx, by, w: 120, a, b };
+    });
+    const hub = m.isles[0];
+    m.zaap = { x: hub.x - 230, y: 0 };
+    m.npc = { ...m.npc, x: m.zaap.x + 210, y: -40 };
+    const li = m.isles[LAIR_ISLE[zi]];
+    m.lair = { ...m.lair, x: li.x + 60, y: li.y + (li.y < 0 ? -li.ry * 0.3 : li.ry * 0.3) };
+    const di = m.isles[4];
+    m.door = { x: di.x + di.rx * 0.62, y: di.y };
+    // Chemins : du zaap à chaque pont, puis jusqu'au cœur de chaque île
+    const ctr = (isl) => [isl.x, isl.y];
+    m.roads = [];
+    for (const b of m.spans) {
+      const A = m.isles[b.a], B = m.isles[b.b];
+      const from = b.a === 0 ? [m.zaap.x + 120, 0] : ctr(A);
+      const mid1 = [(from[0] + b.ax) / 2 + (r() - 0.5) * 120, (from[1] + b.ay) / 2 + (r() - 0.5) * 120];
+      const mid2 = [(b.bx + B.x) / 2 + (r() - 0.5) * 120, (b.by + B.y) / 2 + (r() - 0.5) * 120];
+      m.roads.push(smoothPath([from, mid1, [b.ax, b.ay], [b.bx, b.by], mid2, ctr(B)]));
+    }
+    m.roads.push(smoothPath([ctr(di), [di.x + di.rx * 0.3, di.y + 40], [m.door.x - 60, m.door.y]]));
+    m.plaza = { x: m.zaap.x + 80, y: 0, r: 230 };
+    // Plans d'eau propres à certaines îles
+    m.water = [];
+    m.bridges = [];
+    for (const isl of m.isles) {
+      if (!isl.lake) continue;
+      const n = isl.lake === 'ice' ? 1 : isl.lake === 'chasm' ? 2 : 3;
+      for (let k = 0, t = 0; k < n && t < 600; t++) {
+        const big = isl.lake === 'ice' ? 0.42 : isl.lake === 'water' && k === 0 ? 0.33 : 0.18;
+        const rx = isl.rx * big * (0.8 + r() * 0.3), ry = rx * (0.6 + r() * 0.25);
+        const a = r() * 6.28, d = 0.2 + r() * 0.4;
+        const x = isl.x + Math.cos(a) * isl.rx * d, y = isl.y + Math.sin(a) * isl.ry * d;
+        if (isleE(isl, x, y) + Math.max(rx / isl.rx, ry / isl.ry) > 0.85 || roadDist(m, x, y) < Math.max(rx, ry) + 50) continue;
+        if (Math.hypot(m.lair.x - x, m.lair.y - y) < rx + 300 || Math.hypot(m.door.x - x, m.door.y - y) < rx + 300) continue;
+        if (m.water.some((w) => Math.hypot(w.x - x, w.y - y) < w.rx + rx + 80)) continue;
+        m.water.push({ x, y, rx, ry, kind: isl.lake });
+        k++;
+      }
+    }
+    // Hameau autour du zaap
+    m.houses = [[-200, -330, 0.15], [170, -370, -0.2], [-250, 320, -0.1], [190, 350, 0.25], [-420, -40, 0.1]].map(([dx, dy, rot], k) => ({
+      x: m.zaap.x + dx, y: m.zaap.y + dy, r: 85, rot, roof: ['#b5482e', '#3f6fb0', '#7a4a9a', '#b5482e', '#3f8a5a'][k],
+    }));
+    m.well = { x: m.zaap.x - 110, y: 170 };
+    // Camps : six ou sept par île, de la famille de l'île
+    m.camps = [];
+    for (const isl of m.isles) {
+      if (!isl.k) continue;
+      for (let c = 0, t = 0; c < 7 && t < 600; t++) {
+        const a = r() * 6.28, d = 0.15 + r() * 0.68;
+        const x = isl.x + Math.cos(a) * isl.rx * d, y = isl.y + Math.sin(a) * isl.ry * d;
+        if (isleE(isl, x, y) > 0.82 || roadDist(m, x, y) < 110 || inWater(m, x, y, 120, false)) continue;
+        if (Math.hypot(m.lair.x - x, m.lair.y - y) < 420 || Math.hypot(m.door.x - x, m.door.y - y) < 380) continue;
+        if (m.camps.some((o) => Math.hypot(o.x - x, o.y - y) < 300)) continue;
+        const ids = [], n = 3 + ((r() * 3) | 0);
+        for (let q = 0; q < n; q++) ids.push(isl.ids[q === n - 1 ? (r() * isl.ids.length) | 0 : 0]);
+        m.camps.push({ x, y, ids, lvl: isl.lvl[0] + Math.floor(r() * (isl.lvl[1] - isl.lvl[0] + 1)), isle: isl.k });
+        c++;
+      }
+    }
+    m.w = 6100; m.h = 1450;
+  }
+
   const zones = ZONES.map((z, i) => {
     const r = rng(1000 + i * 77);
     const [l0, l1] = LEVELS[i];
@@ -163,22 +294,7 @@ const WORLD = (() => {
       door: { x: MAP_W - 260, y: 0 },
       camps: [],
     };
-    genTerrain(m, r);
-    // Camps de monstres : plus on va vers l'est (vers le donjon), plus ils sont forts
-    const avoid = [m.zaap, m.npc, m.lair, m.door];
-    let tries = 0;
-    while (m.camps.length < 26 && tries++ < 3000) {
-      const x = 260 + r() * (MAP_W - 520), y = -MAP_H + 200 + r() * (MAP_H * 2 - 400);
-      if (avoid.some((a) => Math.hypot(a.x - x, a.y - y) < 560)) continue;
-      if (m.camps.some((c) => Math.hypot(c.x - x, c.y - y) < 360)) continue;
-      if (inWater(m, x, y, 140, false) || roadDist(m, x, y) < 120) continue;
-      const main = z.monsters[(r() * z.monsters.length) | 0], second = z.monsters[(r() * z.monsters.length) | 0];
-      const n = 3 + ((r() * 3) | 0);
-      const ids = [];
-      for (let k = 0; k < n; k++) ids.push(k < n - 1 ? main : second);
-      const lvl = Math.min(l1, l0 + Math.floor((x / MAP_W) * (l1 - l0 + 1) + r() * 1.5));
-      m.camps.push({ x, y, ids, lvl });
-    }
+    genIslands(m, r, i);
     // Donjon : quatre salles de monstres puis le gardien
     const d = {
       key: 'd' + i, kind: 'dungeon', zone: i, name: DUNGEONS[i], w: DJ_W, h: DJ_H, lvl: [l1, l1 + 3],
@@ -200,17 +316,17 @@ const WORLD = (() => {
   // goal : { kill: id, n } ou { boss: id }. La première quête de chaque zone se reçoit en parlant au personnage.
   const Q = (zone, title, goal, intro, done, xp, kamas) => ({ zone, title, goal, intro, done, xp, kamas });
   const QUESTS = [
-    Q(0, 'Premiers pas', { kill: 'bouftou', n: 8 },
+    Q(0, 'Premiers pas', { kill: 'tofu', n: 8 },
       ['Ah, enfin quelqu’un ! Je suis Oriel, le dernier gardien des zaaps.',
        'Une brume noire monte des glaces de Frigost. Elle éteint nos zaaps un à un et rend les créatures folles.',
-       'Les bouftous d’Astrub attaquent déjà les voyageurs. Montre-moi ce que tu vaux : chasse 8 bouftous.'],
+       'Les tofus des Champs d’Astrub attaquent déjà les voyageurs. Montre-moi ce que tu vaux : chasse 8 tofus. Les champs sont sur l’île au nord-est, de l’autre côté du pont.'],
       ['Joli travail ! Garde l’équipement que tu trouves sur les monstres, il te sera utile.'], 60, 40),
     Q(0, 'Le roi des tofus', { boss: 'tofu_royal' },
       ['Le Tofu Royal s’est terré dans son nid, au milieu de la plaine. Ses yeux brillent de brume.',
        'Va le calmer avant qu’il n’entraîne tous les tofus avec lui.'],
       ['Le Tofu Royal est retombé dans un profond sommeil. La brume recule un peu.'], 140, 80),
     Q(0, 'La Bergerie maudite', { boss: 'bouftou_royal' },
-      ['La brume vient du Bouftou Royal. Il s’est retranché au fond de sa bergerie, tout à l’est d’Astrub.',
+      ['La brume vient du Bouftou Royal. Il s’est retranché au fond de sa bergerie, sur l’île de Tainéla, tout à l’est.',
        'Entre dans le donjon et bats-le : la route d’Amakna s’ouvrira.'],
       ['Le Bouftou Royal est tombé ! La route d’Amakna est ouverte. Margot, à la ferme, a besoin d’aide.'], 260, 150),
 
@@ -225,10 +341,10 @@ const WORLD = (() => {
       ['Un Dragon Cochon corrompu s’est installé dans la vieille porcherie, à l’est. C’est lui qui scelle la route de la forêt.'],
       ['Le Dragon Cochon est vaincu ! La forêt des Abraknydes s’ouvre. Sylvain le druide t’y attend.'], 480, 260),
 
-    Q(2, 'Les os qui marchent', { kill: 'chafer', n: 12 },
-      ['La forêt souffre… Je suis Sylvain. La brume réveille les chafers enterrés sous les racines.',
-       'Renvoie 12 chafers à leur repos éternel.'],
-      ['Les morts se taisent. Mais les arbres, eux, grondent encore.'], 380, 200),
+    Q(2, 'Les âmes perdues', { kill: 'fantome', n: 12 },
+      ['La forêt souffre… Je suis Sylvain. La brume réveille les esprits du Bois des fantômes.',
+       'Renvoie 12 fantômes à leur repos éternel.'],
+      ['Les esprits se taisent. Mais les arbres, eux, grondent encore.'], 380, 200),
     Q(2, 'L’Abraknyde Ancestral', { boss: 'abrak_ancestral' },
       ['Le plus vieil arbre de la forêt, l’Abraknyde Ancestral, est devenu fou. Apaise-le.'],
       ['L’Ancestral s’est rendormi. Il ne reste que le Chêne Mou.'], 560, 300),
@@ -236,9 +352,9 @@ const WORLD = (() => {
       ['Au fond de la forêt, le Chêne Mou pourrit sous la brume. Ses racines forment un donjon : descends-y.'],
       ['La forêt est libérée ! Monte vers les Craqueleurs, Brakk le mineur te guidera.'], 760, 400),
 
-    Q(3, 'Pierres vivantes', { kill: 'craqueleur', n: 10 },
-      ['Hé, toi ! Brakk, mineur. Les craqueleurs se sont réveillés et écrasent mes galeries.',
-       'Casse-m’en 10 et on causera.'],
+    Q(3, 'Gelées en folie', { kill: 'gelee', n: 10 },
+      ['Hé, toi ! Brakk, mineur. Les gelées des lacs débordent et bouchent le chemin des mines.',
+       'Éclate-m’en 10 et on causera.'],
       ['Ha ! Voilà du solide.'], 620, 320),
     Q(3, 'Le Craqueleur des Plaines', { boss: 'craq_roc' },
       ['Un Craqueleur géant sème la panique dans la plaine de Cania. Arrête-le.'],
@@ -382,8 +498,24 @@ const WORLD = (() => {
       g.fillStyle = '#241d30'; g.fillRect(0, 0, Wd, Math.max(2, Hd * 0.05));
       return { X, Y, s };
     }
-    g.fillStyle = z.ground; g.fillRect(0, 0, Wd, Hd);
-    // Forêt et reliefs suggérés par des taches plus sombres
+    // Ciel, puis chaque île (falaise décalée dessous) et les ponts
+    g.fillStyle = m.decoType === 'snow' ? '#c8def0' : '#9fd2f2'; g.fillRect(0, 0, Wd, Hd);
+    const islePath = (isl, dy = 0) => {
+      g.beginPath();
+      for (let k = 0; k <= 72; k++) { const a = (k / 72) * Math.PI * 2, w = wob(isl, a); const x = X(isl.x + Math.cos(a) * isl.rx * w), y = Y(isl.y + Math.sin(a) * isl.ry * w) + dy; k ? g.lineTo(x, y) : g.moveTo(x, y); }
+      g.closePath();
+    };
+    for (const isl of m.isles) { g.fillStyle = '#6a5240'; islePath(isl, Math.max(2, 50 * sy)); g.fill(); }
+    g.lineCap = 'butt';
+    for (const b of m.spans) {
+      g.strokeStyle = '#8a5a2a'; g.lineWidth = Math.max(2, b.w * s * 0.8);
+      g.beginPath(); g.moveTo(X(b.ax), Y(b.ay)); g.lineTo(X(b.bx), Y(b.by)); g.stroke();
+    }
+    g.save();
+    g.beginPath();
+    for (const isl of m.isles) for (let k = 0; k <= 72; k++) { const a = (k / 72) * Math.PI * 2, w = wob(isl, a); const x = X(isl.x + Math.cos(a) * isl.rx * w), y = Y(isl.y + Math.sin(a) * isl.ry * w); k ? g.lineTo(x, y) : g.moveTo(x, y); }
+    g.fillStyle = z.ground; g.fill();
+    g.clip();
     g.fillStyle = z.ground2;
     const r = rng(9000 + m.zone);
     for (let k = 0; k < 140; k++) { g.beginPath(); g.arc(r() * Wd, r() * Hd, (6 + r() * 16) * s * 6, 0, Math.PI * 2); g.fill(); }
@@ -410,9 +542,10 @@ const WORLD = (() => {
       g.fillStyle = '#e8dcc0'; g.fillRect(X(hs.x - 70), Y(hs.y - 55), 140 * sx, 110 * sy);
       g.fillStyle = hs.roof; g.fillRect(X(hs.x - 80), Y(hs.y - 65), 160 * sx, 70 * sy);
     }
+    g.restore();
     return { X, Y, s };
   }
 
-  return { zones, QUESTS, NPCS, LEVELS, unlocked, SLOTS, RARITY, makeItem, itemDesc,
+  return { zones, QUESTS, NPCS, LEVELS, unlocked, SLOTS, RARITY, makeItem, itemDesc, isleAt, isleE, wob, edgePoint, walkable, walk, onBridge,
     WATER_KIND, ROAD_COL, roadDist, inWater, collide, drawMap, ...CHAR };
 })();

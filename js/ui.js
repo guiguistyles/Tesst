@@ -543,14 +543,23 @@ function renderMap() {
     g.fillStyle = lvlColor(c.lvl, w.level); g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 2;
     g.beginPath(); g.arc(X(c.x), Y(c.y), 7, 0, Math.PI * 2); g.fill(); g.stroke();
   }
+  // Nom et niveau de chaque île
+  for (const isl of m.isles || []) {
+    if (!isl.k) continue;
+    const ty = Y(isl.y - isl.ry * 0.62);
+    label(isl.name, X(isl.x), ty, '#fff6d0');
+    g.font = 'bold 17px Nunito, system-ui, sans-serif';
+    const sub = `niv. ${isl.lvl[0]}–${isl.lvl[1]} · ${[...new Set(isl.ids)].map((id) => MONSTERS[id].name).join(', ')}`;
+    g.lineWidth = 4; g.strokeStyle = 'rgba(20,12,30,.85)'; g.strokeText(sub, X(isl.x), ty + 22); g.fillStyle = lvlColor(isl.lvl[1], w.level); g.fillText(sub, X(isl.x), ty + 22);
+  }
   if (m.kind === 'zone') {
     g.fillStyle = '#f2a03a'; g.beginPath(); g.arc(X(m.lair.x), Y(m.lair.y), 13, 0, Math.PI * 2); g.fill();
-    label(MONSTERS[m.lair.id].name, X(m.lair.x), Y(m.lair.y) - 20, '#ffd0a0');
+    label(MONSTERS[m.lair.id].name, X(m.lair.x), Y(m.lair.y) + 36, '#ffd0a0');
     g.fillStyle = '#4fc3c7'; g.fillRect(X(m.zaap.x) - 11, Y(m.zaap.y) - 11, 22, 22);
     label('Zaap', X(m.zaap.x), Y(m.zaap.y) + 40, '#bff4f6');
     g.fillStyle = '#120c18'; g.strokeStyle = '#ffd0a0'; g.lineWidth = 3;
     g.fillRect(X(m.door.x) - 14, Y(m.door.y) - 14, 28, 28); g.strokeRect(X(m.door.x) - 14, Y(m.door.y) - 14, 28, 28);
-    label(`Donjon · ${MONSTERS[ZONES[m.zone].boss].name} (niv. ${WORLD.DUNGEON_LEVEL[m.zone]})`, X(m.door.x) - 120, Y(m.door.y) - 26, '#ffd0a0');
+    label(`Donjon (niv. ${WORLD.DUNGEON_LEVEL[m.zone]})`, X(m.door.x) - 20, Y(m.door.y) + 42, '#ffd0a0');
     g.fillStyle = '#f2c14e'; g.beginPath(); g.arc(X(m.npc.x), Y(m.npc.y), 9, 0, Math.PI * 2); g.fill();
     label(m.npc.name + (w.npcAlert && here === m ? ' !' : ''), X(m.npc.x), Y(m.npc.y) - 16, '#f2c14e');
   } else {

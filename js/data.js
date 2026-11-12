@@ -700,6 +700,7 @@ const MONSTERS = {
   bouftou:      { name: 'Bouftou', hp: 10, speed: 60, dmg: 5, xp: 1, r: 14, shape: 'sheep', body: '#f2efe6', detail: '#6b4a2a' },
   tofu:         { name: 'Tofu', hp: 6, speed: 105, dmg: 4, xp: 1, r: 9, shape: 'bird', body: '#ffd23f', detail: '#e07a1f' },
   piou:         { name: 'Piou Rouge', hp: 7, speed: 90, dmg: 4, xp: 1, r: 9, shape: 'bird', body: '#ff5b5b', detail: '#ffcc33' },
+  pichon:       { name: 'Pichon', hp: 9, speed: 85, dmg: 4, xp: 1, r: 10, shape: 'jelly', body: '#5ab0e8', detail: '#1f5f9a' },
   larve_bleue:  { name: 'Larve Bleue', hp: 18, speed: 45, dmg: 6, xp: 2, r: 13, shape: 'larva', body: '#4fa3ff', detail: '#1f5fa8' },
   tofu_royal:   { name: 'Tofu Royal', hp: 380, speed: 95, dmg: 12, xp: 30, r: 26, shape: 'bird', body: '#ffcc00', detail: '#d06010', boss: 1 },
   bouftou_royal:{ name: 'Bouftou Royal', hp: 1100, speed: 75, dmg: 18, xp: 80, r: 36, shape: 'sheep', body: '#fffbe8', detail: '#4a2f1a', boss: 2 },
@@ -738,7 +739,7 @@ const ZONES = [
   {
     id: 'astrub', x: 14, y: 70, name: 'Astrub', sub: 'Cité d’Astrub',
     ground: '#6a9b45', ground2: '#5f8f3e', deco: ['#4b7a30', '#e8d070', '#ff9ab0'], decoType: 'grass',
-    monsters: ['bouftou', 'tofu', 'piou', 'larve_bleue'], mini: 'tofu_royal', boss: 'bouftou_royal',
+    monsters: ['bouftou', 'tofu', 'piou', 'larve_bleue', 'pichon'], mini: 'tofu_royal', boss: 'bouftou_royal',
     hpMul: 1, dmgMul: 1, kamas: 1, dofus: ['cawotte', 'emeraude'],
   },
   {
