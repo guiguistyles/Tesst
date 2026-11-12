@@ -609,13 +609,24 @@ function drawMinimap(w) {
 
 function advZone(adv) { return adv.zone !== undefined ? adv.zone : Math.min(4, Math.floor(((adv.pos && adv.pos.x) || 0) / 3200)); }
 
+/** Icônes des emplacements d'équipement (SVG, teinte de la rareté). */
+const ITEM_SVG = {
+  arme: (c) => `<path d="M11 2h2v13h-2z" fill="#e4ebf2"/><path d="M11 2l1-1.5L13 2z" fill="#e4ebf2"/><path d="M7 15h10v2H7z" fill="#d8a830"/><path d="M11 17h2v4h-2z" fill="#6a4426"/><circle cx="12" cy="22" r="1.4" fill="${c}"/>`,
+  coiffe: (c) => `<path d="M3 17h18l-2 2H5z" fill="#7a3a2a"/><path d="M7 17l1-9h8l1 9z" fill="#9a4a32"/><path d="M7.4 14h9.2v2H7.4z" fill="${c}"/>`,
+  cape: (c) => `<path d="M7 4h10l3 16-8-3-8 3z" fill="#b03a3a"/><path d="M7 4h10v2.5H7z" fill="#d8a830"/><circle cx="12" cy="5.2" r="1.4" fill="${c}"/>`,
+  amulette: (c) => `<path d="M5 4a7 7 0 0 0 14 0" fill="none" stroke="#d8a830" stroke-width="1.8"/><path d="M12 11l4 5-4 6-4-6z" fill="${c}" stroke="#3a2a1a"/>`,
+  anneau: (c) => `<ellipse cx="12" cy="15" rx="6.5" ry="5" fill="none" stroke="#d8a830" stroke-width="2.6"/><path d="M12 3l3.5 4-3.5 4-3.5-4z" fill="${c}" stroke="#3a2a1a"/>`,
+  bottes: (c) => `<path d="M3 4h6v11h4v4H3z" fill="#6a4426"/><path d="M13 6h6v10h3v4h-9z" fill="#5a3818"/><path d="M3 4h6v2.5H3zM13 6h6v2.5h-6z" fill="${c}"/>`,
+};
+const itemIcon = (slot, color, size = 22) => (ITEM_SVG[slot] ? `<svg class="item-ico" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" style="--rc:${color}">${ITEM_SVG[slot](color)}</svg>` : '');
+
 /** Petite notification (objet équipé ou revendu). */
-function onToast(title, color, sub) {
+function onToast(title, color, sub, slot) {
   const box = $('#toasts');
   const el = document.createElement('div');
-  el.className = 'toast';
+  el.className = 'toast' + (slot ? ' with-ico' : '');
   el.style.borderColor = color;
-  el.innerHTML = `<b style="color:${color}">${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}`;
+  el.innerHTML = `${slot ? itemIcon(slot, color, 30) : ''}<div><b style="color:${color}">${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</div>`;
   box.prepend(el);
   while (box.children.length > 4) box.lastChild.remove();
   setTimeout(() => el.classList.add('out'), 3200);
@@ -627,7 +638,7 @@ function equipHtml() {
   const eq = Game.equipment();
   const rows = Object.keys(WORLD.SLOTS).map((slot) => {
     const it = eq[slot];
-    return `<div class="eq-row"><span class="eq-slot">${WORLD.SLOTS[slot].label}</span>${it
+    return `<div class="eq-row">${itemIcon(slot, it ? it.color : '#5a5070', 26)}<span class="eq-slot">${WORLD.SLOTS[slot].label}</span>${it
       ? `<div><b style="color:${it.color}">${esc(it.name)}</b><small>Niv. ${it.lvl} · ${esc(WORLD.itemDesc(it))}</small></div>`
       : '<div><small>Aucun</small></div>'}</div>`;
   }).join('');

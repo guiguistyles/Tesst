@@ -72,6 +72,14 @@ const WORLD = (() => {
       const dx = x - hs.x, dy = y - hs.y, d = Math.hypot(dx, dy), R = hs.r + r;
       if (d < R && d > 0.01) { x = hs.x + (dx / d) * R; y = hs.y + (dy / d) * R; }
     }
+    // Arbres, rochers et autres éléments solides du décor
+    if (m.solids) {
+      const cell = solidGrid(m).get(Math.floor(x / 200) * 1000 + Math.floor(y / 200));
+      if (cell) for (const o of cell) {
+        const dx = x - o.x, dy = y - o.y, d = Math.hypot(dx, dy), R = o.r + r;
+        if (d < R && d > 0.01) { x = o.x + (dx / d) * R; y = o.y + (dy / d) * R; }
+      }
+    }
     return [x, y];
   }
   /** Ordonnée du chemin principal à une abscisse donnée. */
@@ -283,6 +291,105 @@ const WORLD = (() => {
     m.w = 6100; m.h = 1450;
   }
 
+  /* ---------------------------------------------------------------- Décor (partagé par le moteur et les rendus) */
+  // [modèle, part, échelle min, échelle max]
+  const DECOR_SET = {
+    grass: [['tree', 0.35, 0.9, 1.3], ['bush', 0.65, 0.8, 1.3]],
+    field: [['wheat', 0.55, 0.9, 1.4], ['tree', 0.2, 0.9, 1.2], ['bush', 0.25, 0.8, 1.2]],
+    forest: [['oak', 0.55, 0.9, 1.5], ['mushroom', 0.25, 0.8, 1.5], ['bush', 0.2, 0.8, 1.2]],
+    rock: [['rock', 0.6, 0.7, 1.8], ['spire', 0.4, 0.8, 1.5]],
+    snow: [['pine', 0.55, 0.9, 1.5], ['ice', 0.45, 0.7, 1.4]],
+  };
+  const BORDER_SET = { grass: 'tree', field: 'tree', forest: 'oak', rock: 'spire', snow: 'pine' };
+  const LOW_BORDER = { grass: 'bush', field: 'wheat', forest: 'mushroom', rock: 'rock', snow: 'ice' };
+  // Rayon de collision (m) à l'échelle 1 ; 0 = on passe au travers (buissons, blé, herbe)
+  const SOLID_R = { tree: 0.6, oak: 0.8, pine: 0.55, spire: 0.7, rock: 0.85, ice: 0.45, boulder: 0.95, log: 0.85, hay: 0.95, gem: 0.55, snowman: 0.55, shroom: 0.45 };
+
+  function genDecor(m, r) {
+    const type = m.decoType, set = DECOR_SET[type] || DECOR_SET.grass;
+    const out = [];
+    const avoid = [[m.zaap.x, m.zaap.y, 300], [m.npc.x, m.npc.y, 200], [m.lair.x, m.lair.y, 300], [m.door.x, m.door.y, 330], [m.well.x, m.well.y, 90]];
+    for (const c of m.camps) avoid.push([c.x, c.y, 170]);
+    for (const hs of m.houses) avoid.push([hs.x, hs.y, 160]);
+    const blocked = (x, y, road = 70, isle = 60) => avoid.some(([ax, ay, rr]) => Math.hypot(ax - x, ay - y) < rr) ||
+      !isleAt(m, x, y, isle) || inWater(m, x, y, 40, false) || roadDist(m, x, y) < road;
+    const add = (kind, x, y, s) => out.push({ kind, x, y, s, ry: r() * Math.PI * 2 });
+    const pick = () => { let k = r(); for (const d of set) { if (k < d[1]) return d; k -= d[1]; } return set[0]; };
+    // Éléments isolés
+    for (let cx = 0; cx < m.w; cx += 150) for (let cy = -m.h; cy < m.h; cy += 150) {
+      if (r() > 0.3) continue;
+      const x = cx + r() * 150, y = cy + r() * 150;
+      if (blocked(x, y)) continue;
+      const d = pick();
+      add(d[0], x, y, d[2] + r() * (d[3] - d[2]));
+    }
+    // Bosquets serrés
+    const big = set[0][0], small = (set.find((d) => ['bush', 'mushroom', 'ice', 'spire', 'wheat'].includes(d[0])) || set[set.length - 1])[0];
+    const kk = type === 'rock' ? 0.55 : 1;
+    for (let c = 0, t = 0; c < (type === 'forest' ? 26 : 16) && t < 400; t++) {
+      const cx = 400 + r() * (m.w - 800), cy = (r() * 2 - 1) * (m.h - 150);
+      if (avoid.some(([ax, ay, rr]) => Math.hypot(ax - cx, ay - cy) < rr + 120) || roadDist(m, cx, cy) < 200 || inWater(m, cx, cy, 160, false) || !isleAt(m, cx, cy, 150)) continue;
+      c++;
+      const n = 7 + ((r() * 8) | 0);
+      for (let k = 0; k < n; k++) {
+        const a = r() * Math.PI * 2, rr = Math.sqrt(r()) * 210, x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+        if (blocked(x, y, 80, 50)) continue;
+        add(rr < 150 ? big : small, x, y, (rr < 150 ? 1 + r() * 0.6 : 0.8 + r() * 0.4) * kk);
+      }
+    }
+    // Bord des îles : grands arbres au nord, décor bas au sud (côté caméra)
+    const tall = BORDER_SET[type] || 'tree', low = LOW_BORDER[type] || 'bush';
+    for (const isl of m.isles) {
+      const per = Math.PI * (isl.rx + isl.ry);
+      for (let d = 0; d < per; d += 75) {
+        const a = (d / per) * Math.PI * 2 + r() * 0.03;
+        const [x, y] = edgePoint(isl, a, 0.86 + r() * 0.08);
+        if (roadDist(m, x, y) < 120 || avoid.some(([ax, ay, rr]) => Math.hypot(ax - x, ay - y) < rr) || inWater(m, x, y, 40, false)) continue;
+        if (Math.sin(a) < 0.2) add(tall, x, y, 1.1 + r() * 0.6);
+        else if (r() < 0.7) add(low, x, y, 0.8 + r() * 0.4);
+      }
+    }
+    // Accessoires propres à la zone
+    const props = (kind, n, smin, smax, c) => {
+      for (let k = 0, got = 0; k < n * 60 && got < n; k++) {
+        const x = 300 + r() * (m.w - 600), y = (r() * 1.8 - 0.9) * m.h;
+        if (blocked(x, y, 90, 40) || inWater(m, x, y, 110, false) || m.camps.some((cc) => Math.hypot(cc.x - x, cc.y - y) < 140)) continue;
+        if (out.some((o) => SOLID_R[o.kind] && Math.hypot(o.x - x, o.y - y) < 60)) continue;
+        out.push({ kind, x, y, s: smin + r() * (smax - smin), ry: r() * Math.PI * 2, c: c && c() });
+        got++;
+      }
+    };
+    if (type === 'forest') { props('log', 26, 0.9, 1.3); props('shroom', 30, 0.6, 1.5); }
+    else if (type === 'rock') { props('boulder', 60, 0.35, 0.85, () => (r() < 0.5 ? '#9a8a6a' : '#7a6e5a')); props('gem', 22, 0.7, 1.3); }
+    else if (type === 'snow') {
+      props('mound', 50, 0.4, 0.9, () => '#f4f8fc');
+      out.push({ kind: 'snowman', x: m.zaap.x + 260, y: 200, s: 1, ry: -0.4 }, { kind: 'snowman', x: m.zaap.x - 300, y: -120, s: 0.85, ry: 0.5 });
+    } else { props('hay', type === 'field' ? 26 : 10, 0.8, 1.2); props('boulder', 12, 0.4, 0.9, () => '#9a948a'); }
+    m.decor = out;
+    // Obstacles : décor solide + zaap, puits, moulin, rochers de l'entrée du donjon
+    const hub = m.isles[0];
+    m.mill = (type === 'field' || type === 'grass') ? { x: hub.x - hub.rx * 0.35, y: -hub.ry * 0.62 } : null;
+    m.solids = out.filter((o) => SOLID_R[o.kind]).map((o) => ({ x: o.x, y: o.y, r: SOLID_R[o.kind] * o.s * 32 }));
+    m.solids.push({ x: m.zaap.x, y: m.zaap.y, r: 68 }, { x: m.well.x, y: m.well.y, r: 30 }, { x: m.door.x, y: m.door.y - 70, r: 95 });
+    if (m.mill) m.solids.push({ x: m.mill.x, y: m.mill.y, r: 50 });
+  }
+
+  /** Grille des obstacles d'une carte (cases de 200 px), construite à la demande. */
+  function solidGrid(m) {
+    if (m._grid) return m._grid;
+    const grid = new Map();
+    for (const s of m.solids || []) {
+      for (let gx = Math.floor((s.x - s.r) / 200); gx <= Math.floor((s.x + s.r) / 200); gx++)
+        for (let gy = Math.floor((s.y - s.r) / 200); gy <= Math.floor((s.y + s.r) / 200); gy++) {
+          const k = gx * 1000 + gy;
+          if (!grid.has(k)) grid.set(k, []);
+          grid.get(k).push(s);
+        }
+    }
+    m._grid = grid;
+    return grid;
+  }
+
   const zones = ZONES.map((z, i) => {
     const r = rng(1000 + i * 77);
     const [l0, l1] = LEVELS[i];
@@ -295,6 +402,7 @@ const WORLD = (() => {
       camps: [],
     };
     genIslands(m, r, i);
+    genDecor(m, rng(5000 + i * 31));
     // Donjon : quatre salles de monstres puis le gardien
     const d = {
       key: 'd' + i, kind: 'dungeon', zone: i, name: DUNGEONS[i], w: DJ_W, h: DJ_H, lvl: [l1, l1 + 3],
@@ -546,6 +654,6 @@ const WORLD = (() => {
     return { X, Y, s };
   }
 
-  return { zones, QUESTS, NPCS, LEVELS, unlocked, SLOTS, RARITY, makeItem, itemDesc, isleAt, isleE, wob, edgePoint, walkable, walk, onBridge,
+  return { zones, QUESTS, NPCS, LEVELS, unlocked, SOLID_R, SLOTS, RARITY, makeItem, itemDesc, isleAt, isleE, wob, edgePoint, walkable, walk, onBridge,
     WATER_KIND, ROAD_COL, roadDist, inWater, collide, drawMap, ...CHAR };
 })();

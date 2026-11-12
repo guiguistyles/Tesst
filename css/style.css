@@ -409,3 +409,9 @@ kbd { font: 800 11px var(--font-body); border: 1px solid currentColor; border-ra
   .carac-row { flex-wrap: wrap; }
   .c-cost { display: none; }
 }
+
+/* Icônes d'équipement */
+.item-ico { flex: none; filter: drop-shadow(0 0 4px var(--rc)); }
+.toast.with-ico { flex-direction: row; align-items: center; gap: 10px; }
+.toast > div { display: flex; flex-direction: column; }
+.eq-row { align-items: center; }

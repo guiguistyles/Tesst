@@ -1426,21 +1426,11 @@ const Render3D = (() => {
     scatter(group, COVER.reed(), reeds);
     scatter(group, COVER.lily(), lilies);
     scatter(group, COVER.boulder(), shoreRocks, true);
-    // Accessoires propres à chaque zone
-    const props = (n, fn) => { const out = []; for (let k = 0; k < n * 60 && out.length < n; k++) { const x = 300 + rnd() * (m.w - 600), y = (rnd() * 1.8 - 0.9) * m.h; if (!free(x, y, 90, 110) || m.camps.some((c) => Math.hypot(c.x - x, c.y - y) < 140)) continue; out.push(fn(x, y)); } return out; };
-    if (type === 'forest') {
-      scatter(group, COVER.log(), props(26, (x, y) => ({ x, z: y, s: 0.9 + rnd() * 0.4, ry: rnd() * 6.3 })), true);
-      W3.glow = scatter(group, COVER.shroom(), props(30, (x, y) => ({ x, z: y, s: 0.6 + rnd() * 0.9, ry: rnd() * 6.3 })), true);
-    } else if (type === 'rock') {
-      scatter(group, COVER.boulder(), props(60, (x, y) => ({ x, z: y, s: 0.35 + rnd() * 0.5, ry: rnd() * 6.3, c: rnd() < 0.5 ? '#9a8a6a' : '#7a6e5a' })), true);
-      W3.glow = scatter(group, COVER.gem(), props(22, (x, y) => ({ x, z: y, s: 0.7 + rnd() * 0.6, ry: rnd() * 6.3 })), true);
-    } else if (type === 'snow') {
-      scatter(group, COVER.mound(), props(50, (x, y) => ({ x, z: y, s: 0.4 + rnd() * 0.5, ry: rnd() * 6.3, c: '#f4f8fc' })));
-      scatter(group, COVER.snowman(), [{ x: m.zaap.x + 260, z: 200, s: 1, ry: -0.4 }, { x: m.zaap.x - 300, z: -120, s: 0.85, ry: 0.5 }], true);
-    } else {
-      scatter(group, COVER.hay(), props(type === 'field' ? 26 : 10, (x, y) => ({ x, z: y, s: 0.8 + rnd() * 0.4, ry: rnd() * 6.3 })), true);
-      scatter(group, COVER.boulder(), props(12, (x, y) => ({ x, z: y, s: 0.4 + rnd() * 0.5, ry: rnd() * 6.3, c: '#9a948a' })), true);
-    }
+    // Accessoires propres à chaque zone (positions données par le monde)
+    const byKind = (k) => m.decor.filter((d) => d.kind === k).map((d) => ({ x: d.x, z: d.y, s: d.s, ry: d.ry, c: d.c }));
+    for (const k of ['log', 'boulder', 'hay', 'snowman']) scatter(group, COVER[k](), byKind(k), true);
+    scatter(group, COVER.mound(), byKind('mound'));
+    W3.glow = scatter(group, COVER.shroom(), byKind('shroom'), true) || scatter(group, COVER.gem(), byKind('gem'), true);
     // Clôtures le long du chemin à la sortie du hameau, lanternes et panneaux
     const fences = [], lamps = [], main = m.roads[0];
     for (let i = 1; i < main.length; i++) {
@@ -1455,9 +1445,9 @@ const Render3D = (() => {
     W3.lamps = scatter(group, COVER.lantern(), lamps, true);
     const ly = (() => { const r = m.roads[1]; return r ? r[0] : [m.lair.x, 0]; })();
     scatter(group, COVER.sign(), [{ x: ly[0] - 60, z: ly[1] + 70, s: 1, ry: 0.4 }, { x: m.door.x - 360, z: m.door.y + 80, s: 1, ry: 0 }, { x: m.plaza.x + m.plaza.r + 40, z: 90, s: 1, ry: 0 }], true);
-    if (type === 'field' || type === 'grass') {
+    if (m.mill) {
       const mill = buildMill();
-      mill.root.position.set((m.isles[0].x - m.isles[0].rx * 0.35) / U, 0, -m.isles[0].ry * 0.62 / U);
+      mill.root.position.set(m.mill.x / U, 0, m.mill.y / U);
       mill.root.rotation.y = 0.3;
       group.add(mill.root);
       W3.mill = mill.hub;
@@ -1499,47 +1489,10 @@ const Render3D = (() => {
     };
     const W = m.w, H = m.h;
     if (!dungeon) {
-      const avoid = [[m.zaap.x, m.zaap.y, 300], [m.npc.x, m.npc.y, 200], [m.lair.x, m.lair.y, 300], [m.door.x, m.door.y, 330], [m.well.x, m.well.y, 90]];
-      for (const c of m.camps) avoid.push([c.x, c.y, 170]);
-      for (const hs of m.houses) avoid.push([hs.x, hs.y, 160]);
-      const set = DECOR_SET[z.decoType] || DECOR_SET.grass, CELL = 150;
-      for (let cx = 0; cx < W; cx += CELL) for (let cy = -H; cy < H; cy += CELL) {
-        if (rnd() > 0.3) continue;
-        const x = cx + rnd() * CELL, y = cy + rnd() * CELL;
-        if (avoid.some(([ax, ay, r]) => Math.hypot(ax - x, ay - y) < r)) continue;
-        if (!WORLD.isleAt(m, x, y, 60) || WORLD.inWater(m, x, y, 40, false) || WORLD.roadDist(m, x, y) < 70) continue;
-        let k = rnd(), pk = set[0];
-        for (const d of set) { if (k < d[1]) { pk = d; break; } k -= d[1]; }
-        push(pk[0], x / U, y / U, pk[2] + rnd() * (pk[3] - pk[2]));
-      }
-      // Bosquets : arbres serrés autour de quelques centres, buissons en bordure
-      const big = set[0][0], small = set.find((d) => d[0] === 'bush' || d[0] === 'mushroom' || d[0] === 'ice' || d[0] === 'spire' || d[0] === 'wheat') || set[set.length - 1];
-      for (let c = 0, tries = 0; c < (z.decoType === 'forest' ? 26 : 16) && tries < 400; tries++) {
-        const cx = 400 + rnd() * (W - 800), cy = (rnd() * 2 - 1) * (H - 150);
-        if (avoid.some(([ax, ay, r]) => Math.hypot(ax - cx, ay - cy) < r + 120) || WORLD.roadDist(m, cx, cy) < 200 || WORLD.inWater(m, cx, cy, 160, false) || !WORLD.isleAt(m, cx, cy, 150)) continue;
-        c++;
-        const n = 7 + ((rnd() * 8) | 0);
-        for (let k = 0; k < n; k++) {
-          const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * 210;
-          const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
-          if (!WORLD.isleAt(m, x, y, 50) || WORLD.inWater(m, x, y, 40, false) || WORLD.roadDist(m, x, y) < 80) continue;
-          const k = z.decoType === 'rock' ? 0.55 : 1;
-          push(r < 150 ? big : small[0], x / U, y / U, (r < 150 ? 1 + rnd() * 0.6 : 0.8 + rnd() * 0.4) * k);
-        }
-      }
-      // Lisière : rangées serrées tout autour de la carte
-      // Au nord : grands arbres ; au sud (côté caméra) : décor bas pour ne pas masquer l'action
-      // Bord des îles : grands arbres au nord, décor bas au sud (côté caméra)
-      const kind = BORDER_SET[z.decoType] || 'tree', low = LOW_BORDER[z.decoType] || 'bush';
-      for (const isl of m.isles) {
-        const per = Math.PI * (isl.rx + isl.ry);
-        for (let d = 0; d < per; d += 75) {
-          const a = (d / per) * Math.PI * 2 + rnd() * 0.03;
-          const [x, y] = WORLD.edgePoint(isl, a, 0.86 + rnd() * 0.08);
-          if (WORLD.roadDist(m, x, y) < 120 || avoid.some(([ax, ay, r]) => Math.hypot(ax - x, ay - y) < r) || WORLD.inWater(m, x, y, 40, false)) continue;
-          if (Math.sin(a) < 0.2) push(kind, x / U, y / U, 1.1 + rnd() * 0.6);
-          else if (rnd() < 0.7) push(low, x / U, y / U, 0.8 + rnd() * 0.4);
-        }
+      // Décor généré par le monde (les éléments solides servent aussi aux collisions)
+      for (const d of m.decor) if (DECOR[d.kind]) {
+        if (!place.has(d.kind)) place.set(d.kind, []);
+        place.get(d.kind).push(d.x / U, d.y / U, d.s, d.ry);
       }
     } else {
       // Donjon : éboulis le long des murs
@@ -1776,6 +1729,90 @@ const Render3D = (() => {
     return { x: (tmpP.x + 1) / 2 * W, y: (1 - tmpP.y) / 2 * H, front: tmpP.z < 1 };
   }
 
+  // ---------------------------------------------------------------- Butin au sol : un modèle par objet
+  const LOOT_MODELS = {
+    arme: () => { const g = new THREE.Group();
+      g.add(at(box(0.1, 0.95, 0.03, mat(0xdfe6ee)), 0, 0.62, 0), at(cone(0.05, 0.14, 4, mat(0xdfe6ee)), 0, 1.16, 0, 0, Math.PI / 4));
+      g.add(at(box(0.38, 0.07, 0.08, mat(0xd8a830)), 0, 0.14, 0), at(cyl(0.035, 0.035, 0.26, 6, mat(0x6a4426)), 0, -0.02, 0), at(sph(0.06, 6, 5, mat(0xd8a830)), 0, -0.17, 0));
+      return g; },
+    coiffe: () => { const g = new THREE.Group();
+      g.add(at(cyl(0.42, 0.44, 0.05, 12, mat(0x7a3a2a)), 0, 0, 0), at(cyl(0.22, 0.27, 0.34, 10, mat(0x9a4a32)), 0, 0.19, 0), at(cyl(0.275, 0.275, 0.06, 10, mat(0xd8a830)), 0, 0.06, 0));
+      g.add(at(cone(0.05, 0.5, 4, mat(0xf0f0f0)), 0.2, 0.45, 0, 0, 0, -0.6));
+      return g; },
+    cape: () => { const g = new THREE.Group();
+      g.add(at(box(0.62, 0.78, 0.05, mat(0xb03a3a)), 0, 0.42, 0, 0.12), at(box(0.7, 0.12, 0.08, mat(0x8a2a2a)), 0, 0.82, 0.02));
+      g.add(at(sph(0.06, 6, 5, mat(0xd8a830)), 0, 0.82, 0.07), at(box(0.62, 0.06, 0.06, mat(0xd8a830)), 0, 0.05, 0.05));
+      return g; },
+    amulette: () => { const g = new THREE.Group();
+      g.add(at(torus(0.28, 0.025, 5, 18, mat(0xd8a830)), 0, 0.5, 0), at(crystal(0.11, 0.3, mat(0xffffff, 0.6)), 0, 0.14, 0), at(sph(0.05, 6, 5, mat(0xd8a830)), 0, 0.26, 0));
+      return g; },
+    anneau: () => { const g = new THREE.Group();
+      g.add(at(torus(0.2, 0.05, 6, 18, mat(0xd8a830)), 0, 0.22, 0), at(crystal(0.08, 0.2, mat(0xffffff, 0.6)), 0, 0.46, 0));
+      return g; },
+    bottes: () => { const g = new THREE.Group();
+      for (const x of [-0.17, 0.17]) {
+        g.add(at(box(0.18, 0.42, 0.2, mat(0x6a4426)), x, 0.26, 0), at(box(0.2, 0.12, 0.36, mat(0x5a3818)), x, 0.06, 0.08), at(box(0.2, 0.06, 0.22, mat(0xd8a830)), x, 0.45, 0));
+      }
+      return g; },
+    chest: () => { const g = new THREE.Group();
+      g.add(at(box(0.9, 0.5, 0.6, mat(0x8a5a2a)), 0, 0.25, 0), at(box(0.92, 0.22, 0.62, mat(0x9a6a32)), 0, 0.62, -0.02, -0.25));
+      for (const x of [-0.32, 0.32]) g.add(at(box(0.08, 0.76, 0.64, mat(0xd8a830)), x, 0.38, 0));
+      g.add(at(box(0.14, 0.16, 0.05, mat(0xffd84a, 0.5)), 0, 0.45, 0.31));
+      return g; },
+    egg: () => { const g = new THREE.Group();
+      const e = at(sph(0.32, 12, 10, mat(0xffffff)), 0, 0.42, 0); e.scale.set(1, 1.3, 1); g.add(e);
+      for (let i = 0; i < 6; i++) { const a = i * 1.1; g.add(at(sph(0.06, 5, 4, mat(0xffffff, 0.4)), Math.cos(a) * 0.29, 0.3 + (i % 3) * 0.14, Math.sin(a) * 0.29)); }
+      return g; },
+  };
+  const lootB = {};
+  let lootRing = null, lootBeam = null;
+  function lootBatch(kind) {
+    if (!lootB[kind]) {
+      const g = LOOT_MODELS[kind]();
+      g.updateMatrixWorld(true);
+      const bb = new THREE.Box3().setFromObject(g);
+      const rad = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2 || 1;
+      lootB[kind] = batch(mergeModel(g).scale(rad, rad, rad), new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.45, metalness: 0.3 }), 40);
+    }
+    return lootB[kind];
+  }
+  function lootFx() {
+    if (!lootRing) {
+      lootRing = batch(new THREE.RingGeometry(0.55, 0.8, 24).rotateX(-Math.PI / 2), glow(0.55), 60, false);
+      lootBeam = batch(up(new THREE.CylinderGeometry(0.12, 0.3, 1, 8, 1, true)), glow(0.28), 60, false);
+      lootBeam.mesh.material.side = THREE.DoubleSide;
+    }
+  }
+  const RARITY_RANK = { commun: 0, rare: 1, epique: 2, legendaire: 3 };
+  /** Objets au sol : arme, coiffe, cape, amulette, anneau, bottes, coffre, Dofus. */
+  function drawLoot(g, bob) {
+    lootFx();
+    const x = g.x / U, z = g.y / U;
+    if (g.kind === 'item') {
+      const it = g.item, rk = RARITY_RANK[it.rarity] || 0;
+      tmpC.set(it.color).lerp(WHITE, 0.65).multiplyScalar(1.25);
+      lootBatch(it.slot).add(x, bob + 0.25, z, time * 1.6 + g.x, 0.8, 0.8, 0.8, tmpC, 0.25, 0);
+      tmpC.set(it.color);
+      const p = 0.85 + 0.15 * Math.sin(time * 4 + g.x);
+      lootRing.add(x, 0.07, z, time, p * (0.8 + rk * 0.15), 1, p * (0.8 + rk * 0.15), tmpC);
+      lootBeam.add(x, 0, z, 0, 1, 1.4 + rk * 1.1, 1, tmpC);
+      if (Math.random() < 0.25 + rk * 0.15) part(x + (Math.random() - 0.5) * 0.5, 0.2, z + (Math.random() - 0.5) * 0.5, it.color, { vy: 2 + rk, life: 0.7, s: 0.08 + rk * 0.02 });
+    } else if (g.kind === 'chest') {
+      lootBatch('chest').add(x, 0, z, 0.4, 1.1, 1.1, 1.1, WHITE);
+      lootRing.add(x, 0.07, z, time, 1.3, 1, 1.3, tmpC.set(0xffd84a));
+    } else if (g.kind === 'dofus') {
+      tmpC.set(DOFUS[g.id].color);
+      lootBatch('egg').add(x, bob + 0.1, z, time * 1.2, 0.85, 0.85, 0.85, tmpC);
+      lootRing.add(x, 0.07, z, -time, 1.2, 1, 1.2, tmpC);
+      lootBeam.add(x, 0, z, 0, 1.4, 4.5, 1.4, tmpC);
+      if (Math.random() < 0.6) part(x + (Math.random() - 0.5) * 0.6, 0.3, z + (Math.random() - 0.5) * 0.6, DOFUS[g.id].color, { vy: 3, life: 0.8, s: 0.12 });
+    }
+  }
+  function commitLoot() {
+    for (const k in lootB) lootB[k].commit();
+    if (lootRing) { lootRing.commit(); lootBeam.commit(); }
+  }
+
   // ---------------------------------------------------------------- Rendu d'une image
   function render(S, dt) {
     if (!ready || !S) return;
@@ -1930,15 +1967,13 @@ const Render3D = (() => {
         const s = g.v >= 10 ? 0.2 : g.v >= 3 ? 0.15 : 0.12;
         xpB.add(g.x / U, bob, g.y / U, time * 2, s * 0.7, s * 1.3, s * 0.7, tmpC.set(g.v >= 10 ? 0xff5fa2 : g.v >= 3 ? 0x4fd1ff : 0x7dff6a));
       } else if (g.kind === 'kamas') coinB.add(g.x / U, bob, g.y / U, time * 3, 0.18, 0.18, 0.18, tmpC.set(0xffd84a), Math.PI / 2);
+      else if (g.kind === 'item' || g.kind === 'chest' || g.kind === 'dofus') drawLoot(g, bob);
       else {
-        const col = { heal: 0xc88a3a, magnet: 0xe03030, chest: 0x9a6a2a, dofus: g.id ? DOFUS[g.id].color : 0xffffff, item: g.item ? g.item.color : 0xffffff }[g.kind] || 0xffffff;
-        const s = g.kind === 'chest' ? 0.7 : g.kind === 'dofus' ? 0.45 : 0.35;
-        // Équipement au sol : colonne de lumière de la couleur de sa rareté
-        if (g.kind === 'item' && Math.random() < 0.5) part(g.x / U + (Math.random() - 0.5) * 0.3, 0.3, g.y / U + (Math.random() - 0.5) * 0.3, g.item.color, { vy: 2.4, life: 0.7, s: 0.1 });
-        miscB.add(g.x / U, g.kind === 'chest' ? 0 : bob - 0.2, g.y / U, time, s, g.kind === 'dofus' ? s * 1.3 : s * 0.7, s, tmpC.set(col));
+        const col = { heal: 0xc88a3a, magnet: 0xe03030 }[g.kind] || 0xffffff;
+        miscB.add(g.x / U, bob - 0.2, g.y / U, time, 0.35, 0.25, 0.35, tmpC.set(col));
       }
     }
-    coinB.commit(); miscB.commit();
+    coinB.commit(); miscB.commit(); commitLoot();
 
     // Effets : anneaux et ondes de choc, coups de mêlée, étincelles
     for (const f of S.fx) {

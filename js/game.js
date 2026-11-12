@@ -717,11 +717,11 @@ const Game = (() => {
     if (!cur || it.power > cur.power) {
       S.equip[it.slot] = it;
       recomputeStats();
-      cb.onToast(`Équipé : ${it.name}`, it.color, WORLD.itemDesc(it));
+      cb.onToast(`Équipé : ${it.name}`, it.color, WORLD.itemDesc(it), it.slot);
     } else {
       const k = Math.ceil(it.power * 3 * S.zone.kamas);
       S.kamas += k;
-      cb.onToast(`${it.name} revendu`, '#bdb3d6', `+${k} kamas (moins bon que ton équipement)`);
+      cb.onToast(`${it.name} revendu`, '#bdb3d6', `+${k} kamas (moins bon que ton équipement)`, it.slot);
     }
   }
 
@@ -1811,7 +1811,9 @@ const Game = (() => {
       const [ax, ay] = road[i - 1], [bx, by] = road[i], len = Math.hypot(bx - ax, by - ay), nx = -(by - ay) / len, ny = (bx - ax) / len;
       for (let d = 0; d < len; d += 30) if (rnd() < 0.6) {
         const sd2 = rnd() < 0.5 ? -1 : 1, off = 40 + rnd() * 16;
-        out.pebbles.push({ x: ax + ((bx - ax) * d) / len + nx * off * sd2, y: ay + ((by - ay) * d) / len + ny * off * sd2, r: 3 + rnd() * 4 });
+        const px = ax + ((bx - ax) * d) / len + nx * off * sd2, py = ay + ((by - ay) * d) / len + ny * off * sd2;
+        if (Math.hypot(px - m.plaza.x, py - m.plaza.y) < m.plaza.r + 30 || (m.isles && !WORLD.isleAt(m, px, py, 10))) continue;
+        out.pebbles.push({ x: px, y: py, r: 3 + rnd() * 4 });
       }
     }
     for (const w of m.water) {
@@ -1951,8 +1953,84 @@ const Game = (() => {
     ctx.fillStyle = z.ground;
     ctx.fillRect(x0 - 10, y0 - 10, x1 - x0 + 20, y1 - y0 + 20);
     drawZoneGround(z, x0, y0, x1, y1);
+    drawDecor2D(m, z, x0, y0, x1, y1);
     ctx.restore();
     ctx.strokeStyle = 'rgba(40,28,20,.35)'; ctx.lineWidth = 4; ctx.stroke(path);
+  }
+
+  /** Décor du monde en 2D (mêmes positions que la 3D et que les collisions). */
+  function drawDecor2D(m, z, x0, y0, x1, y1) {
+    const c = z.deco;
+    const poly = (x, y, sz, col, col2) => {
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.moveTo(x - sz, y); ctx.lineTo(x - sz * 0.6, y - sz * 0.8); ctx.lineTo(x + sz * 0.4, y - sz); ctx.lineTo(x + sz, y - sz * 0.2); ctx.lineTo(x + sz * 0.7, y + sz * 0.3); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = col2;
+      ctx.beginPath(); ctx.moveTo(x - sz * 0.6, y - sz * 0.8); ctx.lineTo(x + sz * 0.4, y - sz); ctx.lineTo(x, y - sz * 0.4); ctx.closePath(); ctx.fill();
+    };
+    const items = m.decor.filter((d) => d.x > x0 - 80 && d.x < x1 + 80 && d.y > y0 - 40 && d.y < y1 + 140).sort((a, b) => a.y - b.y);
+    for (const d of items) {
+      const { x, y } = d, k = d.s;
+      switch (d.kind) {
+        case 'tree': tree(x, y, c[0] === '#e8d070' ? '#4b7a30' : c[0], k); break;
+        case 'oak': tree(x, y, '#2f4a24', k * 1.35); break;
+        case 'pine': case 'spire': {
+          const sc = k * (d.kind === 'spire' ? 1.1 : 1);
+          ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(x, y + 2, 20 * sc, 8 * sc, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = d.kind === 'spire' ? c[2] : c[1];
+          ctx.beginPath(); ctx.moveTo(x, y - 60 * sc); ctx.lineTo(x + 22 * sc, y - 4); ctx.lineTo(x - 22 * sc, y - 4); ctx.closePath(); ctx.fill();
+          if (d.kind === 'pine') { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(x, y - 60 * sc); ctx.lineTo(x + 9 * sc, y - 40 * sc); ctx.lineTo(x - 9 * sc, y - 40 * sc); ctx.closePath(); ctx.fill(); }
+          break;
+        }
+        case 'rock': poly(x, y, 22 * k, c[0], c[1]); break;
+        case 'boulder': poly(x, y, 26 * k, d.c || '#9a948a', '#b8b2a8'); break;
+        case 'ice':
+          ctx.fillStyle = '#bfe4f8'; ctx.beginPath(); ctx.moveTo(x, y - 46 * k); ctx.lineTo(x + 10 * k, y - 6); ctx.lineTo(x - 10 * k, y - 6); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#e8f6ff'; ctx.beginPath(); ctx.moveTo(x + 12 * k, y - 28 * k); ctx.lineTo(x + 20 * k, y - 4); ctx.lineTo(x + 6 * k, y - 4); ctx.closePath(); ctx.fill();
+          break;
+        case 'gem':
+          ctx.save(); ctx.shadowColor = '#6fd8ff'; ctx.shadowBlur = 14;
+          ctx.fillStyle = '#6fd8ff'; ctx.beginPath(); ctx.moveTo(x, y - 40 * k); ctx.lineTo(x + 9 * k, y - 8); ctx.lineTo(x - 9 * k, y - 8); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#a98cff'; ctx.beginPath(); ctx.moveTo(x + 12 * k, y - 26 * k); ctx.lineTo(x + 18 * k, y - 6); ctx.lineTo(x + 6 * k, y - 6); ctx.closePath(); ctx.fill();
+          ctx.restore();
+          break;
+        case 'log':
+          ctx.fillStyle = '#6a4a2a'; ctx.fillRect(x - 36 * k, y - 18 * k, 72 * k, 18 * k);
+          ctx.fillStyle = '#c8a070'; ctx.beginPath(); ctx.ellipse(x + 36 * k, y - 9 * k, 5 * k, 9 * k, 0, 0, Math.PI * 2); ctx.fill();
+          break;
+        case 'hay':
+          ctx.fillStyle = '#d8b85a'; ctx.beginPath(); ctx.ellipse(x, y - 14 * k, 26 * k, 22 * k, 0, Math.PI, 0); ctx.fill(); ctx.fillRect(x - 26 * k, y - 14 * k, 52 * k, 14 * k);
+          ctx.strokeStyle = '#8a6a2a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 26 * k, y - 8 * k); ctx.lineTo(x + 26 * k, y - 8 * k); ctx.stroke();
+          break;
+        case 'shroom': case 'mushroom': {
+          const sc = d.kind === 'shroom' ? k * 1.4 : k * 0.6;
+          ctx.fillStyle = '#e8dcc0'; ctx.fillRect(x - 4 * sc, y - 18 * sc, 8 * sc, 18 * sc);
+          ctx.fillStyle = d.kind === 'shroom' ? '#8a4ab0' : '#b03a3a';
+          ctx.beginPath(); ctx.ellipse(x, y - 18 * sc, 16 * sc, 11 * sc, 0, Math.PI, 0); ctx.fill();
+          break;
+        }
+        case 'snowman':
+          ctx.fillStyle = '#f4f8fc'; ctx.beginPath(); ctx.arc(x, y - 12, 14, 0, Math.PI * 2); ctx.arc(x, y - 34, 10, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#2a2a3a'; ctx.fillRect(x - 8, y - 52, 16, 9); ctx.fillStyle = '#ff8a3a'; ctx.fillRect(x, y - 35, 7, 3);
+          break;
+        case 'mound': ctx.fillStyle = '#f4f8fc'; ctx.beginPath(); ctx.ellipse(x, y, 30 * k, 11 * k, 0, 0, Math.PI * 2); ctx.fill(); break;
+        case 'bush':
+          ctx.fillStyle = c[0]; ctx.beginPath(); ctx.arc(x - 8 * k, y - 8 * k, 11 * k, 0, Math.PI * 2); ctx.arc(x + 8 * k, y - 7 * k, 9 * k, 0, Math.PI * 2); ctx.fill();
+          break;
+        case 'wheat':
+          ctx.strokeStyle = c[0]; ctx.lineWidth = 2; ctx.beginPath();
+          for (let i = -3; i <= 3; i++) { ctx.moveTo(x + i * 4, y); ctx.lineTo(x + i * 5, y - 22 * k); }
+          ctx.stroke();
+          break;
+      }
+    }
+    if (m.mill && m.mill.x > x0 - 100 && m.mill.x < x1 + 100) {
+      const { x, y } = m.mill;
+      ctx.fillStyle = '#e8dcc0'; ctx.fillRect(x - 26, y - 110, 52, 110);
+      ctx.fillStyle = '#b5482e'; ctx.beginPath(); ctx.moveTo(x - 34, y - 108); ctx.lineTo(x, y - 150); ctx.lineTo(x + 34, y - 108); ctx.closePath(); ctx.fill();
+      ctx.save(); ctx.translate(x, y - 100); ctx.rotate(-S.t * 0.8); ctx.fillStyle = '#f4ecd8';
+      for (let i = 0; i < 4; i++) { ctx.rotate(Math.PI / 2); ctx.fillRect(-6, 0, 12, 70); }
+      ctx.restore();
+    }
   }
 
   function shade(hex, k) {
@@ -2028,6 +2106,8 @@ const Game = (() => {
         if (h > 0.55) continue;
         const x = cx * C + hash(cx, cy, 7) * C, y = cy * C + hash(cx, cy, 13) * C;
         if (terrain && (!WORLD.isleAt(terrain, x, y, 30) || WORLD.inWater(terrain, x, y, 30, false) || WORLD.roadDist(terrain, x, y) < 60)) continue;
+        // Aventure : les grands éléments (arbres, rochers) viennent du décor du monde, qui a des collisions
+        if (terrain && (h < 0.12 || (z.decoType === 'forest' && h < 0.4) || (z.decoType === 'snow' && h < 0.25))) continue;
         drawDeco(z, x, y, h / 0.55, hash(cx, cy, 21));
       }
     }
@@ -2135,13 +2215,16 @@ const Game = (() => {
         ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 2; ctx.strokeRect(x - 14, y - 16, 28, 24);
         break;
       case 'item': {
-        const c = g.item.color;
-        ctx.save();
-        ctx.shadowColor = c; ctx.shadowBlur = 14;
-        ctx.fillStyle = '#3a2a4a'; ctx.fillRect(x - 9, y - 18, 18, 18);
-        ctx.strokeStyle = c; ctx.lineWidth = 3; ctx.strokeRect(x - 9, y - 18, 18, 18);
+        const c = g.item.color, rk = ['commun', 'rare', 'epique', 'legendaire'].indexOf(g.item.rarity);
+        // Faisceau et halo de la couleur de la rareté, puis l'objet lui-même
+        const grd = ctx.createLinearGradient(0, y - 40 - rk * 25, 0, y);
+        grd.addColorStop(0, 'rgba(255,255,255,0)'); grd.addColorStop(1, c);
+        ctx.globalAlpha = 0.35; ctx.fillStyle = grd; ctx.fillRect(x - 6, y - 40 - rk * 25, 12, 40 + rk * 25);
+        ctx.globalAlpha = 0.5 + 0.2 * Math.sin(S.t * 4 + x); ctx.strokeStyle = c; ctx.lineWidth = 3;
+        isoEllipse(g.x, g.y + 4, 16 + rk * 2); ctx.stroke(); ctx.globalAlpha = 1;
+        ctx.save(); ctx.shadowColor = c; ctx.shadowBlur = 10;
+        drawItemShape(g.item.slot, x, y - 12, 1, c);
         ctx.restore();
-        ctx.globalAlpha = 0.35; ctx.fillStyle = c; ctx.fillRect(x - 2, y - 60, 4, 42); ctx.globalAlpha = 1;
         break;
       }
       case 'dofus': {
@@ -2155,6 +2238,37 @@ const Game = (() => {
         ctx.beginPath(); ctx.ellipse(x - 4, y - 13, 3, 5, -0.4, 0, Math.PI * 2); ctx.fill();
         break;
       }
+    }
+  }
+
+  /** Dessin d'un objet d'équipement (2D), centré en (x, y). */
+  function drawItemShape(slot, x, y, k, rc) {
+    const gold = '#d8a830', dark = '#3a2a1a';
+    ctx.lineJoin = 'round'; ctx.lineWidth = 2; ctx.strokeStyle = dark;
+    const P = (pts, fill) => { ctx.fillStyle = fill; ctx.beginPath(); pts.forEach(([px, py], i) => (i ? ctx.lineTo(x + px * k, y + py * k) : ctx.moveTo(x + px * k, y + py * k))); ctx.closePath(); ctx.fill(); ctx.stroke(); };
+    switch (slot) {
+      case 'arme':
+        P([[-2, -16], [2, -16], [2, 4], [-2, 4]], '#e4ebf2'); P([[-2, -16], [0, -20], [2, -16]], '#e4ebf2');
+        P([[-8, 4], [8, 4], [8, 7], [-8, 7]], gold); P([[-1.5, 7], [1.5, 7], [1.5, 13], [-1.5, 13]], '#6a4426');
+        break;
+      case 'coiffe':
+        P([[-12, 6], [12, 6], [10, 9], [-10, 9]], '#7a3a2a'); P([[-7, 6], [-6, -6], [6, -6], [7, 6]], '#9a4a32'); P([[-7, 3], [7, 3], [7, 5], [-7, 5]], rc);
+        break;
+      case 'cape':
+        P([[-8, -9], [8, -9], [11, 10], [0, 7], [-11, 10]], '#b03a3a'); P([[-8, -9], [8, -9], [8, -6], [-8, -6]], gold);
+        break;
+      case 'amulette':
+        ctx.strokeStyle = gold; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y - 6 * k, 8 * k, Math.PI * 0.1, Math.PI * 0.9, true); ctx.stroke(); ctx.strokeStyle = dark;
+        P([[0, -2], [5, 4], [0, 11], [-5, 4]], rc);
+        break;
+      case 'anneau':
+        ctx.strokeStyle = gold; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(x, y + 3 * k, 8 * k, 6 * k, 0, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = dark; ctx.lineWidth = 2;
+        P([[0, -10], [4, -5], [0, -1], [-4, -5]], rc);
+        break;
+      case 'bottes':
+        P([[-11, -8], [-4, -8], [-4, 6], [1, 6], [1, 10], [-11, 10]], '#6a4426'); P([[3, -6], [10, -6], [10, 8], [15, 8], [15, 12], [3, 12]], '#5a3818');
+        P([[-11, -8], [-4, -8], [-4, -5], [-11, -5]], gold);
+        break;
     }
   }
 
