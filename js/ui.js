@@ -543,8 +543,15 @@ function renderMap() {
   const cv = $('#map-canvas'), g = cv.getContext('2d');
   const Wd = 1200, Hd = Math.round(Wd * (m.h * 2) / m.w);
   cv.width = Wd; cv.height = Hd;
-  g.drawImage(mapImage(m, Wd, Hd), 0, 0);
   const sx = Wd / m.w, sy = Hd / (m.h * 2), X = (x) => x * sx, Y = (y) => (y + m.h) * sy;
+  if (m.kind === 'dungeon') {
+    drawMaze(g, m, w, Wd, Hd);
+    g.fillStyle = '#fff'; g.strokeStyle = '#1e1530'; g.lineWidth = 5;
+    g.beginPath(); g.arc(X(w.px), Y(w.py), 11, 0, Math.PI * 2); g.stroke(); g.fill();
+    $('#map-note').textContent = `Donjon : ${m.name} · le gardien se cache quelque part dans le labyrinthe…`;
+    return;
+  }
+  g.drawImage(mapImage(m, Wd, Hd), 0, 0);
   const label = (txt, x, y, col) => {
     g.font = 'bold 22px Nunito, system-ui, sans-serif'; g.textAlign = 'center';
     g.lineWidth = 5; g.strokeStyle = 'rgba(20,12,30,.85)'; g.strokeText(txt, x, y); g.fillStyle = col; g.fillText(txt, x, y);
@@ -566,6 +573,10 @@ function renderMap() {
     g.fillStyle = '#f2a03a'; g.beginPath(); g.arc(X(m.lair.x), Y(m.lair.y), 13, 0, Math.PI * 2); g.fill();
     label(MONSTERS[m.lair.id].name, X(m.lair.x), Y(m.lair.y) + 36, '#ffd0a0');
     g.fillStyle = '#4fc3c7'; g.fillRect(X(m.zaap.x) - 11, Y(m.zaap.y) - 11, 22, 22);
+    for (const z of m.isleZaaps || []) {
+      const on = (w.zaaps || []).includes(m.zone + ':' + z.k);
+      g.fillStyle = on ? '#4fc3c7' : '#6a5a80'; g.fillRect(X(z.x) - 8, Y(z.y) - 8, 16, 16);
+    }
     label('Zaap', X(m.zaap.x), Y(m.zaap.y) + 40, '#bff4f6');
     g.fillStyle = '#120c18'; g.strokeStyle = '#ffd0a0'; g.lineWidth = 3;
     g.fillRect(X(m.door.x) - 14, Y(m.door.y) - 14, 28, 28); g.strokeRect(X(m.door.x) - 14, Y(m.door.y) - 14, 28, 28);
@@ -688,6 +699,24 @@ function renderInv() {
   on('#inv-sell-common', () => { const k = Game.sellRarity('commun'); onToast(`Objets communs vendus : +${k} kamas`, '#f2c14e'); invSel = null; renderInv(); });
 }
 
+/** Carte d'un donjon : brouillard sur les cases non explorées, sortie et héros seulement. */
+function drawMaze(g, m, w, Wd, Hd) {
+  const sx = Wd / m.w, sy = Hd / (m.h * 2), X = (x) => x * sx, Y = (y) => (y + m.h) * sy;
+  g.fillStyle = '#120c18'; g.fillRect(0, 0, Wd, Hd);
+  const seen = new Set(w.seen || []);
+  g.fillStyle = '#4a4258';
+  for (const k of seen) { const [i, j] = k.split(',').map(Number); g.fillRect(X(i * m.cell) - 1, Y(j * m.cell - m.h) - 1, m.cell * sx + 2, m.cell * sy + 2); }
+  g.fillStyle = '#a89cc0';
+  for (const wl of m.walls) {
+    const i = Math.floor(((wl.x0 + wl.x1) / 2) / m.cell), j = Math.floor(((wl.y0 + wl.y1) / 2 + m.h) / m.cell);
+    let near = false;
+    for (let a = -1; a <= 1 && !near; a++) for (let b = -1; b <= 1 && !near; b++) if (seen.has((i + a) + ',' + (j + b))) near = true;
+    if (near) g.fillRect(X(wl.x0), Y(wl.y0), Math.max(1, (wl.x1 - wl.x0) * sx), Math.max(1, (wl.y1 - wl.y0) * sy));
+  }
+  g.fillStyle = '#b46cff'; g.fillRect(X(m.exit.x) - 6, Y(m.exit.y) - 6, 12, 12);
+  return { X, Y };
+}
+
 function drawMinimap(w) {
   const cv = $('#minimap'), g = cv.getContext('2d'), m = w.map;
   // Taille du canevas selon les proportions de la carte (zone ou donjon)
@@ -695,7 +724,14 @@ function drawMinimap(w) {
   if (cv.height !== Hd) cv.height = Hd;
   const sx = Wd / m.w, sy = Hd / (m.h * 2);
   const X = (x) => x * sx, Y = (y) => (y + m.h) * sy;
+  if (m.kind === 'dungeon') {
+    drawMaze(g, m, w, Wd, Hd);
+    g.fillStyle = '#fff'; g.strokeStyle = '#1e1530'; g.lineWidth = 3;
+    g.beginPath(); g.arc(X(w.px), Y(w.py), 6, 0, Math.PI * 2); g.stroke(); g.fill();
+    return;
+  }
   g.drawImage(mapImage(m, Wd, Hd), 0, 0);
+  for (const z of m.isleZaaps || []) { g.fillStyle = (w.zaaps || []).includes(m.zone + ':' + z.k) ? '#4fc3c7' : '#6a5a80'; g.fillRect(X(z.x) - 4, Y(z.y) - 4, 8, 8); }
   for (const c of w.camps) {
     g.fillStyle = lvlColor(c.lvl, w.level);
     g.beginPath(); g.arc(X(c.x), Y(c.y), 3, 0, Math.PI * 2); g.fill();
@@ -803,7 +839,8 @@ function onZaap(list) {
     const b = document.createElement('button');
     b.className = 'btn' + (z.here || !z.open ? '' : ' teal');
     b.disabled = z.here || !z.open;
-    b.innerHTML = `${esc(z.name)}${z.here ? ' (ici)' : ''}<small>${z.open ? `Monstres niv. ${z.lvl[0]}–${z.lvl[1]}` : 'Bats le gardien précédent pour y accéder'}</small>`;
+    b.innerHTML = `${esc(z.name)}${z.here ? ' (ici)' : ''}<small>${z.open ? 'Monstres ' + z.sub : 'Bats le gardien précédent pour y accéder'}</small>`;
+    if (!z.world) b.classList.add('isle');
     b.addEventListener('click', () => { closeTravel(); Game.travel(z.idx); });
     box.appendChild(b);
   }

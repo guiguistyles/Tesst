@@ -1088,70 +1088,65 @@ const Render3D = (() => {
     };
     const cliffA = C(m.decoType === 'snow' ? '#c8d6e2' : m.decoType === 'rock' ? '#8a7a62' : '#8a6a48');
     const cliffB = C(m.decoType === 'snow' ? '#9fb2c4' : m.decoType === 'rock' ? '#665a4a' : '#5e4a38');
-    const pos = [], col = [], idx = [];
     const c = new THREE.Color();
-    const RINGS = 34, SEG = 128;
+    const RINGS = 60, SEG = 256, SECT = 16, PER = SEG / SECT;
+    const groundMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: false });
+    // Chaque île est découpée en 16 secteurs (parts de tarte) : seuls ceux à l'écran sont dessinés
     for (const isl of m.isles) {
-      const start = pos.length / 3;
-      // Dessus : anneaux du centre vers le bord
-      for (let ri = 0; ri <= RINGS; ri++) {
-        const k = ri / RINGS;
-        for (let si = 0; si < SEG; si++) {
-          const a = (si / SEG) * Math.PI * 2, wv = WORLD.wob(isl, a) * k;
-          const x = isl.x + Math.cos(a) * isl.rx * wv, y = isl.y + Math.sin(a) * isl.ry * wv;
-          colorAt(x, y, c);
-          if (k > 0.94) c.lerp(dark, 0.25);
-          pos.push(x / U, 0, y / U); col.push(c.r, c.g, c.b);
-          if (ri === 0) break;
+      for (let sc = 0; sc < SECT; sc++) {
+        const pos = [], col = [], idx = [];
+        const A = PER + 1;   // angles du secteur, bord partagé avec le suivant compris
+        colorAt(isl.x, isl.y, c);
+        pos.push(isl.x / U, 0, isl.y / U); col.push(c.r, c.g, c.b);
+        for (let ri = 1; ri <= RINGS; ri++) {
+          const k = ri / RINGS;
+          for (let q = 0; q < A; q++) {
+            const a = ((sc * PER + q) / SEG) * Math.PI * 2, wv = WORLD.wob(isl, a) * k;
+            const x = isl.x + Math.cos(a) * isl.rx * wv, y = isl.y + Math.sin(a) * isl.ry * wv;
+            colorAt(x, y, c);
+            if (k > 0.94) c.lerp(dark, 0.25);
+            pos.push(x / U, 0, y / U); col.push(c.r, c.g, c.b);
+          }
         }
+        for (let q = 0; q < A - 1; q++) idx.push(0, 1 + q + 1, 1 + q);
+        for (let ri = 1; ri < RINGS; ri++) {
+          const r0 = 1 + (ri - 1) * A, r1 = 1 + ri * A;
+          for (let q = 0; q < A - 1; q++) { const a = r0 + q, b = r0 + q + 1, d = r1 + q, e = r1 + q + 1; idx.push(a, b, d, b, e, d); }
+        }
+        // Falaise : le bord descend en s'effilant, strates de roche
+        let prev = 1 + (RINGS - 1) * A;
+        const levels = [[1.0, -0.6], [0.94, -2.4], [0.8, -5], [0.58, -9], [0.32, -13.5], [0.08, -17]];
+        levels.forEach(([k, yy], li) => {
+          const ring = pos.length / 3;
+          for (let q = 0; q < A; q++) {
+            const si = (sc * PER + q) % SEG, a = (si / SEG) * Math.PI * 2, n = noise2(si * 0.35, li * 1.7, seed + isl.k);
+            const wv = WORLD.wob(isl, a) * k * (0.92 + n * 0.16);
+            const x = isl.x + Math.cos(a) * isl.rx * wv, y = isl.y + Math.sin(a) * isl.ry * wv;
+            c.copy(li % 2 ? cliffB : cliffA).lerp(cliffB, n * 0.5);
+            if (li === 0) c.copy(dark).lerp(cliffA, 0.5);
+            pos.push(x / U, yy + (n - 0.5) * 0.8, y / U); col.push(c.r, c.g, c.b);
+          }
+          for (let q = 0; q < A - 1; q++) { const a = prev + q, b = prev + q + 1, d = ring + q, e = ring + q + 1; idx.push(a, b, d, b, e, d); }
+          prev = ring;
+        });
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+        g.setIndex(idx);
+        g.computeVertexNormals();
+        g.computeBoundingSphere();
+        const mesh = new THREE.Mesh(g, groundMat);
+        mesh.receiveShadow = true;
+        group.add(mesh);
       }
-      // Anneau 0 = un seul point central
-      for (let si = 0; si < SEG; si++) idx.push(start, start + 1 + ((si + 1) % SEG), start + 1 + si);
-      for (let ri = 1; ri < RINGS; ri++) {
-        const r0 = start + 1 + (ri - 1) * SEG, r1 = start + 1 + ri * SEG;
-        for (let si = 0; si < SEG; si++) {
-          const a = r0 + si, b = r0 + ((si + 1) % SEG), d = r1 + si, e = r1 + ((si + 1) % SEG);
-          idx.push(a, b, d, b, e, d);
-        }
-      }
-      // Falaise : le bord descend en s'effilant, strates de roche
-      const top = start + 1 + (RINGS - 1) * SEG;
-      const levels = [[1.0, -0.6], [0.94, -2.4], [0.8, -5], [0.58, -9], [0.32, -13.5], [0.08, -17]];
-      let prev = top;
-      levels.forEach(([k, yy], li) => {
-        const ring = pos.length / 3;
-        for (let si = 0; si < SEG; si++) {
-          const a = (si / SEG) * Math.PI * 2, n = noise2(si * 0.35, li * 1.7, seed + isl.k);
-          const wv = WORLD.wob(isl, a) * k * (0.92 + n * 0.16);
-          const x = isl.x + Math.cos(a) * isl.rx * wv, y = isl.y + Math.sin(a) * isl.ry * wv;
-          c.copy(li % 2 ? cliffB : cliffA).lerp(cliffB, n * 0.5);
-          if (li === 0) c.copy(dark).lerp(cliffA, 0.5);
-          pos.push(x / U, yy + (n - 0.5) * 0.8, y / U); col.push(c.r, c.g, c.b);
-        }
-        for (let si = 0; si < SEG; si++) {
-          const a = prev + si, b = prev + ((si + 1) % SEG), d = ring + si, e = ring + ((si + 1) % SEG);
-          idx.push(a, b, d, b, e, d);
-        }
-        prev = ring;
-      });
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    g.setIndex(idx);
-    g.computeVertexNormals();
-    const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: false }));
-    mesh.receiveShadow = true;
-    mesh.castShadow = false;
-    mesh.frustumCulled = false;
-    group.add(mesh);
     // Ponts de corde entre les îles
     for (const b of m.spans) group.add(buildSpan(b));
     // Nuages sous l'archipel et au loin
     let s = 99 + m.zone;
     const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
     const clouds = [];
-    for (let k = 0; k < 90; k++) {
+    for (let k = 0; k < 260; k++) {
       clouds.push({ x: -1500 + rnd() * (m.w + 3000), z: -m.h - 1800 + rnd() * (m.h * 2 + 2600), y: -12 - rnd() * 20, s: 2.5 + rnd() * 5, sy: 0.6 + rnd() * 0.5, c: '#ffffff' });
     }
     const puff = mergedWhite(() => {
@@ -1189,7 +1184,7 @@ const Render3D = (() => {
 
   /** Lot d'instances d'un petit modèle (couvert végétal, accessoires), teinté par instance. */
   // Les lots sont découpés en secteurs de 40 m : seuls ceux à l'écran sont dessinés
-  const CHUNK = 40;
+  const CHUNK = 50;
   function scatter(group, geo, list, shadow = false, mtl = null) {
     if (!list.length) return null;
     const material = mtl || new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 });
@@ -1389,18 +1384,18 @@ const Render3D = (() => {
       : type === 'forest' ? ['#3f6a2c', '#58823a', '#2f5222'] : ['#5f9a3a', '#78b048', '#4c8030', tone.patch];
     // Touffes d'herbe en nappes (plus denses dans les taches de bruit)
     const tufts = [];
-    for (let k = 0; k < 40000 && tufts.length < 11000; k++) {
+    for (let k = 0; k < 120000 && tufts.length < 30000; k++) {
       const [x, y] = randIn();
       if (fbm(x / 400, y / 400, 31 + m.zone) < 0.42 && rnd() < 0.7) continue;
       if (!free(x, y)) continue;
       tufts.push({ x, z: y, s: (0.7 + rnd() * 0.8) * (type === 'snow' ? 0.8 : 1), ry: rnd() * 6.3, c: grassCols[(rnd() * grassCols.length) | 0] });
     }
-    scatter(group, type === 'snow' ? COVER.mound() : COVER.tuft(), type === 'snow' ? tufts.slice(0, 1800).map((o) => ({ ...o, s: o.s * 0.3 })) : tufts);
-    if (type === 'snow') scatter(group, COVER.tuft(), tufts.slice(1800, 5500).map((o) => ({ ...o, c: '#9ab0a0' })));
+    scatter(group, type === 'snow' ? COVER.mound() : COVER.tuft(), type === 'snow' ? tufts.slice(0, 8000).map((o) => ({ ...o, s: o.s * 0.3 })) : tufts);
+    if (type === 'snow') scatter(group, COVER.tuft(), tufts.slice(8000, 24000).map((o) => ({ ...o, c: '#9ab0a0' })));
     // Fleurs (sauf montagne et neige)
     if (type !== 'snow' && type !== 'rock') {
       const fl = [], cols = type === 'forest' ? ['#b48cff', '#ff9ad0', '#ffffff'] : ['#ffffff', '#ff9ab0', '#ffd84a', '#b48cff', '#ff7a5a'];
-      for (let k = 0; k < 20000 && fl.length < 3200; k++) {
+      for (let k = 0; k < 50000 && fl.length < 8000; k++) {
         const [x, y] = randIn();
         if (noise2(x / 260, y / 260, 55 + m.zone) < 0.55) continue;
         if (!free(x, y)) continue;
@@ -1495,7 +1490,7 @@ const Render3D = (() => {
     if (W3.group) { scene.remove(W3.group); disposeGroup(W3.group); }
     const group = new THREE.Group();
     scene.add(group);
-    Object.assign(W3, { group, key: m.key, map: m, anchor: null, first: true, zaap: null, npc: null, mark: null, door: null, torches: [], water: null, glow: null, lamps: null, mill: null });
+    Object.assign(W3, { group, key: m.key, map: m, anchor: null, first: true, zaap: null, izaps: null, npc: null, mark: null, door: null, torches: [], water: null, glow: null, lamps: null, mill: null });
     const z = ZONES[m.zone], dungeon = m.kind === 'dungeon';
     let seed = 777 + m.zone * 31 + (dungeon ? 5 : 0);
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -1545,6 +1540,7 @@ const Render3D = (() => {
       zp.root.position.set(m.zaap.x / U, 0, m.zaap.y / U);
       group.add(zp.root);
       W3.zaap = zp;
+      W3.izaps = (m.isleZaaps || []).map((iz) => { const o = buildZaap(); o.root.position.set(iz.x / U, 0, iz.y / U); o.root.scale.setScalar(0.85); group.add(o.root); return o; });
       const fn = HERO_BUILD[m.npc.look] && window[HERO_BUILD[m.npc.look]];
       try { if (typeof fn === 'function') W3.npc = fn({ hero: true }); } catch (e) { W3.npc = null; }
       if (W3.npc) {
@@ -1563,18 +1559,25 @@ const Render3D = (() => {
       W3.door = dr;
       W3.torches = dr.torches;
     } else {
-      // Murs : haut au nord (fond de l'écran), bas au sud pour ne pas masquer l'action
-      const wall = mat(0x2e2640), wallTop = mat(0x463c5a);
-      const L = W / U + 4, hz = H / U;
-      group.add(at(box(L, 4, 1.6, wall), W / U / 2, 2, -hz - 0.8));
-      group.add(at(box(L, 0.3, 1.8, wallTop), W / U / 2, 4.1, -hz - 0.8));
-      group.add(at(box(L, 0.8, 1.2, wall), W / U / 2, 0.4, hz + 0.6));
-      group.add(at(box(1.6, 4, hz * 2 + 2, wall), -0.8, 2, 0));
-      group.add(at(box(1.6, 4, hz * 2 + 2, wall), W / U + 0.8, 2, 0));
-      for (let x = 150; x < W; x += 300) {
-        group.add(at(box(1, 4.4, 1, wallTop), x / U, 2.2, -hz + 0.1));
-        const f = at(crystal(0.2, 0.55, mat(0xff9a3a, 1.2)), x / U, 3.1, -hz + 0.75);
-        group.add(at(cyl(0.06, 0.08, 0.7, 5, mat(0x5a4030)), x / U, 2.7, -hz + 0.65, 0.5, 0, 0));
+      // Labyrinthe : murs bas (pour ne pas cacher le héros), chapeaux de pierre et torches
+      const box1 = new THREE.BoxGeometry(1, 1, 1);
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0x3a3050, roughness: 0.9, flatShading: true });
+      const capMat = new THREE.MeshStandardMaterial({ color: 0x5a4e72, roughness: 0.8, flatShading: true });
+      const walls = new THREE.InstancedMesh(box1, wallMat, m.walls.length), caps = new THREE.InstancedMesh(box1, capMat, m.walls.length);
+      m.walls.forEach((wl, i) => {
+        const wx = (wl.x1 - wl.x0) / U, wz = (wl.y1 - wl.y0) / U, cx = (wl.x0 + wl.x1) / 2 / U, cz = (wl.y0 + wl.y1) / 2 / U;
+        tmpQ.identity();
+        tmpM.compose(tmpP.set(cx, 0.9, cz), tmpQ, tmpS.set(wx, 1.8, wz)); walls.setMatrixAt(i, tmpM);
+        tmpM.compose(tmpP.set(cx, 1.86, cz), tmpQ, tmpS.set(wx + 0.25, 0.14, wz + 0.25)); caps.setMatrixAt(i, tmpM);
+      });
+      walls.castShadow = caps.castShadow = true; walls.receiveShadow = true;
+      group.add(walls, caps);
+      let tk = 0;
+      for (const wl of m.walls) {
+        if (tk++ % 4) continue;
+        const cx = (wl.x0 + wl.x1) / 2 / U, cz = (wl.y0 + wl.y1) / 2 / U;
+        const f = at(crystal(0.2, 0.55, mat(0xff9a3a, 1.2)), cx, 2.4, cz);
+        group.add(at(cyl(0.06, 0.08, 0.6, 5, mat(0x5a4030)), cx, 2.05, cz));
         group.add(f);
         W3.torches.push(f);
       }
@@ -1625,6 +1628,7 @@ const Render3D = (() => {
     scene.background.copy(W3.sky);
     scene.fog.color.copy(W3.sky);
     ground.material.color.set(dungeon ? 0x0e0a16 : S.zone.ground).multiplyScalar(dungeon ? 1 : 0.55);
+    for (const o of W3.izaps || []) { o.portal.material.opacity = 0.5 + 0.15 * Math.sin(time * 3 + 1); o.swirl.rotation.z = -time * 2.5; }
     const zp = W3.zaap;
     if (zp) {
       zp.portal.material.opacity = 0.5 + 0.15 * Math.sin(time * 3);

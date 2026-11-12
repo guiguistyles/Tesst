@@ -452,3 +452,6 @@ kbd { font: 800 11px var(--font-body); border: 1px solid currentColor; border-ra
 .bar-line .sicon { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: #1e1530; font-weight: 800; }
 .bar-line small { color: var(--muted); font-weight: 700; }
 .charwin { max-height: 94vh; overflow-y: auto; }
+
+#travel-list { max-height: 56vh; overflow-y: auto; }
+#travel-list .btn.isle { font-size: 14px; padding-top: 6px; padding-bottom: 6px; }

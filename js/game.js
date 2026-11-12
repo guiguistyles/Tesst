@@ -463,6 +463,7 @@ const Game = (() => {
       quest: adv.quest || 0, qProgress: adv.qProgress || 0, qAccepted: !!adv.qAccepted,
       bossKilled: Object.assign({}, adv.bossKilled || {}),
       map: null, camps: [], lairs: [], dead: 0, combatT: 10, playTime: adv.playTime || 0,
+      zaaps: new Set((adv.zaaps || []).filter((z) => typeof z === 'string')), seen: new Set(),
     };
     const m = WORLD.zones[Math.min(4, adv.zone || 0)];
     const pos = adv.pos && WORLD.walkable(m, adv.pos.x, adv.pos.y, 20) ? adv.pos : null;
@@ -479,6 +480,7 @@ const Game = (() => {
     S.enemies = []; S.eprojs = []; S.projs = []; S.strikes = []; S.traps = []; S.glyphs = [];
     S.boss = null;
     w.map = m;
+    w.seen = new Set();
     S.zone = ZONES[m.zone];
     S.zoneIdx = m.zone;
     w.camps = m.camps.map((def) => ({ def, members: [], respawnAt: 0 }));
@@ -539,7 +541,15 @@ const Game = (() => {
     }
     S.boss = fight;
     // Carte des distances au héros pour le cheminement des monstres
-    if (!dungeon && (S.t - (m._nav ? m._nav.at : -9) > 0.3)) updateFlow(m);
+    if (S.t - (m._nav ? m._nav.at : -9) > 0.3) updateFlow(m);
+    // Donjon : cases du labyrinthe déjà explorées (pour la carte)
+    if (dungeon) {
+      const ci = Math.floor(p.x / m.cell), cj = Math.floor((p.y + m.h) / m.cell);
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+        const i = ci + a, j = cj + b;
+        if (i >= 0 && j >= 0 && i < m.cols && j < m.rows && (Math.abs(a) + Math.abs(b) < 2)) w.seen.add(i + ',' + j);
+      }
+    }
   }
 
   /** Comportement d'un monstre : rôde près de son camp, attaque à l'approche, abandonne s'il est entraîné trop loin. */
@@ -668,6 +678,7 @@ const Game = (() => {
     if (m.kind === 'zone') {
       if (near(m.npc)) return { kind: 'npc', label: 'Parler à ' + m.npc.name };
       if (near(m.zaap)) return { kind: 'zaap', label: 'Utiliser le zaap' };
+      for (const z of m.isleZaaps || []) if (near(z)) return { kind: 'zaap', label: S.world.zaaps.has(m.zone + ':' + z.k) ? 'Utiliser le zaap' : 'Activer le zaap', isle: z };
       if (near(m.door, 170)) return { kind: 'door', label: `Entrer dans le donjon (niv. ${WORLD.DUNGEON_LEVEL[m.zone]})` };
     } else if (near(m.exit, 150)) return { kind: 'exit', label: 'Quitter le donjon' };
     return null;
@@ -693,10 +704,23 @@ const Game = (() => {
         cb.onDialog({ npc, title: npc.name, lines: [!q ? 'Grâce à toi, la brume a disparu. Merci, héros !' : 'Merci pour ton aide ! D’autres ont besoin de toi plus loin.'] });
       }
     } else if (n.kind === 'zaap') {
-      cb.onZaap(WORLD.zones.map((z, i) => ({ idx: i, name: z.name, lvl: z.lvl, here: i === m.zone, open: WORLD.unlocked(i, w.bossKilled) })));
+      if (n.isle && !w.zaaps.has(m.zone + ':' + n.isle.k)) { w.zaaps.add(m.zone + ':' + n.isle.k); cb.onBanner('Zaap activé', n.isle.name); cb.onSave(); }
+      // Destinations : le zaap central de chaque monde débloqué et les zaaps d'île déjà activés
+      const here = n.isle ? m.zone + ':' + n.isle.k : m.zone + ':0';
+      const list = [];
+      WORLD.zones.forEach((z, i) => {
+        const open = WORLD.unlocked(i, w.bossKilled);
+        list.push({ idx: i + ':0', name: z.name, sub: `niv. ${z.lvl[0]}–${z.lvl[1]}`, here: here === i + ':0', open, world: true });
+        if (open) for (const iz of z.isleZaaps) {
+          const id = i + ':' + iz.k, isl = z.isles[iz.k];
+          if (w.zaaps.has(id)) list.push({ idx: id, name: '↳ ' + isl.name, sub: `niv. ${isl.lvl[0]}–${isl.lvl[1]}`, here: here === id, open: true });
+        }
+      });
+      cb.onZaap(list);
     } else if (n.kind === 'door') {
       const need = WORLD.DUNGEON_LEVEL[m.zone];
       if (S.level < need) { cb.onBanner('Donjon trop dangereux', `Il faut être niveau ${need} pour entrer`); return; }
+      WORLD.genDungeon(m.dungeon);   // un nouveau labyrinthe à chaque entrée
       loadMap(m.dungeon);
     } else if (n.kind === 'exit') {
       const z = WORLD.zones[m.zone];
@@ -706,9 +730,14 @@ const Game = (() => {
   }
 
   /** Voyage par zaap vers une zone débloquée. */
-  function travel(i) {
-    if (!S || S.mode !== 'world' || !WORLD.zones[i] || !WORLD.unlocked(i, S.world.bossKilled)) return;
-    loadMap(WORLD.zones[i]);
+  function travel(dest) {
+    if (!S || S.mode !== 'world') return;
+    const [zi, k] = String(dest).split(':').map(Number);
+    const z = WORLD.zones[zi];
+    if (!z || !WORLD.unlocked(zi, S.world.bossKilled)) return;
+    const iz = k ? z.isleZaaps.find((o) => o.k === k) : null;
+    if (k && (!iz || !S.world.zaaps.has(zi + ':' + k))) return;
+    loadMap(z, iz ? { x: iz.x + 120, y: iz.y + 60 } : null);
     cb.onSave();
   }
 
@@ -727,7 +756,9 @@ const Game = (() => {
       action: n ? n.label : null, px: S.p.x, py: S.p.y, map: m, level: S.level,
       npcAlert: q && !w.qAccepted && q.zone === m.zone && m.kind === 'zone',
       camps: w.camps.filter((c) => c.members.length || S.t >= c.respawnAt).map((c) => c.def),
-      bosses: w.lairs.filter((l) => S.t >= l.nextAt).map((l) => l.def),
+      // Dans le donjon, le gardien n'apparaît pas sur la carte
+      bosses: m.kind === 'dungeon' ? [] : w.lairs.filter((l) => S.t >= l.nextAt).map((l) => l.def),
+      seen: m.kind === 'dungeon' ? [...w.seen] : null, zaaps: [...w.zaaps],
       pts: [caracPoints(), talentPoints()], open: WORLD.zones.map((z, i) => WORLD.unlocked(i, w.bossKilled)),
     };
   }
@@ -746,7 +777,7 @@ const Game = (() => {
       talents: { spells: Object.assign({}, S.talents.spells), passives: Object.assign({}, S.talents.passives), bar: S.talents.bar.slice() },
       spells: S.spells.map((sp) => ({ id: sp.id, lvl: sp.lvl })), zone: S.zoneIdx, pos,
       quest: w.quest, qProgress: w.qProgress, qAccepted: w.qAccepted, bossKilled: Object.assign({}, w.bossKilled),
-      playTime: Math.round(w.playTime),
+      zaaps: [...w.zaaps], playTime: Math.round(w.playTime),
     };
   }
   /** Kamas et Dofus gagnés depuis la dernière sauvegarde (remis à zéro). */
@@ -939,7 +970,7 @@ const Game = (() => {
   /** Direction de marche d'un monstre vers le héros, en contournant les obstacles. */
   function flowDir(e, ux, uy, dist) {
     const m = S.world.map, nav = m._nav;
-    if (!nav || m.kind !== 'zone' || dist < 70) return [ux, uy];
+    if (!nav || dist < 70) return [ux, uy];
     // Ligne droite libre sur quelques cases : on fonce
     let clear = true;
     for (let k = 1; k <= 3 && clear; k++) {
@@ -1057,6 +1088,7 @@ const Game = (() => {
       p.x = clamp(p.x, 40, m.w - 40);
       p.y = clamp(p.y, -m.h + 40, m.h - 40);
       // Eau, gouffres et maisons
+      if (m.kind === 'dungeon') [p.x, p.y] = WORLD.collide(m, p.x, p.y, p.r);
       if (m.kind === 'zone') {
         [p.x, p.y] = WORLD.collide(m, p.x, p.y, p.r);
         // Archipel : on reste sur les îles et les ponts
@@ -1612,7 +1644,7 @@ const Game = (() => {
         }
       });
     }
-    if (S.mode === 'world' && S.world.map.kind === 'zone') {
+    if (S.mode === 'world') {
       const m = S.world.map;
       for (const e of S.enemies) {
         if (e.dead) continue;
@@ -2109,20 +2141,18 @@ const Game = (() => {
         const T = 64;
         for (let gy = Math.floor(by0 / T) * T; gy < by1; gy += T)
           for (let gx = Math.floor(bx0 / T) * T; gx < bx1; gx += T) if (((gx + gy) / T) & 1) ctx.fillRect(gx, gy, T, T);
+        // Murs du labyrinthe
+        for (const wl of m.walls) {
+          if (wl.x1 < x0 - 40 || wl.x0 > x1 + 40 || wl.y1 < y0 - 60 || wl.y0 > y1 + 40) continue;
+          ctx.fillStyle = '#241d30'; ctx.fillRect(wl.x0, wl.y0 - 30, wl.x1 - wl.x0, wl.y1 - wl.y0 + 30);
+          ctx.fillStyle = '#5a4e72'; ctx.fillRect(wl.x0, wl.y0 - 34, wl.x1 - wl.x0, 10);
+        }
       } else {
         ctx.restore();
         drawIslands2D(m, z, x0, y0, x1, y1);
         ctx.save();
       }
       ctx.restore();
-    }
-    if (dungeon) {
-      // Murs et torches du donjon
-      ctx.fillStyle = '#241d30';
-      ctx.fillRect(x0 - 10, -m.h - 60, x1 - x0 + 20, 60);
-      ctx.fillRect(x0 - 10, m.h, x1 - x0 + 20, 30);
-      ctx.fillStyle = '#ff9a3a';
-      for (let tx = Math.floor(x0 / 300) * 300 + 150; tx < x1; tx += 300) { ctx.beginPath(); ctx.arc(tx, -m.h - 20, 6 + Math.sin(S.t * 9 + tx) * 1.5, 0, Math.PI * 2); ctx.fill(); }
     }
     drawWorldPlaces();
   }
@@ -2382,6 +2412,7 @@ const Game = (() => {
     if (m.kind === 'zone') {
       drawVillage2D(m);
       drawPortal(m.zaap.x, m.zaap.y, '#4fc3c7');
+      for (const iz of m.isleZaaps || []) drawPortal(iz.x, iz.y, w.zaaps.has(m.zone + ':' + iz.k) ? '#4fc3c7' : '#8a7a9a');
       const n = m.npc, q = WORLD.QUESTS[w.quest];
       ctx.fillStyle = 'rgba(0,0,0,.25)'; isoEllipse(n.x, n.y, 14); ctx.fill();
       ctx.fillStyle = CLASSES[n.look] ? CLASSES[n.look].color : '#c9a'; ctx.fillRect(n.x - 9, n.y - 30, 18, 26);

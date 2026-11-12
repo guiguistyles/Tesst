@@ -42,9 +42,27 @@ const WORLD = (() => {
     return Math.hypot(px - ax - dx * t, py - ay - dy * t);
   }
   /** Distance au chemin le plus proche. */
+  function roadGrid(m) {
+    if (m._rg && m._rgN === (m.roads || []).length) return m._rg;
+    const g = new Map(), C = 300;
+    for (const r of m.roads || []) for (let i = 1; i < r.length; i++) {
+      const [ax, ay] = r[i - 1], [bx, by] = r[i];
+      for (let gx = Math.floor((Math.min(ax, bx) - 450) / C); gx <= Math.floor((Math.max(ax, bx) + 450) / C); gx++)
+        for (let gy = Math.floor((Math.min(ay, by) - 450) / C); gy <= Math.floor((Math.max(ay, by) + 450) / C); gy++) {
+          const k = gx * 100000 + gy;
+          if (!g.has(k)) g.set(k, []);
+          g.get(k).push([ax, ay, bx, by]);
+        }
+    }
+    m._rg = g; m._rgN = (m.roads || []).length;
+    return g;
+  }
+  /** Distance au chemin le plus proche (exacte jusqu'à 450 px). */
   function roadDist(m, x, y) {
-    let d = Infinity;
-    for (const r of m.roads || []) for (let i = 1; i < r.length; i++) d = Math.min(d, segDist(x, y, r[i - 1][0], r[i - 1][1], r[i][0], r[i][1]));
+    let d = 1e9;
+    const cell = roadGrid(m).get(Math.floor(x / 300) * 100000 + Math.floor(y / 300));
+    if (cell) for (const [ax, ay, bx, by] of cell) d = Math.min(d, segDist(x, y, ax, ay, bx, by));
+    if (d > 1e6) d = 1e6;
     if (m.plaza) d = Math.min(d, Math.max(0, Math.hypot(x - m.plaza.x, y - m.plaza.y) - m.plaza.r));
     return d;
   }
@@ -72,6 +90,18 @@ const WORLD = (() => {
     for (const hs of m.houses || []) {
       const dx = x - hs.x, dy = y - hs.y, d = Math.hypot(dx, dy), R = hs.r + r;
       if (d < R && d > 0.01) { x = hs.x + (dx / d) * R; y = hs.y + (dy / d) * R; }
+    }
+    // Murs du labyrinthe (donjon)
+    for (const w of m.walls || []) {
+      if (x + r < w.x0 || x - r > w.x1 || y + r < w.y0 || y - r > w.y1) continue;
+      const cx = Math.max(w.x0, Math.min(x, w.x1)), cy = Math.max(w.y0, Math.min(y, w.y1));
+      const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy);
+      if (d > 0.01) { if (d < r) { x = cx + (dx / d) * r; y = cy + (dy / d) * r; } }
+      else {
+        // Centre dans le mur : on sort par le côté le plus proche
+        const L = x - w.x0, Rr = w.x1 - x, T = y - w.y0, B = w.y1 - y, mn = Math.min(L, Rr, T, B);
+        if (mn === L) x = w.x0 - r; else if (mn === Rr) x = w.x1 + r; else if (mn === T) y = w.y0 - r; else y = w.y1 + r;
+      }
     }
     // Arbres, rochers et autres éléments solides du décor
     if (m.solids) {
@@ -172,6 +202,7 @@ const WORLD = (() => {
     { x: 9150, y: 0, rx: 1350, ry: 1050 },     // 4 (entrée du donjon)
   ];
   const LINKS = [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4]];
+  const SCALE = 2.5;   // agrandissement des îles (surface ×6)
   // Sous-zones : nom, monstres, plans d'eau
   const SUBZONES = [
     [{ name: 'Calanque d’Astrub', ids: ['pichon'], lake: 'water' }, { name: 'Tainéla', ids: ['bouftou'] },
@@ -221,7 +252,8 @@ const WORLD = (() => {
 
   function genIslands(m, r, zi) {
     const sub = SUBZONES[zi];
-    m.isles = ISLES.map((d, k) => ({ ...d, s: r() * 6.28, k, name: k ? sub[k - 1].name : m.name, ids: k ? sub[k - 1].ids : [], lake: k ? sub[k - 1].lake : null }));
+    const K = SCALE;
+    m.isles = ISLES.map((d0, k) => ({ x: d0.x * K, y: d0.y * K, rx: d0.rx * K, ry: d0.ry * K, s: r() * 6.28, k, name: k ? sub[k - 1].name : m.name, ids: k ? sub[k - 1].ids : [], lake: k ? sub[k - 1].lake : null }));
     const [l0, l1] = m.lvl, span = (l1 - l0 + 1) / 4;
     // 10 niveaux par île : Astrub 1-10, 10-20, 20-30, 30-40 ; Amakna 40-50…
     m.isles.forEach((isl, k) => { if (k) isl.lvl = [Math.max(1, zi * 40 + (k - 1) * 10), zi * 40 + k * 10]; });
@@ -245,9 +277,9 @@ const WORLD = (() => {
     for (const b of m.spans) {
       const A = m.isles[b.a], B = m.isles[b.b];
       const from = b.a === 0 ? [m.zaap.x + 120, 0] : ctr(A);
-      const mid1 = [(from[0] + b.ax) / 2 + (r() - 0.5) * 120, (from[1] + b.ay) / 2 + (r() - 0.5) * 120];
-      const mid2 = [(b.bx + B.x) / 2 + (r() - 0.5) * 120, (b.by + B.y) / 2 + (r() - 0.5) * 120];
-      m.roads.push(smoothPath([from, mid1, [b.ax, b.ay], [b.bx, b.by], mid2, ctr(B)]));
+      const w1 = (t, k) => [from[0] + (b.ax - from[0]) * t + (r() - 0.5) * k, from[1] + (b.ay - from[1]) * t + (r() - 0.5) * k];
+      const w2 = (t, k) => [b.bx + (B.x - b.bx) * t + (r() - 0.5) * k, b.by + (B.y - b.by) * t + (r() - 0.5) * k];
+      m.roads.push(smoothPath([from, w1(0.33, 500), w1(0.66, 500), [b.ax, b.ay], [b.bx, b.by], w2(0.33, 500), w2(0.66, 500), ctr(B)]));
     }
     m.roads.push(smoothPath([ctr(di), [di.x + di.rx * 0.3, di.y + 40], [m.door.x - 60, m.door.y]]));
     m.plaza = { x: m.zaap.x + 80, y: 0, r: 230 };
@@ -256,9 +288,9 @@ const WORLD = (() => {
     m.bridges = [];
     for (const isl of m.isles) {
       if (!isl.lake) continue;
-      const n = isl.lake === 'ice' ? 1 : isl.lake === 'chasm' ? 2 : 3;
-      for (let k = 0, t = 0; k < n && t < 600; t++) {
-        const big = isl.lake === 'ice' ? 0.42 : isl.lake === 'water' && k === 0 ? 0.33 : 0.18;
+      const n = isl.lake === 'ice' ? 2 : isl.lake === 'chasm' ? 5 : 8;
+      for (let k = 0, t = 0; k < n && t < 2000; t++) {
+        const big = isl.lake === 'ice' ? 0.3 : isl.lake === 'water' && k === 0 ? 0.22 : 0.09 + r() * 0.06;
         const rx = isl.rx * big * (0.8 + r() * 0.3), ry = rx * (0.6 + r() * 0.25);
         const a = r() * 6.28, d = 0.2 + r() * 0.4;
         const x = isl.x + Math.cos(a) * isl.rx * d, y = isl.y + Math.sin(a) * isl.ry * d;
@@ -278,7 +310,7 @@ const WORLD = (() => {
     m.camps = [];
     for (const isl of m.isles) {
       if (!isl.k) continue;
-      for (let c = 0, t = 0; c < 18 && t < 1500; t++) {
+      for (let c = 0, t = 0; c < 95 && t < 8000; t++) {
         const a = r() * 6.28, d = 0.15 + r() * 0.68;
         const x = isl.x + Math.cos(a) * isl.rx * d, y = isl.y + Math.sin(a) * isl.ry * d;
         if (isleE(isl, x, y) > 0.82 || roadDist(m, x, y) < 110 || inWater(m, x, y, 120, false)) continue;
@@ -290,7 +322,15 @@ const WORLD = (() => {
         c++;
       }
     }
-    m.w = 10650; m.h = 2550;
+    m.w = Math.round(10650 * SCALE); m.h = Math.round(2550 * SCALE);
+    // Un zaap sur chaque île, près de l'arrivée du premier pont
+    m.isleZaaps = m.isles.slice(1).map((isl) => {
+      const b = m.spans.find((sp) => sp.b === isl.k);
+      let x = b.bx + (isl.x - b.bx) * 0.3, y = b.by + (isl.y - b.by) * 0.3 + 220;
+      if (inWater(m, x, y, 120, false)) y -= 440;
+      return { x, y, k: isl.k, name: isl.name };
+    });
+    m.camps = m.camps.filter((c) => !m.isleZaaps.some((z) => Math.hypot(z.x - c.x, z.y - c.y) < 450));
     const li2 = m.isles[LAIR_ISLE[zi]];
     m.lair.lvl = li2.lvl[1] + 3;
   }
@@ -314,6 +354,7 @@ const WORLD = (() => {
     const out = [];
     const avoid = [[m.zaap.x, m.zaap.y, 300], [m.npc.x, m.npc.y, 200], [m.lair.x, m.lair.y, 300], [m.door.x, m.door.y, 330], [m.well.x, m.well.y, 90]];
     for (const c of m.camps) avoid.push([c.x, c.y, 170]);
+    for (const z of m.isleZaaps) avoid.push([z.x, z.y, 220]);
     for (const hs of m.houses) avoid.push([hs.x, hs.y, 160]);
     const blocked = (x, y, road = 70, isle = 60) => avoid.some(([ax, ay, rr]) => Math.hypot(ax - x, ay - y) < rr) ||
       !isleAt(m, x, y, isle) || inWater(m, x, y, 40, false) || roadDist(m, x, y) < road;
@@ -330,7 +371,7 @@ const WORLD = (() => {
     // Bosquets serrés
     const big = set[0][0], small = (set.find((d) => ['bush', 'mushroom', 'ice', 'spire', 'wheat'].includes(d[0])) || set[set.length - 1])[0];
     const kk = type === 'rock' ? 0.55 : 1;
-    for (let c = 0, t = 0; c < (type === 'forest' ? 80 : 50) && t < 1200; t++) {
+    for (let c = 0, t = 0; c < (type === 'forest' ? 480 : 300) && t < 8000; t++) {
       const cx = 400 + r() * (m.w - 800), cy = (r() * 2 - 1) * (m.h - 150);
       if (avoid.some(([ax, ay, rr]) => Math.hypot(ax - cx, ay - cy) < rr + 120) || roadDist(m, cx, cy) < 200 || inWater(m, cx, cy, 160, false) || !isleAt(m, cx, cy, 150)) continue;
       c++;
@@ -363,18 +404,19 @@ const WORLD = (() => {
         got++;
       }
     };
-    if (type === 'forest') { props('log', 26, 0.9, 1.3); props('shroom', 30, 0.6, 1.5); }
-    else if (type === 'rock') { props('boulder', 60, 0.35, 0.85, () => (r() < 0.5 ? '#9a8a6a' : '#7a6e5a')); props('gem', 22, 0.7, 1.3); }
+    if (type === 'forest') { props('log', 150, 0.9, 1.3); props('shroom', 180, 0.6, 1.5); }
+    else if (type === 'rock') { props('boulder', 360, 0.35, 0.85, () => (r() < 0.5 ? '#9a8a6a' : '#7a6e5a')); props('gem', 130, 0.7, 1.3); }
     else if (type === 'snow') {
-      props('mound', 50, 0.4, 0.9, () => '#f4f8fc');
+      props('mound', 300, 0.4, 0.9, () => '#f4f8fc');
       out.push({ kind: 'snowman', x: m.zaap.x + 260, y: 200, s: 1, ry: -0.4 }, { kind: 'snowman', x: m.zaap.x - 300, y: -120, s: 0.85, ry: 0.5 });
-    } else { props('hay', type === 'field' ? 26 : 10, 0.8, 1.2); props('boulder', 12, 0.4, 0.9, () => '#9a948a'); }
+    } else { props('hay', type === 'field' ? 150 : 60, 0.8, 1.2); props('boulder', 70, 0.4, 0.9, () => '#9a948a'); }
     m.decor = out;
     // Obstacles : décor solide + zaap, puits, moulin, rochers de l'entrée du donjon
     const hub = m.isles[0];
     m.mill = (type === 'field' || type === 'grass') ? { x: hub.x - hub.rx * 0.35, y: -hub.ry * 0.62 } : null;
     m.solids = out.filter((o) => SOLID_R[o.kind]).map((o) => ({ x: o.x, y: o.y, r: SOLID_R[o.kind] * o.s * 32 }));
     m.solids.push({ x: m.zaap.x, y: m.zaap.y, r: 68 }, { x: m.well.x, y: m.well.y, r: 30 }, { x: m.door.x, y: m.door.y - 70, r: 95 });
+    for (const z of m.isleZaaps) m.solids.push({ x: z.x, y: z.y, r: 68 });
     if (m.mill) m.solids.push({ x: m.mill.x, y: m.mill.y, r: 50 });
   }
 
@@ -394,6 +436,80 @@ const WORLD = (() => {
     return grid;
   }
 
+  /* ---------------------------------------------------------------- Labyrinthes */
+  const MAZE_C = 11, MAZE_R = 7, MAZE_S = 460, WALL = 26;
+  /** Génère (ou régénère) le labyrinthe d'un donjon : murs, sortie, salle du boss, monstres. */
+  function genDungeon(d) {
+    const r = rng((Date.now() + d.zone * 9973 + (d.gen || 0) * 131) >>> 0);
+    d.gen = (d.gen || 0) + 1;
+    d.key = 'd' + d.zone + '-' + d.gen;
+    const C = MAZE_C, R = MAZE_R, S = MAZE_S;
+    d.w = C * S; d.h = (R * S) / 2; d.cols = C; d.rows = R; d.cell = S;
+    // Murs ouverts entre cases : east[i][j], south[i][j]
+    const east = Array.from({ length: C }, () => new Array(R).fill(true));
+    const south = Array.from({ length: C }, () => new Array(R).fill(true));
+    const seen = Array.from({ length: C }, () => new Array(R).fill(false));
+    const start = [0, (R / 2) | 0];
+    const stack = [start];
+    seen[start[0]][start[1]] = true;
+    while (stack.length) {
+      const [ci, cj] = stack[stack.length - 1];
+      const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([a, b]) => [ci + a, cj + b]).filter(([a, b]) => a >= 0 && b >= 0 && a < C && b < R && !seen[a][b]);
+      if (!nb.length) { stack.pop(); continue; }
+      const [ni, nj] = nb[(r() * nb.length) | 0];
+      if (ni > ci) east[ci][cj] = false; else if (ni < ci) east[ni][nj] = false;
+      else if (nj > cj) south[ci][cj] = false; else south[ni][nj] = false;
+      seen[ni][nj] = true;
+      stack.push([ni, nj]);
+    }
+    // Quelques passages en plus pour créer des boucles
+    for (let k = 0; k < 9; k++) { const i = (r() * (C - 1)) | 0, j = (r() * R) | 0; east[i][j] = false; }
+    // Case la plus éloignée de l'entrée : la salle du gardien
+    const dist = Array.from({ length: C }, () => new Array(R).fill(-1));
+    const q = [start]; dist[start[0]][start[1]] = 0;
+    let far = start;
+    while (q.length) {
+      const [ci, cj] = q.shift();
+      if (dist[ci][cj] > dist[far[0]][far[1]]) far = [ci, cj];
+      const moves = [];
+      if (ci < C - 1 && !east[ci][cj]) moves.push([ci + 1, cj]);
+      if (ci > 0 && !east[ci - 1][cj]) moves.push([ci - 1, cj]);
+      if (cj < R - 1 && !south[ci][cj]) moves.push([ci, cj + 1]);
+      if (cj > 0 && !south[ci][cj - 1]) moves.push([ci, cj - 1]);
+      for (const [a, b] of moves) if (dist[a][b] < 0) { dist[a][b] = dist[ci][cj] + 1; q.push([a, b]); }
+    }
+    const ctr = (i, j) => ({ x: i * S + S / 2, y: j * S + S / 2 - d.h });
+    // Murs (rectangles), bordure comprise
+    const W = [];
+    const T = WALL;
+    W.push({ x0: -T, y0: -d.h - T, x1: d.w + T, y1: -d.h + T }, { x0: -T, y0: d.h - T, x1: d.w + T, y1: d.h + T });
+    W.push({ x0: -T, y0: -d.h, x1: T, y1: d.h }, { x0: d.w - T, y0: -d.h, x1: d.w + T, y1: d.h });
+    for (let i = 0; i < C; i++) for (let j = 0; j < R; j++) {
+      const x0 = i * S, y0 = j * S - d.h;
+      if (i < C - 1 && east[i][j]) W.push({ x0: x0 + S - T, y0: y0 - T, x1: x0 + S + T, y1: y0 + S + T });
+      if (j < R - 1 && south[i][j]) W.push({ x0: x0 - T, y0: y0 + S - T, x1: x0 + S + T, y1: y0 + S + T });
+    }
+    d.walls = W;
+    d.exit = ctr(start[0], start[1]);
+    d.exit.x -= 60;
+    const bc = ctr(far[0], far[1]);
+    d.boss.x = bc.x; d.boss.y = bc.y;
+    d.bossCell = far;
+    // Monstres : une case sur quatre environ, loin de l'entrée et du gardien
+    d.camps = [];
+    const z = ZONES[d.zone];
+    for (let i = 0; i < C; i++) for (let j = 0; j < R; j++) {
+      const dd = dist[i][j];
+      if (dd < 2 || (i === far[0] && j === far[1]) || Math.abs(i - far[0]) + Math.abs(j - far[1]) < 2 || r() > 0.32) continue;
+      const ids = [], n = 3 + ((r() * 3) | 0);
+      for (let k = 0; k < n; k++) ids.push(z.monsters[(r() * z.monsters.length) | 0]);
+      const c = ctr(i, j);
+      d.camps.push({ x: c.x, y: c.y, ids, lvl: d.lvl[0] + Math.min(3, Math.floor((dd / (dist[far[0]][far[1]] || 1)) * 4)) });
+    }
+    d._nav = null; d._grid = null;
+    return d;
+  }
+
   const zones = ZONES.map((z, i) => {
     const r = rng(1000 + i * 77);
     const [l0, l1] = LEVELS[i];
@@ -407,19 +523,13 @@ const WORLD = (() => {
     };
     genIslands(m, r, i);
     genDecor(m, rng(5000 + i * 31));
-    // Donjon : quatre salles de monstres puis le gardien
+    // Donjon : un labyrinthe, différent à chaque entrée (voir genDungeon)
     const d = {
-      key: 'd' + i, kind: 'dungeon', zone: i, name: DUNGEONS[i], w: DJ_W, h: DJ_H, lvl: [l1 + 1, l1 + 4],
-      exit: { x: 170, y: 0 },
-      boss: { id: z.boss, kind: 'boss', x: DJ_W - 330, y: 0, respawn: Infinity, lvl: l1 + 5 },
-      camps: [],
+      key: 'd' + i, kind: 'dungeon', zone: i, name: DUNGEONS[i], lvl: [l1 + 1, l1 + 4],
+      boss: { id: z.boss, kind: 'boss', x: 0, y: 0, respawn: Infinity, lvl: l1 + 5 },
+      camps: [], gen: 0,
     };
-    [700, 1150, 1600, 2050].forEach((x, k) => {
-      const ids = [];
-      const n = 5 + (k > 1 ? 1 : 0);
-      for (let j = 0; j < n; j++) ids.push(z.monsters[(j + k) % z.monsters.length]);
-      d.camps.push({ x, y: k % 2 ? 110 : -110, ids, lvl: l1 + 1 + (k >> 1) });
-    });
+    genDungeon(d);
     m.dungeon = d;
     return m;
   });
@@ -673,6 +783,6 @@ const WORLD = (() => {
     return { X, Y, s };
   }
 
-  return { zones, QUESTS, NPCS, LEVELS, unlocked, SOLID_R, SLOTS, RARITY, makeItem, itemDesc, isleAt, isleE, wob, edgePoint, walkable, walk, onBridge,
+  return { zones, QUESTS, NPCS, LEVELS, unlocked, SOLID_R, genDungeon, SLOTS, RARITY, makeItem, itemDesc, isleAt, isleE, wob, edgePoint, walkable, walk, onBridge,
     WATER_KIND, ROAD_COL, roadDist, inWater, collide, drawMap, ...CHAR };
 })();
