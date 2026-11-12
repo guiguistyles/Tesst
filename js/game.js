@@ -161,10 +161,10 @@ const Game = (() => {
     }
     // Aventure : le sort ne monte qu'avec la caractéristique de son élément
     if (S && S.mode === 'world' && S.carac) {
-      const el = WORLD.ELEMENTS[WORLD.SPELL_ELEM[sp.id] || 'terre'];
-      if (s.dmg) s.dmg *= 1 + (S.carac[el.stat] || 0) / 100;
-      if (s.heal) s.heal *= 1 + (S.carac.intelligence || 0) / 100;
-      if (s.shield) s.shield *= 1 + (S.carac.force || 0) / 200 + (S.carac.vitalite || 0) / 400;
+      const C = S.caracTot || S.carac, el = WORLD.ELEMENTS[WORLD.SPELL_ELEM[sp.id] || 'terre'], pu = C.puissance || 0;
+      if (s.dmg) s.dmg *= 1 + ((C[el.stat] || 0) + pu) / 100;
+      if (s.heal) s.heal *= 1 + ((C.intelligence || 0) + pu) / 100;
+      if (s.shield) s.shield *= 1 + (C.force || 0) / 200 + (C.vitalite || 0) / 400;
     }
     return s;
   }
@@ -249,21 +249,29 @@ const Game = (() => {
   }
 
   function recomputeWorldStats(st) {
-    const C = S.carac, T = S.talents.passives;
-    st.xp *= 1 + (C.sagesse || 0) / 100;
-    st.dodge = Math.min(0.3, (C.agilite || 0) / 1200);
-    st.crit += (C.agilite || 0) / 2000;
-    st.loot = 1 + Math.floor((C.chance || 0) / 10) / 100;
+    const T = S.talents.passives, { tot } = itemTotals();
+    // Caractéristiques totales : points répartis + équipement + panoplies
+    const C = {};
+    for (const k of ['vitalite', 'sagesse', 'force', 'intelligence', 'chance', 'agilite']) C[k] = (S.carac[k] || 0) + (tot[k] || 0);
+    C.puissance = tot.puissance || 0;
+    S.caracTot = C;
+    st.xp *= 1 + C.sagesse / 100;
+    st.dodge = Math.min(0.3, C.agilite / 1200);
+    st.crit += C.agilite / 2000 + (tot.critique || 0) / 100;
+    st.loot = 1 + Math.floor((C.chance + (tot.prospection || 0)) / 10) / 100;
+    st.flat = tot.dommages || 0;
+    st.armor = 1 - (1 - st.armor) * (1 - Math.min(0.5, (tot.resistance || 0) / 100));
+    st.speed *= 1 + Math.min(0.3, (tot.vitesse || 0) / 100);
+    st.cd *= 1 - Math.min(0.4, (tot.pa || 0) / 100);
     st.cd *= Math.pow(0.97, T.pa || 0);
     st.armor = 1 - (1 - st.armor) * Math.pow(0.97, T.resistance || 0);
     st.regen += 0.5 * (T.soin || 0);
     st.pickup *= 1 + 0.15 * (T.prospection || 0);
     st.area *= 1 + 0.04 * (T.envergure || 0);
     st.speed *= 1 + 0.02 * (T.celerite || 0);
-    applyEquip(st);
     S.stats = st;
-    // Vie : base de la classe, +6 par niveau, +1 par point de Vitalité
-    const newMax = Math.round((CLASSES[S.cls].hp + (S.level - 1) * 6 + (C.vitalite || 0)) * st.hp);
+    // Vie : base de la classe, +6 par niveau, +1 par point de Vitalité (répartie ou d'équipement)
+    const newMax = Math.round((CLASSES[S.cls].hp + (S.level - 1) * 6 + C.vitalite) * st.hp);
     if (S.p.maxHp) S.p.hp += Math.max(0, newMax - S.p.maxHp);
     S.p.maxHp = newMax;
     S.p.hp = Math.min(S.p.hp, newMax);
@@ -382,7 +390,7 @@ const Game = (() => {
     for (const id of CLASSES[S.cls].spells) checks['spell:' + id] = talentCheck('spell', id);
     for (const id in WORLD.TALENT_PASSIVES) checks['passive:' + id] = talentCheck('passive', id);
     return {
-      cls: S.cls, level: S.level, carac: Object.assign({}, S.carac), caracPts: caracPoints(),
+      cls: S.cls, level: S.level, carac: Object.assign({}, S.carac), caracTot: Object.assign({}, S.caracTot), caracPts: caracPoints(),
       talents: { spells: Object.assign({}, S.talents.spells), passives: Object.assign({}, S.talents.passives) },
       talentPts: talentPoints(), spent: talentSpent(), checks,
       maxHp: S.p.maxHp, dodge: S.stats.dodge || 0, crit: S.stats.crit, xp: S.stats.xp, loot: S.stats.loot || 1,
@@ -400,7 +408,10 @@ const Game = (() => {
     S.xp = adv.xp || 0;
     S.xpNext = xpFor(S.level);
     S.passives = {};
-    S.equip = Object.assign({}, adv.equip || {});
+    // Équipement au format panoplies (l'ancien équipement, sans lignes, est abandonné)
+    S.equip = {};
+    for (const k in adv.equip || {}) { const it = adv.equip[k]; if (it && it.lines) S.equip[k === 'anneau' ? 'anneau1' : k] = it; }
+    S.bag = (adv.bag || []).filter((it) => it && it.lines);
     // Caractéristiques et talents (une ancienne sauvegarde repart avec tous ses points à répartir)
     S.carac = Object.assign({}, adv.carac || {});
     const first = CLASSES[S.cls].spells[0];
@@ -543,11 +554,11 @@ const Game = (() => {
       e.lair.nextAt = S.t + e.lair.def.respawn;
     }
     // Équipement : rare sur les monstres, assuré sur les boss (meilleure rareté)
-    if (e.boss) {
-      const n = e.kind === 'boss' ? 2 : 1;
-      for (let i = 0; i < n; i++) S.gems.push({ kind: 'item', item: WORLD.makeItem(e.lvl, S.zoneIdx, 1), x: e.x + rand(-40, 40), y: e.y + rand(-40, 40), v: 0 });
-    } else if (Math.random() < (dungeon ? 0.07 : 0.035) * (S.stats.loot || 1)) {
-      S.gems.push({ kind: 'item', item: WORLD.makeItem(e.lvl, S.zoneIdx), x: e.x, y: e.y, v: 0 });
+    // Équipement : chaque famille lâche sa panoplie ; les boss lâchent toujours la leur
+    const n = e.kind === 'boss' ? 2 : e.boss ? 1 : 1;
+    for (let i = 0; i < n; i++) {
+      const it = ITEMS.drop(e.id, !!e.boss, (S.stats.loot || 1) * (dungeon ? 1.5 : 1));
+      if (it) S.gems.push({ kind: 'item', item: it, x: e.x + rand(-30, 30), y: e.y + rand(-30, 30), v: 0 });
     }
     let first = false;
     if (e.boss) {
@@ -697,7 +708,7 @@ const Game = (() => {
     // Dans un donjon, on reprendra devant son entrée
     const pos = m.kind === 'zone' ? { x: Math.round(S.p.x), y: Math.round(S.p.y) } : { x: z.door.x - 170, y: 40 };
     return {
-      cls: S.cls, level: S.level, xp: S.xp, equip: Object.assign({}, S.equip), carac: Object.assign({}, S.carac),
+      cls: S.cls, level: S.level, xp: S.xp, equip: Object.assign({}, S.equip), bag: S.bag.slice(), carac: Object.assign({}, S.carac),
       talents: { spells: Object.assign({}, S.talents.spells), passives: Object.assign({}, S.talents.passives) },
       spells: S.spells.map((sp) => ({ id: sp.id, lvl: sp.lvl })), zone: S.zoneIdx, pos,
       quest: w.quest, qProgress: w.qProgress, qAccepted: w.qAccepted, bossKilled: Object.assign({}, w.bossKilled),
@@ -713,20 +724,140 @@ const Game = (() => {
     return loot;
   }
 
-  /** Objet ramassé : équipé s'il est meilleur que celui porté, sinon revendu. */
-  function pickItem(it) {
-    const cur = S.equip[it.slot];
-    if (!cur || it.power > cur.power) {
-      S.equip[it.slot] = it;
-      recomputeStats();
-      cb.onToast(`Équipé : ${it.name}`, it.color, WORLD.itemDesc(it), it.slot);
-    } else {
-      const k = Math.ceil(it.power * 3 * S.zone.kamas);
-      S.kamas += k;
-      cb.onToast(`${it.name} revendu`, '#bdb3d6', `+${k} kamas (moins bon que ton équipement)`, it.slot);
+
+
+
+  // ============================================================ Inventaire et équipement (aventure)
+  const BAG_MAX = 80;
+  /** Totaux des objets portés et des bonus de panoplie. */
+  function itemTotals() {
+    const tot = {}, sets = {};
+    for (const slot in S.equip) {
+      const it = S.equip[slot];
+      if (!it || !it.lines) continue;
+      for (const k in it.lines) tot[k] = (tot[k] || 0) + it.lines[k];
+      sets[it.set] = (sets[it.set] || 0) + 1;
     }
+    for (const id in sets) {
+      const set = ITEMS.SET_BY_ID[id];
+      if (!set) continue;
+      const b = ITEMS.setBonus(set, sets[id]);
+      for (const k in b) tot[k] = (tot[k] || 0) + b[k];
+    }
+    return { tot, sets };
   }
 
+  /** Objet ramassé : rangé dans le sac (ou équipé directement si l'emplacement est libre). */
+  function pickItem(it) {
+    if (!it) return;
+    const free = slotFor(it, true);
+    if (free && it.lvl <= S.level) {
+      S.equip[free] = it;
+      recomputeStats(); refreshSpells();
+      cb.onToast(`Équipé : ${it.name}`, it.color, `${ITEMS.RARITY.find((r) => r.id === it.rarity).name} · niv. ${it.lvl}`, it.type);
+      return;
+    }
+    if (S.bag.length >= BAG_MAX) {
+      const k = sellPrice(it);
+      S.kamas += k;
+      cb.onToast(`Sac plein : ${it.name} revendu`, '#bdb3d6', `+${k} kamas`, it.type);
+      return;
+    }
+    S.bag.push(it);
+    cb.onToast(`${it.name} → sac`, it.color, `${ITEMS.RARITY.find((r) => r.id === it.rarity).name} · niv. ${it.lvl} · touche I`, it.type);
+  }
+  const sellPrice = (it) => Math.max(1, Math.round(it.power * 0.4 * (1 + it.lvl / 40)));
+  /** Emplacement pour un objet (onlyFree : seulement s'il est libre). */
+  function slotFor(it, onlyFree) {
+    if (it.type === 'anneau') {
+      if (!S.equip.anneau1) return 'anneau1';
+      if (!S.equip.anneau2) return 'anneau2';
+      return onlyFree ? null : 'anneau1';
+    }
+    return onlyFree && S.equip[it.type] ? null : it.type;
+  }
+  function equipItem(id, slot) {
+    if (!S || S.mode !== 'world') return 'Impossible';
+    const i = S.bag.findIndex((o) => o.id === id);
+    if (i < 0) return 'Objet introuvable';
+    const it = S.bag[i];
+    if (it.lvl > S.level) return `Niveau ${it.lvl} requis`;
+    const sl = slot && ITEMS.SLOTS[slot] && (ITEMS.SLOTS[slot].type || slot) === it.type ? slot : slotFor(it, false);
+    S.bag.splice(i, 1);
+    if (S.equip[sl]) S.bag.push(S.equip[sl]);
+    S.equip[sl] = it;
+    recomputeStats(); refreshSpells(); cb.onSave();
+    return '';
+  }
+  function unequip(slot) {
+    if (!S || !S.equip[slot]) return;
+    if (S.bag.length >= BAG_MAX) return 'Sac plein';
+    S.bag.push(S.equip[slot]);
+    delete S.equip[slot];
+    recomputeStats(); refreshSpells(); cb.onSave();
+    return '';
+  }
+  function sellItem(id) {
+    const i = S.bag.findIndex((o) => o.id === id);
+    if (i < 0) return 0;
+    const k = sellPrice(S.bag[i]);
+    S.bag.splice(i, 1);
+    S.kamas += k;
+    cb.onSave();
+    return k;
+  }
+  function sellRarity(rarity) {
+    let k = 0;
+    S.bag = S.bag.filter((it) => { if (it.rarity !== rarity) return true; k += sellPrice(it); return false; });
+    S.kamas += k;
+    cb.onSave();
+    return k;
+  }
+  /** Données de la fenêtre d'inventaire. */
+  function inventory() {
+    if (!S || S.mode !== 'world') return null;
+    const { tot, sets } = itemTotals();
+    return { bag: S.bag.slice(), equip: Object.assign({}, S.equip), level: S.level, tot, sets, caracTot: Object.assign({}, S.caracTot), max: BAG_MAX, kamas: Math.floor(S.kamas) };
+  }
+
+  /** Attaque d'arme : l'arme portée frappe toute seule l'ennemi le plus proche à portée. */
+  function updateWeapon(dt) {
+    const it = S.equip && S.equip.arme;
+    if (!it || !it.weapon || S.over) return;
+    const w = ITEMS.WEAPONS[it.weapon.kind], p = S.p;
+    S.weaponT = (S.weaponT || 0) - dt;
+    if (S.weaponT > 0) return;
+    let best = null, bd = w.range + 20;
+    for (const e of S.enemies) {
+      if (e.dead) continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y) - e.r;
+      if (d < bd) { bd = d; best = e; }
+    }
+    if (!best) return;
+    S.weaponT = w.cd * S.stats.cd;
+    const C = S.caracTot || {}, mult = 1 + ((C[it.weapon.elem] || 0) + (C.puissance || 0)) / 100;
+    const base = (it.weapon.min + Math.random() * (it.weapon.max - it.weapon.min)) * mult / S.stats.dmg;
+    const a = Math.atan2(best.y - p.y, best.x - p.x);
+    S.aim = a;
+    const col = WORLD.ELEMENTS[ITEMS.ELEM_OF[it.weapon.elem]].color;
+    if (w.arc) {
+      // Coup en arc : touche tous les ennemis devant le héros
+      for (const e of S.enemies) {
+        if (e.dead) continue;
+        const d = Math.hypot(e.x - p.x, e.y - p.y) - e.r;
+        let da = Math.atan2(e.y - p.y, e.x - p.x) - a;
+        da = Math.atan2(Math.sin(da), Math.cos(da));
+        if (d < w.range && Math.abs(da) < 1.1) hitEnemy(e, base, { knock: 40 });
+      }
+      S.fx.push({ type: 'arc', x: p.x, y: p.y, a, arc: 2.2, r: w.range, t: 0, life: 0.2, color: col });
+      S.lastCast = { id: 'arme', type: 'melee', t: S.t, aim: a, n: (S.lastCast ? S.lastCast.n : 0) + 1 };
+    } else {
+      hitEnemy(best, base, {});
+      S.fx.push({ type: 'ring', x: best.x, y: best.y, r: 26, t: 0, life: 0.25, color: col });
+      for (let i = 0; i < 5; i++) S.fx.push({ type: 'spark', x: best.x, y: best.y, vx: rand(-80, 80), vy: rand(-120, 20), t: 0, life: 0.3, color: col });
+      S.lastCast = { id: 'arme', type: w.shot ? 'projectile' : 'melee', t: S.t, aim: a, n: (S.lastCast ? S.lastCast.n : 0) + 1 };
+    }
+  }
 
   // ============================================================ Cheminement des monstres
   // Grille de cases de 40 px (marchable ou non), puis carte des distances au héros,
@@ -844,6 +975,7 @@ const Game = (() => {
     buildGrid();
     if (S.mode === 'world') updateWorld(dt); else spawn(dt);
     updateSpells(dt);
+    if (S.mode === 'world') updateWeapon(dt);
     updateEnemies(dt);
     updateProjectiles(dt);
     updateZones(dt);
@@ -1059,7 +1191,7 @@ const Game = (() => {
 
   function hitEnemy(e, base, o) {
     if (e.dead) return;
-    let d = base * S.stats.dmg * (e.tough || 1);
+    let d = (base * S.stats.dmg + (S.stats.flat || 0)) * (e.tough || 1);
     if (o.rage) d *= 1 + (1 - S.p.hp / S.p.maxHp) * 1.5;
     if (o.gamble) d *= rand(0.3, 2.5); // Écaflip : dégâts aléatoires
     const crit = Math.random() < S.stats.crit + (o.crit || 0);
@@ -1486,7 +1618,7 @@ const Game = (() => {
         if (S.mode === 'world') {
           // Aventure : le coffre donne de l'équipement au lieu d'améliorations
           S.kamas += 30 * S.zone.kamas * S.stats.kamas;
-          pickItem(WORLD.makeItem(S.level + 2, S.zoneIdx, 1));
+          pickItem(ITEMS.drop(S.world.map.lair ? S.world.map.lair.id : S.zone.mini, true));
           break;
         }
         S.pending += 2;
@@ -2343,6 +2475,9 @@ const Game = (() => {
         ctx.strokeStyle = gold; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(x, y + 3 * k, 8 * k, 6 * k, 0, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = dark; ctx.lineWidth = 2;
         P([[0, -10], [4, -5], [0, -1], [-4, -5]], rc);
         break;
+      case 'ceinture':
+        P([[-13, -4], [13, -4], [13, 4], [-13, 4]], '#7a4a2a'); P([[-5, -6], [5, -6], [5, 6], [-5, 6]], gold); P([[-2, -2], [2, -2], [2, 2], [-2, 2]], rc);
+        break;
       case 'bottes':
         P([[-11, -8], [-4, -8], [-4, 6], [1, 6], [1, 10], [-11, 10]], '#6a4426'); P([[3, -6], [10, -6], [10, 8], [15, 8], [15, 12], [3, 12]], '#5a3818');
         P([[-11, -8], [-4, -8], [-4, -5], [-11, -5]], gold);
@@ -2699,5 +2834,5 @@ const Game = (() => {
   /** Mesures de fluidité (affichées avec ?fps) : images/s, coût du rendu, nombre de monstres. */
   const perf = () => ({ fps, renderMs, enemies: S ? S.enemies.length : 0 });
 
-  return { init, start, stop, setPaused, choose, reroll, banish, counts, setRenderMode, renderMode, perf, startWorld, interact, travel, worldChoice, worldSnapshot, takeLoot, equipment, addCarac, resetCarac, talentUp, resetTalents, charInfo, peek: () => S, _hit: (e, d) => hitEnemy(e, d, {}) };
+  return { init, start, stop, setPaused, choose, reroll, banish, counts, setRenderMode, renderMode, perf, startWorld, interact, travel, worldChoice, worldSnapshot, takeLoot, equipment, inventory, equipItem, unequip, sellItem, sellRarity, addCarac, resetCarac, talentUp, resetTalents, charInfo, peek: () => S, _hit: (e, d) => hitEnemy(e, d, {}) };
 })();

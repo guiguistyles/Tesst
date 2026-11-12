@@ -1762,6 +1762,9 @@ const Render3D = (() => {
         g.add(at(box(0.18, 0.42, 0.2, mat(0x6a4426)), x, 0.26, 0), at(box(0.2, 0.12, 0.36, mat(0x5a3818)), x, 0.06, 0.08), at(box(0.2, 0.06, 0.22, mat(0xd8a830)), x, 0.45, 0));
       }
       return g; },
+    ceinture: () => { const g = new THREE.Group();
+      g.add(at(torus(0.34, 0.07, 5, 20, mat(0x7a4a2a)), 0, 0.2, 0, Math.PI / 2), at(box(0.22, 0.2, 0.08, mat(0xd8a830)), 0, 0.2, 0.34), at(crystal(0.05, 0.12, mat(0xffffff, 0.6)), 0, 0.2, 0.39, Math.PI / 2));
+      return g; },
     chest: () => { const g = new THREE.Group();
       g.add(at(box(0.9, 0.5, 0.6, mat(0x8a5a2a)), 0, 0.25, 0), at(box(0.92, 0.22, 0.62, mat(0x9a6a32)), 0, 0.62, -0.02, -0.25));
       for (const x of [-0.32, 0.32]) g.add(at(box(0.08, 0.76, 0.64, mat(0xd8a830)), x, 0.38, 0));

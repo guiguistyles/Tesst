@@ -258,7 +258,7 @@ function shake(el) {
 // ------------------------------------------------------------ Partie
 function enterHud(world) {
   $$('.screen').forEach((s) => s.classList.remove('active'));
-  ['#ov-end', '#ov-pause', '#ov-levelup', '#ov-dialog', '#ov-travel', '#ov-char', '#ov-map'].forEach((s) => $(s).classList.add('hidden'));
+  ['#ov-end', '#ov-pause', '#ov-levelup', '#ov-dialog', '#ov-travel', '#ov-char', '#ov-map', '#ov-inv'].forEach((s) => $(s).classList.add('hidden'));
   worldGame = world;
   $('#hud').classList.toggle('world', world);
   ['#quest', '#minimap', '#hud-side'].forEach((s) => $(s).classList.toggle('hidden', !world));
@@ -321,7 +321,7 @@ function quitToMenu() {
   Game.stop();
   inGame = false;
   $('#hud').classList.add('hidden');
-  ['#ov-end', '#ov-pause', '#ov-levelup', '#ov-dialog', '#ov-travel', '#ov-char', '#ov-map'].forEach((s) => $(s).classList.add('hidden'));
+  ['#ov-end', '#ov-pause', '#ov-levelup', '#ov-dialog', '#ov-travel', '#ov-char', '#ov-map', '#ov-inv'].forEach((s) => $(s).classList.add('hidden'));
   show('menu');
 }
 
@@ -445,7 +445,7 @@ function caracHtml(info) {
     return `<div class="carac-row">
       <span class="c-ico" style="background:${c.color}">${c.short}</span>
       <div class="c-name"><b>${c.name}</b><small>${c.help}</small></div>
-      <span class="c-val">${v}</span>
+      <span class="c-val">${v}${(info.caracTot[id] || 0) > v ? `<small class="bonus">+${info.caracTot[id] - v}</small>` : ''}</span>
       <span class="c-cost" title="Coût du prochain point">${cost} pt${cost > 1 ? 's' : ''} → +1</span>
       <button class="btn small" data-carac="${id}" data-n="1" ${can ? '' : 'disabled'}>+1</button>
       <button class="btn small" data-carac="${id}" data-n="10" ${can ? '' : 'disabled'}>+10</button>
@@ -576,6 +576,108 @@ function renderMap() {
     : 'Tu n’es pas dans cette zone : passe par un zaap pour t’y rendre.';
 }
 
+// ------------------------------------------------------------ Inventaire (touche I)
+const ELEM_UI = { terre: ['Terre', '#b07a3a'], feu: ['Feu', '#ff7a3a'], eau: ['Eau', '#3aa8e8'], air: ['Air', '#4fc36a'], multi: ['Multi', '#f2c14e'], neutre: ['Neutre', '#9a9aa8'] };
+let invSel = null, invType = 'tout', invElem = 'tout';
+function openInv() {
+  if (!inGame || !worldGame) return;
+  invSel = null;
+  renderInv();
+  $('#ov-inv').classList.remove('hidden');
+  Game.setPaused(true);
+}
+function closeInv() {
+  if ($('#ov-inv').classList.contains('hidden')) return;
+  $('#ov-inv').classList.add('hidden');
+  lastSlotsKey = '';
+  saveAdventure();
+  Game.setPaused(false);
+}
+const rarityName = (id) => (ITEMS.RARITY.find((r) => r.id === id) || {}).name || '';
+function itemLines(it, cmp) {
+  const rows = [];
+  if (it.weapon) {
+    const [en, ec] = ELEM_UI[ITEMS.ELEM_OF[it.weapon.elem]];
+    rows.push(`<li style="color:${ec}"><b>${it.weapon.min}–${it.weapon.max}</b> dommages ${en} · ${ITEMS.WEAPONS[it.weapon.kind].label}</li>`);
+  }
+  for (const k in it.lines) {
+    let delta = '';
+    if (cmp) { const d = it.lines[k] - (cmp.lines[k] || 0); if (d) delta = ` <i class="${d > 0 ? 'up' : 'down'}">(${d > 0 ? '+' : ''}${d})</i>`; }
+    rows.push(`<li>${ITEMS.lineText(k, it.lines[k])}${delta}</li>`);
+  }
+  if (cmp) for (const k in cmp.lines) if (!(k in it.lines)) rows.push(`<li class="lost">${ITEMS.lineText(k, cmp.lines[k])} <i class="down">(perdu)</i></li>`);
+  return `<ul class="lines">${rows.join('')}</ul>`;
+}
+function setInfo(it, inv) {
+  const set = ITEMS.SET_BY_ID[it.set];
+  if (!set) return '';
+  const n = inv.sets[it.set] || 0, total = Object.keys(set.pieces).length + (set.weapon ? 1 : 0);
+  const b = ITEMS.setBonus(set, Math.max(2, n));
+  return `<div class="set-box"><b>${esc(set.name)}</b> <small>${n} / ${total} pièces portées</small>
+    <small>${n >= 2 ? 'Bonus actuel' : 'Bonus à 2 pièces'} : ${Object.entries(b).map(([k, v]) => ITEMS.lineText(k, v)).join(' · ')}</small></div>`;
+}
+function renderInv() {
+  const inv = Game.inventory();
+  if (!inv) return;
+  // Emplacements portés
+  const eq = Object.keys(ITEMS.SLOTS).map((slot) => {
+    const it = inv.equip[slot], type = ITEMS.SLOTS[slot].type || slot;
+    return `<button class="inv-slot ${it ? '' : 'empty'} ${invSel && invSel.where === 'equip' && invSel.slot === slot ? 'sel' : ''}" data-eq="${slot}" style="border-color:${it ? it.color : 'var(--line)'}" title="${it ? esc(it.name) : ITEMS.SLOTS[slot].label}">
+      ${itemIcon(type, it ? it.color : '#5a5070', 34)}<small>${it ? 'niv. ' + it.lvl : ITEMS.SLOTS[slot].label}</small></button>`;
+  }).join('');
+  const C = inv.caracTot;
+  const stats = ['vitalite', 'sagesse', 'force', 'intelligence', 'chance', 'agilite', 'puissance'].map((k) => `<span>${ITEMS.LINES[k].name} <b>${C[k] || 0}</b></span>`).join('')
+    + ['dommages', 'critique', 'resistance', 'vitesse', 'pa'].filter((k) => inv.tot[k]).map((k) => `<span>${ITEMS.LINES[k].name} <b>${inv.tot[k]}${ITEMS.LINES[k].pct ? ' %' : ''}</b></span>`).join('');
+  // Sac filtré
+  const types = ['tout', 'arme', 'coiffe', 'cape', 'amulette', 'anneau', 'ceinture', 'bottes'];
+  const elems = ['tout', 'terre', 'feu', 'eau', 'air', 'multi'];
+  const list = inv.bag.filter((it) => (invType === 'tout' || it.type === invType) && (invElem === 'tout' || it.elem === invElem))
+    .sort((a, b) => b.lvl - a.lvl || b.power - a.power);
+  const bag = list.map((it) => {
+    const e = ELEM_UI[it.elem] || ELEM_UI.neutre;
+    return `<button class="inv-item ${invSel && invSel.id === it.id ? 'sel' : ''} ${it.lvl > inv.level ? 'toohigh' : ''}" data-id="${it.id}" style="border-color:${it.color}" title="${esc(it.name)}">
+      ${itemIcon(it.type, it.color, 30)}<i class="dot" style="background:${e[1]}"></i><small>${it.lvl}</small></button>`;
+  }).join('') || '<p class="hint">Aucun objet. Les monstres lâchent les pièces de leur panoplie.</p>';
+  // Fiche de l'objet sélectionné
+  let detail = '<p class="hint">Choisis un objet pour voir ses caractéristiques.</p>';
+  const sel = invSel && (invSel.where === 'equip' ? inv.equip[invSel.slot] : inv.bag.find((o) => o.id === invSel.id));
+  if (sel) {
+    const e = ELEM_UI[sel.elem] || ELEM_UI.neutre;
+    const worn = invSel.where === 'bag' ? (sel.type === 'anneau' ? (inv.equip.anneau1 || inv.equip.anneau2) : inv.equip[sel.type]) : null;
+    const actions = invSel.where === 'equip'
+      ? '<button class="btn small" id="inv-unequip">Retirer</button>'
+      : `<button class="btn small primary" id="inv-equip" ${sel.lvl > inv.level ? 'disabled' : ''}>${sel.lvl > inv.level ? 'Niveau ' + sel.lvl + ' requis' : 'Équiper'}</button>
+         ${sel.type === 'anneau' ? '<button class="btn small" id="inv-equip2">Anneau 2</button>' : ''}
+         <button class="btn small danger" id="inv-sell">Vendre</button>`;
+    detail = `<div class="inv-detail">
+      <div class="d-head">${itemIcon(sel.type, sel.color, 44)}<div><b style="color:${sel.color}">${esc(sel.name)}</b>
+        <small>${ITEMS.TYPE_LABEL[sel.type]} · niv. ${sel.lvl} · ${rarityName(sel.rarity)} · <span style="color:${e[1]}">${e[0]}</span></small></div></div>
+      ${itemLines(sel, worn && worn.lines ? worn : null)}
+      ${worn ? `<small class="cmp">Comparé à : ${esc(worn.name)}</small>` : ''}
+      ${setInfo(sel, inv)}
+      <div class="d-actions">${actions}</div></div>`;
+  }
+  $('#inv-body').innerHTML = `
+    <div class="inv-left"><div class="inv-eq">${eq}</div><div class="inv-stats">${stats}</div></div>
+    <div class="inv-mid">
+      <div class="tabs small">${types.map((t) => `<button data-type="${t}" class="${invType === t ? 'active' : ''}">${t === 'tout' ? 'Tout' : ITEMS.TYPE_LABEL[t]}</button>`).join('')}</div>
+      <div class="tabs small">${elems.map((t) => `<button data-elem="${t}" class="${invElem === t ? 'active' : ''}">${t === 'tout' ? 'Tous éléments' : ELEM_UI[t][0]}</button>`).join('')}</div>
+      <div class="inv-bag">${bag}</div>
+      <div class="inv-foot"><span>Sac ${inv.bag.length} / ${inv.max}</span><button class="btn small" id="inv-sell-common">Vendre les objets communs</button></div>
+    </div>
+    <div class="inv-right">${detail}</div>`;
+  $$('#inv-body [data-eq]').forEach((b) => b.addEventListener('click', () => { invSel = inv.equip[b.dataset.eq] ? { where: 'equip', slot: b.dataset.eq } : null; renderInv(); }));
+  $$('#inv-body [data-id]').forEach((b) => b.addEventListener('click', () => { invSel = { where: 'bag', id: b.dataset.id }; renderInv(); }));
+  $$('#inv-body [data-type]').forEach((b) => b.addEventListener('click', () => { invType = b.dataset.type; renderInv(); }));
+  $$('#inv-body [data-elem]').forEach((b) => b.addEventListener('click', () => { invElem = b.dataset.elem; renderInv(); }));
+  const on = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', fn); };
+  on('#inv-equip', () => { const why = Game.equipItem(invSel.id); if (!why) invSel = null; renderInv(); });
+  on('#inv-equip2', () => { Game.equipItem(invSel.id, 'anneau2'); invSel = null; renderInv(); });
+  on('#inv-unequip', () => { Game.unequip(invSel.slot); invSel = null; renderInv(); });
+  on('#inv-sell', () => { const k = Game.sellItem(invSel.id); onToast(`Vendu : +${k} kamas`, '#f2c14e'); invSel = null; renderInv(); });
+  on('#inv-sell-common', () => { const k = Game.sellRarity('commun'); onToast(`Objets communs vendus : +${k} kamas`, '#f2c14e'); invSel = null; renderInv(); });
+}
+
 function drawMinimap(w) {
   const cv = $('#minimap'), g = cv.getContext('2d'), m = w.map;
   // Taille du canevas selon les proportions de la carte (zone ou donjon)
@@ -611,6 +713,7 @@ function advZone(adv) { return adv.zone !== undefined ? adv.zone : Math.min(4, M
 
 /** Icônes des emplacements d'équipement (SVG, teinte de la rareté). */
 const ITEM_SVG = {
+  ceinture: (c) => `<path d="M2 9h20v6H2z" fill="#7a4a2a"/><path d="M9 8h6v8H9z" fill="none" stroke="#d8a830" stroke-width="2"/><circle cx="12" cy="12" r="1.6" fill="${c}"/>`,
   arme: (c) => `<path d="M11 2h2v13h-2z" fill="#e4ebf2"/><path d="M11 2l1-1.5L13 2z" fill="#e4ebf2"/><path d="M7 15h10v2H7z" fill="#d8a830"/><path d="M11 17h2v4h-2z" fill="#6a4426"/><circle cx="12" cy="22" r="1.4" fill="${c}"/>`,
   coiffe: (c) => `<path d="M3 17h18l-2 2H5z" fill="#7a3a2a"/><path d="M7 17l1-9h8l1 9z" fill="#9a4a32"/><path d="M7.4 14h9.2v2H7.4z" fill="${c}"/>`,
   cape: (c) => `<path d="M7 4h10l3 16-8-3-8 3z" fill="#b03a3a"/><path d="M7 4h10v2.5H7z" fill="#d8a830"/><circle cx="12" cy="5.2" r="1.4" fill="${c}"/>`,
@@ -635,14 +738,15 @@ function onToast(title, color, sub, slot) {
 
 /** Équipement porté, affiché dans le menu pause. */
 function equipHtml() {
-  const eq = Game.equipment();
-  const rows = Object.keys(WORLD.SLOTS).map((slot) => {
-    const it = eq[slot];
-    return `<div class="eq-row">${itemIcon(slot, it ? it.color : '#5a5070', 26)}<span class="eq-slot">${WORLD.SLOTS[slot].label}</span>${it
-      ? `<div><b style="color:${it.color}">${esc(it.name)}</b><small>Niv. ${it.lvl} · ${esc(WORLD.itemDesc(it))}</small></div>`
+  const inv = Game.inventory();
+  if (!inv) return '';
+  const rows = Object.keys(ITEMS.SLOTS).map((slot) => {
+    const it = inv.equip[slot], type = ITEMS.SLOTS[slot].type || slot;
+    return `<div class="eq-row">${itemIcon(type, it ? it.color : '#5a5070', 26)}<span class="eq-slot">${ITEMS.SLOTS[slot].label}</span>${it
+      ? `<div><b style="color:${it.color}">${esc(it.name)}</b><small>Niv. ${it.lvl}${it.weapon ? ` · ${it.weapon.min}–${it.weapon.max} dommages` : ''}</small></div>`
       : '<div><small>Aucun</small></div>'}</div>`;
   }).join('');
-  return `<div class="equip"><div class="eyebrow">Équipement</div>${rows}</div>`;
+  return `<div class="equip"><div class="eyebrow">Équipement (touche I pour l’inventaire)</div>${rows}</div>`;
 }
 
 function onDialog(d) {
@@ -795,7 +899,7 @@ function onBanner(title, sub) {
 }
 
 function togglePause() {
-  if (!inGame || ['#ov-levelup', '#ov-end', '#ov-dialog', '#ov-travel', '#ov-char', '#ov-map'].some((s) => !$(s).classList.contains('hidden'))) return;
+  if (!inGame || ['#ov-levelup', '#ov-end', '#ov-dialog', '#ov-travel', '#ov-char', '#ov-map', '#ov-inv'].some((s) => !$(s).classList.contains('hidden'))) return;
   const ov = $('#ov-pause');
   const willPause = ov.classList.contains('hidden');
   const q = $('#btn-quit');
@@ -873,15 +977,19 @@ function boot() {
       if (e.code === 'Escape' || (e.code === 'KeyC' && charTab === 'carac') || (e.code === 'KeyT' && charTab === 'talents')) closeChar();
       else if (e.code === 'KeyC' || e.code === 'KeyT') { charTab = e.code === 'KeyC' ? 'carac' : 'talents'; renderChar(); }
     } else if (!$('#ov-map').classList.contains('hidden')) { if (e.code === 'Escape' || e.code === 'KeyM') closeMap(); }
+    else if (!$('#ov-inv').classList.contains('hidden')) { if (e.code === 'Escape' || e.code === 'KeyI') closeInv(); }
     else if (inGame && worldGame && Game.charInfo() && [...$$('.overlay')].every((o) => o.classList.contains('hidden'))) {
       if (e.code === 'KeyC') openChar('carac');
       else if (e.code === 'KeyT') openChar('talents');
       else if (e.code === 'KeyM') openMap();
+      else if (e.code === 'KeyI') openInv();
     }
   });
   $('#btn-char').addEventListener('click', () => openChar('carac'));
   $('#btn-tal').addEventListener('click', () => openChar('talents'));
   $('#btn-map').addEventListener('click', openMap);
+  $('#btn-inv').addEventListener('click', openInv);
+  $('#btn-inv-close').addEventListener('click', closeInv);
   $('#btn-char-close').addEventListener('click', closeChar);
   $('#btn-map-close').addEventListener('click', closeMap);
   $$('#char-tabs button').forEach((b) => b.addEventListener('click', () => { charTab = b.dataset.tab; renderChar(); }));

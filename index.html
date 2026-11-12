@@ -175,6 +175,7 @@
       <button id="btn-char" class="side-btn" title="Caractéristiques (C)">Carac.<b class="badge hidden"></b></button>
       <button id="btn-tal" class="side-btn" title="Talents (T)">Talents<b class="badge hidden"></b></button>
       <button id="btn-map" class="side-btn" title="Carte (M)">Carte</button>
+      <button id="btn-inv" class="side-btn" title="Inventaire (I)">Sac</button>
     </div>
     <button id="btn-act" class="hidden"></button>
     <div class="hud-bar">
@@ -246,6 +247,16 @@
     </div>
   </div>
 
+  <div id="ov-inv" class="overlay hidden">
+    <div class="panel wide invwin">
+      <div class="win-head">
+        <h2>Inventaire <kbd>I</kbd></h2>
+        <button class="btn small" id="btn-inv-close" aria-label="Fermer">✕</button>
+      </div>
+      <div id="inv-body"></div>
+    </div>
+  </div>
+
   <div id="ov-map" class="overlay hidden">
     <div class="panel wide mapwin">
       <div class="win-head">
@@ -284,6 +295,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="js/data.js"></script>
   <script src="js/world.js"></script>
+  <script src="js/items.js"></script>
   <script src="js/models/core.js"></script>
   <script src="js/models/modo.js"></script>
   <script src="js/models/bestiaire.js"></script>
