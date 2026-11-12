@@ -82,7 +82,7 @@ const Game = (() => {
     W = innerWidth; H = innerHeight;
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
-    zoom = clamp(Math.min(W, H) / 640, 0.62, 1.15);
+    zoom = clamp(Math.min(W, H) / 640, 0.62, 1.15) * 0.82;   // vue un peu plus large
     if (r3) r3.resize(W, H, dpr, zoom);
     r3RadiusAt = -1;
   }

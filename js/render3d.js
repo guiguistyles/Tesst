@@ -1691,7 +1691,7 @@ const Render3D = (() => {
     // Distance calculée pour montrer à peu près la même surface que la vue 2D
     const halfH = (H / 2 / zoom) / U, halfW = (W / 2 / zoom) / U;
     const t = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
-    const d = Math.max(halfH * 0.95 / t, (halfW * 0.82) / (t * camera.aspect)) * 0.62;
+    const d = Math.max(halfH * 0.95 / t, (halfW * 0.82) / (t * camera.aspect)) * 0.85;   // caméra un peu plus reculée
     // Le brouillard cache le haut de l'écran, là où les monstres apparaissent
     scene.fog.near = d * 1.05;
     scene.fog.far = d * 1.75;
