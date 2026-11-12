@@ -987,24 +987,16 @@ const Render3D = (() => {
 
   /** Terrain d'une carte de zone : chemins, plans d'eau, ponts, hameau. */
   function buildTerrain3D(m, group) {
-    const [rc, re] = WORLD.ROAD_COL[m.decoType] || WORLD.ROAD_COL.grass;
-    const roadMat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 1, side: THREE.DoubleSide });
-    const edge = roadMat(re), core = roadMat(rc);
-    for (const road of m.roads) {
-      const a = new THREE.Mesh(ribbon(road, 96, 0.03), edge); a.receiveShadow = true; group.add(a);
-      const b = new THREE.Mesh(ribbon(road, 74, 0.04), core); b.receiveShadow = true; group.add(b);
-    }
-    for (const [mt, rr, y] of [[edge, m.plaza.r + 11, 0.032], [core, m.plaza.r, 0.042]]) {
-      const pl = new THREE.Mesh(new THREE.CircleGeometry(rr / U, 40), mt);
-      pl.rotation.x = -Math.PI / 2; pl.position.set(m.plaza.x / U, y, m.plaza.y / U); pl.receiveShadow = true;
-      group.add(pl);
-    }
+    // Sol peint (chemins, place, berges, collines) puis couvert végétal et accessoires
+    buildGround3D(m, group);
+    buildCover3D(m, group);
     // Plans d'eau : bord puis surface, en lots d'instances colorées
     const disc = new THREE.CircleGeometry(1, 32).rotateX(-Math.PI / 2);
     const n = m.water.length;
     if (n) {
-      const rim = new THREE.InstancedMesh(disc, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), n);
-      const surf = new THREE.InstancedMesh(disc, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25, metalness: 0.1 }), n);
+      const rim = new THREE.InstancedMesh(disc, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0 }), n);
+      rim.visible = false;
+      const surf = new THREE.InstancedMesh(disc, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.15, metalness: 0.15, transparent: true, opacity: 0.86, emissive: 0x0a2a4a, emissiveIntensity: 0.4 }), n);
       m.water.forEach((w, i) => {
         const k = WORLD.WATER_KIND[w.kind];
         tmpQ.identity();
@@ -1027,6 +1019,395 @@ const Render3D = (() => {
     const wl = buildWell();
     wl.position.set(m.well.x / U, 0, m.well.y / U);
     group.add(wl);
+  }
+
+  // ---------------------------------------------------------------- Terrain détaillé (sol peint, couvert végétal, accessoires)
+  function hash2(x, y, s) {
+    let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(s | 0, 982451653)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+  /** Bruit de valeur lissé (0..1). */
+  function noise2(x, y, s = 0) {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hash2(xi, yi, s), b = hash2(xi + 1, yi, s), c = hash2(xi, yi + 1, s), d = hash2(xi + 1, yi + 1, s);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  const fbm = (x, y, s) => noise2(x, y, s) * 0.6 + noise2(x * 2.3, y * 2.3, s + 7) * 0.3 + noise2(x * 5.1, y * 5.1, s + 13) * 0.1;
+  const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+  /** Teintes du sol propres à chaque type de zone. */
+  const GROUND_TONES = {
+    grass: { patch: '#8cbf55', dry: '#b9b45e', dark: '#4f7d33' },
+    field: { patch: '#c9b45a', dry: '#d8c27a', dark: '#6f8a35' },
+    forest: { patch: '#4f6e38', dry: '#6b5a3a', dark: '#2c4023' },
+    rock: { patch: '#c4ae84', dry: '#8f7a5c', dark: '#5e5444' },
+    snow: { patch: '#ffffff', dry: '#bcd0e4', dark: '#93aac0' },
+  };
+
+  /**
+   * Sol d'une carte de zone : un seul maillage coloré par sommet (taches d'herbe, terre,
+   * chemins aux bords doux, place pavée, berges), qui se relève en collines hors de la carte.
+   */
+  function buildGround3D(m, group) {
+    const z = ZONES[m.zone], tone = GROUND_TONES[m.decoType] || GROUND_TONES.grass;
+    const [rcHex, reHex] = WORLD.ROAD_COL[m.decoType] || WORLD.ROAD_COL.grass;
+    const C = (h) => new THREE.Color(h);
+    const base = C(z.ground), alt = C(z.ground2), patch = C(tone.patch), dry = C(tone.dry), dark = C(tone.dark);
+    const rc = C(rcHex), re = C(reHex), stone = C('#b9ad96'), stone2 = C('#a39882'), cliff = C(m.decoType === 'snow' ? '#dfe8f0' : '#7a6e60');
+    const x0 = -900, x1 = m.w + 900, y0 = -m.h - 1100, y1 = m.h + 520, STEP = 26;
+    const nx = Math.ceil((x1 - x0) / STEP) + 1, ny = Math.ceil((y1 - y0) / STEP) + 1;
+    const pos = new Float32Array(nx * ny * 3), col = new Float32Array(nx * ny * 3);
+    const c = new THREE.Color(), tmp = new THREE.Color();
+    const seed = 100 + m.zone * 17;
+    // Distance au chemin : précalculée sur une grille grossière puis interpolée (rapide)
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const x = x0 + i * STEP, y = y0 + j * STEP, k = (j * nx + i) * 3;
+        const n1 = fbm(x / 520, y / 520, seed), n2 = noise2(x / 90, y / 90, seed + 3), n3 = noise2(x / 34, y / 34, seed + 5);
+        // Herbe : grandes taches claires/sèches, petites variations sombres
+        c.copy(base).lerp(alt, n2 * 0.6);
+        c.lerp(patch, sstep(0.55, 0.8, n1) * 0.55);
+        c.lerp(dry, sstep(0.68, 0.9, noise2(x / 300, y / 300, seed + 9)) * 0.45);
+        c.lerp(dark, sstep(0.6, 1, n3) * (m.decoType === 'snow' || m.decoType === 'rock' ? 0.45 : 0.25));
+        // Chemins : bord doux, gravier clair au centre
+        let h = 0;
+        const inside = x >= 0 && x <= m.w && y >= -m.h && y <= m.h;
+        if (inside || Math.abs(y) < m.h + 200) {
+          const d = WORLD.roadDist(m, x, y);
+          if (d < 62) {
+            tmp.copy(re).lerp(rc, sstep(46, 22, d));
+            tmp.lerp(stone, (n3 - 0.5) * 0.25 + 0.05);
+            c.lerp(tmp, sstep(62, 40, d));
+          }
+          // Place du zaap : pavés en anneaux
+          const pd = Math.hypot(x - m.plaza.x, y - m.plaza.y);
+          if (pd < m.plaza.r + 12) {
+            const ring = (pd % 46) < 5 ? stone2 : stone;
+            tmp.copy(ring).lerp(re, n3 * 0.25);
+            c.lerp(tmp, sstep(m.plaza.r + 12, m.plaza.r - 6, pd));
+          }
+          // Berges : sable (ou roche, neige) autour de l'eau, fond plus sombre dessous
+          for (const w of m.water) {
+            const ex = (x - w.x) / w.rx, ey = (y - w.y) / w.ry, e = Math.sqrt(ex * ex + ey * ey);
+            if (e > 1.45) continue;
+            const kd = WORLD.WATER_KIND[w.kind];
+            if (e < 1) c.copy(C(kd.fill)).multiplyScalar(0.55);
+            else c.lerp(C(kd.rim), sstep(1.45, 1.08, e) * 0.9);
+          }
+        }
+        // Hors de la carte : collines (hautes au nord, basses au sud côté caméra)
+        const ox = x < 0 ? -x : x > m.w ? x - m.w : 0;
+        const oyN = y < -m.h ? -m.h - y : 0, oyS = y > m.h ? y - m.h : 0;
+        const hn = sstep(40, 700, oyN) * (5 + n1 * 4), hs = sstep(60, 400, oyS) * 0.9, he = sstep(40, 600, ox) * (3 + n2 * 2);
+        h = Math.max(hn, hs, he) + (hn + he > 0.2 ? (n3 - 0.5) * 0.6 : 0);
+        if (h > 0.05) c.lerp(cliff, sstep(0.5, 5, h) * 0.6).multiplyScalar(1 - Math.min(0.25, h * 0.03));
+        pos[k] = x / U; pos[k + 1] = h; pos[k + 2] = y / U;
+        col[k] = c.r; col[k + 1] = c.g; col[k + 2] = c.b;
+      }
+    }
+    const idx = new Uint32Array((nx - 1) * (ny - 1) * 6);
+    let t = 0;
+    for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const a = j * nx + i, b = a + 1, d = a + nx, e = d + 1;
+      idx[t++] = a; idx[t++] = d; idx[t++] = b; idx[t++] = b; idx[t++] = d; idx[t++] = e;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.computeVertexNormals();
+    const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+    group.add(mesh);
+  }
+
+  /** Lot d'instances d'un petit modèle (couvert végétal, accessoires), teinté par instance. */
+  // Les lots sont découpés en secteurs de 40 m : seuls ceux à l'écran sont dessinés
+  const CHUNK = 40;
+  function scatter(group, geo, list, shadow = false, mtl = null) {
+    if (!list.length) return null;
+    const material = mtl || new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 });
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    const reach = geo.boundingSphere.radius * 3;
+    const buckets = new Map();
+    for (const o of list) {
+      const k = Math.floor(o.x / U / CHUNK) + ',' + Math.floor(o.z / U / CHUNK);
+      if (!buckets.has(k)) buckets.set(k, []);
+      buckets.get(k).push(o);
+    }
+    let first = null;
+    for (const [k, part] of buckets) {
+      const [bx, bz] = k.split(',').map(Number);
+      const g = geo.clone();
+      g.boundingSphere = new THREE.Sphere(new THREE.Vector3((bx + 0.5) * CHUNK, 1, (bz + 0.5) * CHUNK), CHUNK * 0.75 + reach);
+      const im = new THREE.InstancedMesh(g, material, part.length);
+      part.forEach((o, i) => {
+        tmpQ.setFromEuler(tmpE.set(o.rx || 0, o.ry || 0, o.rz || 0, 'YXZ'));
+        tmpM.compose(tmpP.set(o.x / U, o.y || 0, o.z / U), tmpQ, tmpS.set(o.sx || o.s, o.sy || o.s, o.sz || o.s));
+        im.setMatrixAt(i, tmpM);
+        im.setColorAt(i, tmpC.set(o.c || 0xffffff));
+      });
+      im.castShadow = shadow;
+      im.receiveShadow = true;
+      group.add(im);
+      first = first || im;
+    }
+    return first;
+  }
+  /** Géométrie fusionnée à couleur blanche (teintée ensuite par instance). */
+  function mergedWhite(build) {
+    const g = build();
+    g.traverse((o) => { if (o.isMesh) o.material = mat(0xffffff); });
+    g.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(g);
+    const rad = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2 || 1;
+    return mergeModel(g).scale(rad, rad, rad);
+  }
+  /** Géométrie fusionnée qui garde ses couleurs. */
+  function mergedColor(build) {
+    const g = build();
+    g.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(g);
+    const rad = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2 || 1;
+    return mergeModel(g).scale(rad, rad, rad);
+  }
+
+  const COVER = {
+    tuft: () => mergedWhite(() => {
+      const g = new THREE.Group();
+      for (let i = 0; i < 5; i++) { const a = i * 1.26; g.add(at(cone(0.045, 0.42 + (i % 3) * 0.12, 3, mat(0xffffff)), Math.cos(a) * 0.08, 0.22, Math.sin(a) * 0.08, Math.cos(a) * 0.35, 0, Math.sin(a) * 0.35)); }
+      return g;
+    }),
+    flower: () => mergedColor(() => {
+      const g = new THREE.Group();
+      for (let i = 0; i < 3; i++) {
+        const a = i * 2.1, r = 0.12;
+        g.add(at(cyl(0.012, 0.012, 0.28, 3, mat(0x4f8a35)), Math.cos(a) * r, 0.14, Math.sin(a) * r));
+        g.add(at(mesh(new THREE.OctahedronGeometry(0.075, 0), mat(0xffffff)), Math.cos(a) * r, 0.3, Math.sin(a) * r));
+      }
+      return g;
+    }),
+    pebble: () => mergedWhite(() => {
+      const g = new THREE.Group();
+      g.add(at(mesh(new THREE.DodecahedronGeometry(0.16, 0), mat(0xffffff)), 0, 0.06, 0));
+      g.add(at(mesh(new THREE.DodecahedronGeometry(0.09, 0), mat(0xffffff)), 0.2, 0.03, 0.08));
+      return g;
+    }),
+    reed: () => mergedColor(() => {
+      const g = new THREE.Group();
+      for (let i = 0; i < 6; i++) {
+        const a = i * 1.05, r = 0.1 + (i % 2) * 0.08;
+        g.add(at(cyl(0.015, 0.025, 1.0 + (i % 3) * 0.25, 4, mat(0x5a7a35)), Math.cos(a) * r, 0.55, Math.sin(a) * r, Math.cos(a) * 0.12, 0, Math.sin(a) * 0.12));
+        if (i % 2) g.add(at(cyl(0.04, 0.04, 0.22, 5, mat(0x6a4426)), Math.cos(a) * r, 1.1 + (i % 3) * 0.12, Math.sin(a) * r));
+      }
+      return g;
+    }),
+    lily: () => mergedColor(() => {
+      const g = new THREE.Group();
+      g.add(at(cyl(0.32, 0.32, 0.02, 9, mat(0x3f8a3a)), 0, 0, 0));
+      g.add(at(sph(0.07, 5, 4, mat(0xffb0d0)), 0.1, 0.05, 0));
+      return g;
+    }),
+    log: () => mergedColor(() => {
+      const g = new THREE.Group();
+      g.add(at(cyl(0.28, 0.32, 2.4, 7, mat(0x6a4a2a)), 0, 0.28, 0, 0, 0, Math.PI / 2));
+      g.add(at(cyl(0.22, 0.22, 0.05, 7, mat(0xc8a070)), 1.21, 0.28, 0, 0, 0, Math.PI / 2));
+      g.add(at(sph(0.14, 5, 4, mat(0xd04040)), -0.4, 0.58, 0.1));
+      g.add(at(sph(0.1, 5, 4, mat(0x4f8a35)), 0.5, 0.56, -0.1));
+      return g;
+    }),
+    shroom: () => mergedColor(() => {
+      const g = new THREE.Group();
+      g.add(at(cyl(0.14, 0.2, 0.9, 6, mat(0xe8dcc0)), 0, 0.45, 0));
+      g.add(at(sph(0.62, 8, 5, mat(0x8a4ab0, 0.25)), 0, 0.95, 0));
+      g.children[1].scale.y = 0.55;
+      for (let i = 0; i < 5; i++) { const a = i * 1.3; g.add(at(sph(0.09, 4, 3, mat(0xf0e8ff, 0.4)), Math.cos(a) * 0.4, 1.12, Math.sin(a) * 0.4)); }
+      return g;
+    }),
+    hay: () => mergedColor(() => {
+      const g = new THREE.Group();
+      g.add(at(cyl(0.8, 0.95, 1.1, 9, mat(0xd8b85a)), 0, 0.55, 0));
+      g.add(at(cone(0.85, 0.8, 9, mat(0xe2c66a)), 0, 1.5, 0));
+      g.add(at(torus(0.88, 0.05, 4, 12, mat(0x8a6a2a)), 0, 0.7, 0, Math.PI / 2));
+      return g;
+    }),
+    boulder: () => mergedWhite(() => {
+      const g = new THREE.Group();
+      g.add(at(mesh(new THREE.DodecahedronGeometry(1, 0), mat(0xffffff)), 0, 0.55, 0, 0.3, 0.4, 0.2));
+      g.add(at(mesh(new THREE.DodecahedronGeometry(0.55, 0), mat(0xffffff)), 1.0, 0.3, 0.4, 0.6, 0, 0.3));
+      g.add(at(mesh(new THREE.DodecahedronGeometry(0.4, 0), mat(0xffffff)), -0.8, 0.22, -0.3));
+      return g;
+    }),
+    gem: () => mergedColor(() => {
+      const g = new THREE.Group();
+      g.add(at(crystal(0.25, 1.4, mat(0x6fd8ff, 0.7)), 0, 0.6, 0, 0.15, 0, 0.1));
+      g.add(at(crystal(0.18, 0.9, mat(0xa98cff, 0.7)), 0.35, 0.4, 0.1, 0, 0, -0.4));
+      g.add(at(crystal(0.15, 0.7, mat(0x6fd8ff, 0.7)), -0.3, 0.3, 0.15, 0, 0, 0.5));
+      g.add(at(mesh(new THREE.DodecahedronGeometry(0.4, 0), mat(0x6e6450)), 0, 0.1, 0));
+      return g;
+    }),
+    snowman: () => mergedColor(() => {
+      const g = new THREE.Group();
+      g.add(at(sph(0.55, 8, 6, mat(0xf4f8fc)), 0, 0.5, 0));
+      g.add(at(sph(0.38, 8, 6, mat(0xf4f8fc)), 0, 1.25, 0));
+      g.add(at(cone(0.06, 0.3, 5, mat(0xff8a3a)), 0, 1.28, 0.42, Math.PI / 2));
+      g.add(at(cyl(0.25, 0.28, 0.35, 8, mat(0x2a2a3a)), 0, 1.72, 0));
+      return g;
+    }),
+    mound: () => mergedWhite(() => {
+      const g = new THREE.Group();
+      const s1 = at(sph(1, 8, 5, mat(0xffffff)), 0, 0, 0); s1.scale.set(1.4, 0.35, 1);
+      const s2 = at(sph(0.6, 8, 5, mat(0xffffff)), 0.9, 0, 0.3); s2.scale.set(1, 0.4, 1);
+      g.add(s1, s2);
+      return g;
+    }),
+    fence: () => mergedColor(() => {
+      const g = new THREE.Group();
+      const wd = mat(0x8a5a2a);
+      g.add(at(box(0.12, 0.9, 0.12, wd), -1, 0.45, 0), at(box(0.12, 0.9, 0.12, wd), 1, 0.45, 0));
+      g.add(at(box(2.1, 0.1, 0.06, mat(0xa8743a)), 0, 0.68, 0), at(box(2.1, 0.1, 0.06, mat(0xa8743a)), 0, 0.36, 0));
+      return g;
+    }),
+    lantern: () => mergedColor(() => {
+      const g = new THREE.Group();
+      g.add(at(cyl(0.06, 0.08, 2.2, 5, mat(0x3a3040)), 0, 1.1, 0));
+      g.add(at(box(0.5, 0.06, 0.06, mat(0x3a3040)), 0.2, 2.15, 0));
+      g.add(at(box(0.22, 0.3, 0.22, mat(0xffd27a, 1.1)), 0.4, 1.95, 0));
+      return g;
+    }),
+    sign: () => mergedColor(() => {
+      const g = new THREE.Group();
+      g.add(at(cyl(0.07, 0.08, 1.8, 5, mat(0x6a4a2a)), 0, 0.9, 0));
+      g.add(at(box(1.1, 0.32, 0.06, mat(0xc8a070)), 0.3, 1.5, 0));
+      g.add(at(cone(0.17, 0.25, 3, mat(0xc8a070)), 0.95, 1.5, 0, 0, 0, -Math.PI / 2));
+      g.add(at(box(0.9, 0.28, 0.06, mat(0xb08a5a)), -0.25, 1.1, 0, 0, Math.PI, 0));
+      return g;
+    }),
+  };
+
+  /** Petit moulin à vent (Amakna), près du hameau. */
+  function buildMill() {
+    const g = new THREE.Group();
+    g.add(at(cyl(1.1, 1.6, 4.6, 8, mat(0xe8dcc0)), 0, 2.3, 0));
+    g.add(at(cone(1.5, 1.6, 8, mat(0xb5482e)), 0, 5.4, 0));
+    const hub = new THREE.Group();
+    hub.position.set(0, 4.2, 1.3);
+    for (let i = 0; i < 4; i++) {
+      const arm = new THREE.Group();
+      arm.rotation.z = (i * Math.PI) / 2;
+      arm.add(at(box(0.12, 3, 0.08, mat(0x6a4a2a)), 0, 1.5, 0));
+      arm.add(at(box(0.7, 2.4, 0.04, mat(0xf4ecd8)), 0.4, 1.7, 0));
+      hub.add(arm);
+    }
+    g.add(hub);
+    return { root: g, hub };
+  }
+
+  /** Couvert végétal et accessoires d'une carte de zone. */
+  function buildCover3D(m, group) {
+    const type = m.decoType;
+    let s = 4242 + m.zone * 101;
+    const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+    const free = (x, y, road = 48, pad = 12) => !WORLD.inWater(m, x, y, pad, false) && WORLD.roadDist(m, x, y) > road &&
+      !m.houses.some((hs) => Math.hypot(hs.x - x, hs.y - y) < 120) && Math.hypot(m.zaap.x - x, m.zaap.y - y) > 120;
+    const tone = GROUND_TONES[type] || GROUND_TONES.grass, z = ZONES[m.zone];
+    const grassCols = type === 'snow' ? ['#ffffff', '#e8f0f8', '#d4e2ee'] : type === 'rock' ? ['#a89a68', '#8a8458', '#b8a878']
+      : type === 'forest' ? ['#3f6a2c', '#58823a', '#2f5222'] : ['#5f9a3a', '#78b048', '#4c8030', tone.patch];
+    // Touffes d'herbe en nappes (plus denses dans les taches de bruit)
+    const tufts = [];
+    for (let k = 0; k < 9000 && tufts.length < 4200; k++) {
+      const x = rnd() * m.w, y = (rnd() * 2 - 1) * m.h;
+      if (fbm(x / 400, y / 400, 31 + m.zone) < 0.42 && rnd() < 0.7) continue;
+      if (!free(x, y)) continue;
+      tufts.push({ x, z: y, s: (0.7 + rnd() * 0.8) * (type === 'snow' ? 0.8 : 1), ry: rnd() * 6.3, c: grassCols[(rnd() * grassCols.length) | 0] });
+    }
+    scatter(group, type === 'snow' ? COVER.mound() : COVER.tuft(), type === 'snow' ? tufts.slice(0, 700).map((o) => ({ ...o, s: o.s * 0.3 })) : tufts);
+    if (type === 'snow') scatter(group, COVER.tuft(), tufts.slice(700, 2200).map((o) => ({ ...o, c: '#9ab0a0' })));
+    // Fleurs (sauf montagne et neige)
+    if (type !== 'snow' && type !== 'rock') {
+      const fl = [], cols = type === 'forest' ? ['#b48cff', '#ff9ad0', '#ffffff'] : ['#ffffff', '#ff9ab0', '#ffd84a', '#b48cff', '#ff7a5a'];
+      for (let k = 0; k < 4000 && fl.length < 1300; k++) {
+        const x = rnd() * m.w, y = (rnd() * 2 - 1) * m.h;
+        if (noise2(x / 260, y / 260, 55 + m.zone) < 0.55) continue;
+        if (!free(x, y)) continue;
+        fl.push({ x, z: y, s: 0.8 + rnd() * 0.5, ry: rnd() * 6.3, c: cols[(rnd() * cols.length) | 0] });
+      }
+      scatter(group, COVER.flower(), fl);
+    }
+    // Cailloux le long des chemins
+    const peb = [];
+    for (const road of m.roads) for (let i = 1; i < road.length; i++) {
+      const [ax, ay] = road[i - 1], [bx, by] = road[i], len = Math.hypot(bx - ax, by - ay), nx = -(by - ay) / len, ny = (bx - ax) / len;
+      for (let d = 0; d < len; d += 34) {
+        if (rnd() < 0.45) continue;
+        const side = rnd() < 0.5 ? -1 : 1, off = 44 + rnd() * 18;
+        const x = ax + ((bx - ax) * d) / len + nx * off * side, y = ay + ((by - ay) * d) / len + ny * off * side;
+        if (WORLD.inWater(m, x, y, 8, false)) continue;
+        peb.push({ x, z: y, s: 0.6 + rnd() * 0.9, ry: rnd() * 6.3, c: type === 'snow' ? '#c8d0d8' : rnd() < 0.5 ? '#a8a090' : '#8a8478' });
+      }
+    }
+    scatter(group, COVER.pebble(), peb);
+    // Bord de l'eau : roseaux, nénuphars, rochers
+    const reeds = [], lilies = [], shoreRocks = [];
+    for (const w of m.water) {
+      const per = Math.PI * (w.rx + w.ry);
+      for (let d = 0; d < per; d += 40) {
+        const a = (d / per) * Math.PI * 2 + rnd() * 0.2;
+        const x = w.x + Math.cos(a) * (w.rx + 6), y = w.y + Math.sin(a) * (w.ry + 6);
+        if (WORLD.roadDist(m, x, y) < 60) continue;
+        // Pas dans un autre plan d'eau (rivière) ni sur un pont
+        if (m.water.some((o) => o !== w && ((x - o.x) / o.rx) ** 2 + ((y - o.y) / o.ry) ** 2 < 0.95)) continue;
+        if (m.bridges.some((b) => Math.abs(x - b.x) < b.len / 2 + 30 && Math.abs(y - b.y) < 90)) continue;
+        if (w.kind === 'water' || w.kind === 'swamp') { if (rnd() < 0.55) reeds.push({ x, z: y, s: 0.8 + rnd() * 0.6, ry: rnd() * 6.3 }); }
+        else if (rnd() < 0.5) shoreRocks.push({ x, z: y, s: 0.25 + rnd() * 0.35, ry: rnd() * 6.3, c: w.kind === 'chasm' ? '#6e6450' : '#e8f0f8' });
+        if ((w.kind === 'water' || w.kind === 'swamp') && rnd() < 0.3) {
+          const k = 0.55 + rnd() * 0.35;
+          lilies.push({ x: w.x + Math.cos(a) * w.rx * k, z: w.y + Math.sin(a) * w.ry * k, y: 0.07, s: 0.7 + rnd() * 0.6, ry: rnd() * 6.3 });
+        }
+      }
+    }
+    scatter(group, COVER.reed(), reeds);
+    scatter(group, COVER.lily(), lilies);
+    scatter(group, COVER.boulder(), shoreRocks, true);
+    // Accessoires propres à chaque zone
+    const props = (n, fn) => { const out = []; for (let k = 0; k < n * 20 && out.length < n; k++) { const x = 300 + rnd() * (m.w - 600), y = (rnd() * 1.8 - 0.9) * m.h; if (!free(x, y, 90, 110) || m.camps.some((c) => Math.hypot(c.x - x, c.y - y) < 140)) continue; out.push(fn(x, y)); } return out; };
+    if (type === 'forest') {
+      scatter(group, COVER.log(), props(26, (x, y) => ({ x, z: y, s: 0.9 + rnd() * 0.4, ry: rnd() * 6.3 })), true);
+      W3.glow = scatter(group, COVER.shroom(), props(30, (x, y) => ({ x, z: y, s: 0.6 + rnd() * 0.9, ry: rnd() * 6.3 })), true);
+    } else if (type === 'rock') {
+      scatter(group, COVER.boulder(), props(60, (x, y) => ({ x, z: y, s: 0.35 + rnd() * 0.5, ry: rnd() * 6.3, c: rnd() < 0.5 ? '#9a8a6a' : '#7a6e5a' })), true);
+      W3.glow = scatter(group, COVER.gem(), props(22, (x, y) => ({ x, z: y, s: 0.7 + rnd() * 0.6, ry: rnd() * 6.3 })), true);
+    } else if (type === 'snow') {
+      scatter(group, COVER.mound(), props(50, (x, y) => ({ x, z: y, s: 0.4 + rnd() * 0.5, ry: rnd() * 6.3, c: '#f4f8fc' })));
+      scatter(group, COVER.snowman(), [{ x: m.zaap.x + 260, z: 200, s: 1, ry: -0.4 }, { x: m.zaap.x - 300, z: -120, s: 0.85, ry: 0.5 }], true);
+    } else {
+      scatter(group, COVER.hay(), props(type === 'field' ? 26 : 10, (x, y) => ({ x, z: y, s: 0.8 + rnd() * 0.4, ry: rnd() * 6.3 })), true);
+      scatter(group, COVER.boulder(), props(12, (x, y) => ({ x, z: y, s: 0.4 + rnd() * 0.5, ry: rnd() * 6.3, c: '#9a948a' })), true);
+    }
+    // Clôtures le long du chemin à la sortie du hameau, lanternes et panneaux
+    const fences = [], lamps = [], main = m.roads[0];
+    for (let i = 1; i < main.length; i++) {
+      const [ax, ay] = main[i - 1], [bx, by] = main[i];
+      if (ax < m.plaza.x + m.plaza.r || ax > m.plaza.x + 1100) continue;
+      const len = Math.hypot(bx - ax, by - ay), nx = -(by - ay) / len, ny = (bx - ax) / len, ry = -Math.atan2(by - ay, bx - ax);
+      for (const side of [-1, 1]) fences.push({ x: (ax + bx) / 2 + nx * 72 * side, z: (ay + by) / 2 + ny * 72 * side, s: len / 64, sy: 1, sz: 1, ry, c: 0xffffff });
+      if (i % 4 === 0) lamps.push({ x: ax + nx * 70, z: ay + ny * 70, s: 1, ry: ry + Math.PI / 2 });
+    }
+    scatter(group, COVER.fence(), fences, true);
+    for (const a of [0, 1.6, 3.2, 4.7]) lamps.push({ x: m.plaza.x + Math.cos(a) * (m.plaza.r + 30), z: m.plaza.y + Math.sin(a) * (m.plaza.r + 30), s: 1, ry: -a });
+    W3.lamps = scatter(group, COVER.lantern(), lamps, true);
+    const ly = (() => { const r = m.roads[1]; return r ? r[0] : [m.lair.x, 0]; })();
+    scatter(group, COVER.sign(), [{ x: ly[0] - 60, z: ly[1] + 70, s: 1, ry: 0.4 }, { x: m.door.x - 360, z: m.door.y + 80, s: 1, ry: 0 }, { x: m.plaza.x + m.plaza.r + 40, z: 90, s: 1, ry: 0 }], true);
+    if (type === 'field' || type === 'grass') {
+      const mill = buildMill();
+      mill.root.position.set((m.zaap.x - 520) / U, 0, -180 / U);
+      mill.root.rotation.y = 0.3;
+      group.add(mill.root);
+      W3.mill = mill.hub;
+    }
   }
 
   /** Construit la carte courante (zone ou donjon) : décor, lieux, murs. */
@@ -1053,7 +1434,7 @@ const Render3D = (() => {
     if (W3.group) { scene.remove(W3.group); disposeGroup(W3.group); }
     const group = new THREE.Group();
     scene.add(group);
-    Object.assign(W3, { group, key: m.key, map: m, anchor: null, first: true, zaap: null, npc: null, mark: null, door: null, torches: [], water: null });
+    Object.assign(W3, { group, key: m.key, map: m, anchor: null, first: true, zaap: null, npc: null, mark: null, door: null, torches: [], water: null, glow: null, lamps: null, mill: null });
     const z = ZONES[m.zone], dungeon = m.kind === 'dungeon';
     let seed = 777 + m.zone * 31 + (dungeon ? 5 : 0);
     const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -1077,6 +1458,21 @@ const Render3D = (() => {
         for (const d of set) { if (k < d[1]) { pk = d; break; } k -= d[1]; }
         push(pk[0], x / U, y / U, pk[2] + rnd() * (pk[3] - pk[2]));
       }
+      // Bosquets : arbres serrés autour de quelques centres, buissons en bordure
+      const big = set[0][0], small = set.find((d) => d[0] === 'bush' || d[0] === 'mushroom' || d[0] === 'ice' || d[0] === 'spire' || d[0] === 'wheat') || set[set.length - 1];
+      for (let c = 0, tries = 0; c < (z.decoType === 'forest' ? 26 : 16) && tries < 400; tries++) {
+        const cx = 400 + rnd() * (W - 800), cy = (rnd() * 2 - 1) * (H - 150);
+        if (avoid.some(([ax, ay, r]) => Math.hypot(ax - cx, ay - cy) < r + 120) || WORLD.roadDist(m, cx, cy) < 200 || WORLD.inWater(m, cx, cy, 160, false)) continue;
+        c++;
+        const n = 7 + ((rnd() * 8) | 0);
+        for (let k = 0; k < n; k++) {
+          const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * 210;
+          const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+          if (WORLD.inWater(m, x, y, 40, false) || WORLD.roadDist(m, x, y) < 80) continue;
+          const k = z.decoType === 'rock' ? 0.55 : 1;
+          push(r < 150 ? big : small[0], x / U, y / U, (r < 150 ? 1 + rnd() * 0.6 : 0.8 + rnd() * 0.4) * k);
+        }
+      }
       // Lisière : rangées serrées tout autour de la carte
       // Au nord : grands arbres ; au sud (côté caméra) : décor bas pour ne pas masquer l'action
       const kind = BORDER_SET[z.decoType] || 'tree', low = LOW_BORDER[z.decoType] || 'bush';
@@ -1097,17 +1493,9 @@ const Render3D = (() => {
       const bb = new THREE.Box3().setFromObject(src);
       const rad = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2 || 1;
       const geo = mergeModel(src).scale(rad, rad, rad);
-      const cnt = arr.length / 4;
-      const im = new THREE.InstancedMesh(geo, decorMat, cnt);
-      im.castShadow = true;
-      for (let j = 0; j < cnt; j++) {
-        const sc = arr[j * 4 + 2];
-        tmpQ.setFromEuler(tmpE.set(0, arr[j * 4 + 3], 0));
-        tmpM.compose(tmpP.set(arr[j * 4], 0, arr[j * 4 + 1]), tmpQ, tmpS.set(sc, sc, sc));
-        im.setMatrixAt(j, tmpM);
-      }
-      im.frustumCulled = false;
-      group.add(im);
+      const list = [];
+      for (let j = 0; j < arr.length; j += 4) list.push({ x: arr[j] * U, z: arr[j + 1] * U, s: arr[j + 2], ry: arr[j + 3] });
+      scatter(group, geo, list, true, decorMat);
     }
 
     const ringAt = (x, y, r, color) => {
@@ -1192,6 +1580,13 @@ const Render3D = (() => {
     if (!W3 || W3.key !== m.key) buildMap3D(m);
     const ax = Math.round(px / TILE) * TILE, az = Math.round(pz / TILE) * TILE;
     W3.wt.position.set(ax, 0, az);
+    // Le damier ne sert plus qu'au donjon : les zones ont leur sol peint
+    const zoneMap = m.kind === 'zone';
+    W3.wt.visible = !zoneMap;
+    ground.visible = !zoneMap;
+    if (W3.water) W3.water.material.emissiveIntensity = 0.35 + 0.12 * Math.sin(time * 1.6);
+    if (W3.mill) W3.mill.rotation.z -= dt * 0.8;
+    if (W3.glow) W3.glow.material.emissive.setScalar(0.1 + 0.08 * Math.sin(time * 2));
     const key = ax + ',' + az;
     if (key !== W3.anchor) { W3.anchor = key; paintTiles(ax, az); }
     // Ciel et brouillard
@@ -1235,6 +1630,7 @@ const Render3D = (() => {
     const world = S.mode === 'world';
     if (W3) { W3.wt.visible = world; if (W3.group) W3.group.visible = world; W3.key = null; W3.first = true; }
     tiles.visible = !world;
+    ground.visible = true;
     hero = buildHero(S.cls);
     parts.length = 0;
     for (const v of vfx) v.cleanup && v.cleanup();
@@ -1329,7 +1725,7 @@ const Render3D = (() => {
     const px = p.x / U, pz = p.y / U;
     placeCamera(px, pz);
     beginPools();
-    if (S.mode === 'world') { updateWorld3D(S, dt, px, pz); W3.wt.visible = true; }
+    if (S.mode === 'world') updateWorld3D(S, dt, px, pz);
     if (hero) updateHero(S, dt);
 
     // Monstres : un lot par type ; les monstres ordinaires ont leur modèle, les boss restent des blocs (étape 4)

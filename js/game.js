@@ -1781,8 +1781,55 @@ const Game = (() => {
     drawWorldPlaces();
   }
 
+  /** Détails du sol en 2D (taches, cailloux, roseaux, fleurs), calculés une fois par carte. */
+  function cover2D(m) {
+    if (m._cover) return m._cover;
+    let sd = 777 + m.zone;
+    const rnd = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+    const out = { patches: [], pebbles: [], reeds: [], flowers: [] };
+    for (let k = 0; k < 700; k++) out.patches.push({ x: rnd() * m.w, y: (rnd() * 2 - 1) * m.h, r: 60 + rnd() * 140, dark: rnd() < 0.5 });
+    for (const road of m.roads) for (let i = 1; i < road.length; i++) {
+      const [ax, ay] = road[i - 1], [bx, by] = road[i], len = Math.hypot(bx - ax, by - ay), nx = -(by - ay) / len, ny = (bx - ax) / len;
+      for (let d = 0; d < len; d += 30) if (rnd() < 0.6) {
+        const sd2 = rnd() < 0.5 ? -1 : 1, off = 40 + rnd() * 16;
+        out.pebbles.push({ x: ax + ((bx - ax) * d) / len + nx * off * sd2, y: ay + ((by - ay) * d) / len + ny * off * sd2, r: 3 + rnd() * 4 });
+      }
+    }
+    for (const w of m.water) {
+      if (w.kind !== 'water' && w.kind !== 'swamp') continue;
+      const per = Math.PI * (w.rx + w.ry);
+      for (let d = 0; d < per; d += 38) {
+        const a = (d / per) * Math.PI * 2;
+        const x = w.x + Math.cos(a) * (w.rx + 4), y = w.y + Math.sin(a) * (w.ry + 4);
+        if (rnd() < 0.5 || m.water.some((o) => o !== w && ((x - o.x) / o.rx) ** 2 + ((y - o.y) / o.ry) ** 2 < 0.95)) continue;
+        if (m.bridges.some((b) => Math.abs(x - b.x) < b.len / 2 + 30 && Math.abs(y - b.y) < 90)) continue;
+        out.reeds.push({ x, y });
+      }
+    }
+    if (m.decoType !== 'snow' && m.decoType !== 'rock') {
+      const cols = ['#ffffff', '#ff9ab0', '#ffd84a', '#b48cff', '#ff7a5a'];
+      for (let k = 0; k < 2500 && out.flowers.length < 900; k++) {
+        const x = rnd() * m.w, y = (rnd() * 2 - 1) * m.h;
+        if (WORLD.inWater(m, x, y, 10, false) || WORLD.roadDist(m, x, y) < 50) continue;
+        out.flowers.push({ x, y, c: cols[(rnd() * cols.length) | 0] });
+      }
+    }
+    m._cover = out;
+    return out;
+  }
+
   /** Chemins, plans d'eau et ponts (rendu 2D). */
   function drawTerrain2D(m, x0, y0, x1, y1) {
+    const cv = cover2D(m), vis = (o, r) => o.x + r > x0 && o.x - r < x1 && o.y + r > y0 && o.y - r < y1;
+    // Taches d'herbe claires et sombres
+    const z = S.zone;
+    for (const p of cv.patches) {
+      if (!vis(p, p.r)) continue;
+      ctx.globalAlpha = p.dark ? 0.13 : 0.06;
+      ctx.fillStyle = p.dark ? z.deco[0] : '#fff6c0';
+      ctx.beginPath(); ctx.ellipse(p.x, p.y, p.r, p.r * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
     const [rc, re] = WORLD.ROAD_COL[m.decoType] || WORLD.ROAD_COL.grass;
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     for (const [col, wd] of [[re, 96], [rc, 74]]) {
@@ -1806,6 +1853,21 @@ const Game = (() => {
       ctx.fillStyle = pass === 'rim' ? k.rim : k.fill;
       const pad = pass === 'rim' ? 16 : 0;
       ctx.beginPath(); ctx.ellipse(w.x, w.y, w.rx + pad, w.ry + pad, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    // Cailloux au bord des chemins, roseaux au bord de l'eau, fleurs
+    ctx.fillStyle = m.decoType === 'snow' ? '#b8c4ce' : '#9a9488';
+    for (const p of cv.pebbles) if (vis(p, 8)) { ctx.beginPath(); ctx.ellipse(p.x, p.y, p.r, p.r * 0.7, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.lineWidth = 2;
+    for (const r of cv.reeds) {
+      if (!vis(r, 30)) continue;
+      ctx.strokeStyle = '#4f7a30';
+      for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.moveTo(r.x + k * 5, r.y); ctx.lineTo(r.x + k * 8, r.y - 26 - k * k * 6); ctx.stroke(); }
+      ctx.fillStyle = '#6a4426'; ctx.fillRect(r.x - 2, r.y - 30, 4, 9);
+    }
+    for (const f of cv.flowers) {
+      if (!vis(f, 6)) continue;
+      ctx.fillStyle = f.c;
+      ctx.beginPath(); ctx.arc(f.x, f.y, 3.2, 0, Math.PI * 2); ctx.arc(f.x + 7, f.y + 3, 2.6, 0, Math.PI * 2); ctx.fill();
     }
     for (const b of m.bridges) {
       ctx.fillStyle = '#6a4220'; ctx.fillRect(b.x - b.len / 2, b.y - 52, b.len, 104);
