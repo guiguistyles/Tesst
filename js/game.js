@@ -254,12 +254,12 @@ const Game = (() => {
     st.dodge = Math.min(0.3, (C.agilite || 0) / 1200);
     st.crit += (C.agilite || 0) / 2000;
     st.loot = 1 + Math.floor((C.chance || 0) / 10) / 100;
-    st.cd *= Math.pow(0.95, T.pa || 0);
-    st.armor = 1 - (1 - st.armor) * Math.pow(0.94, T.resistance || 0);
-    st.regen += 0.6 * (T.soin || 0);
-    st.pickup *= 1 + 0.3 * (T.prospection || 0);
-    st.area *= 1 + 0.08 * (T.envergure || 0);
-    st.speed *= 1 + 0.05 * (T.celerite || 0);
+    st.cd *= Math.pow(0.97, T.pa || 0);
+    st.armor = 1 - (1 - st.armor) * Math.pow(0.97, T.resistance || 0);
+    st.regen += 0.5 * (T.soin || 0);
+    st.pickup *= 1 + 0.15 * (T.prospection || 0);
+    st.area *= 1 + 0.04 * (T.envergure || 0);
+    st.speed *= 1 + 0.02 * (T.celerite || 0);
     applyEquip(st);
     S.stats = st;
     // Vie : base de la classe, +6 par niveau, +1 par point de Vitalité
@@ -493,6 +493,8 @@ const Game = (() => {
       if (l.e && l.e.aggro && !l.e.dead) fight = l.e;
     }
     S.boss = fight;
+    // Carte des distances au héros pour le cheminement des monstres
+    if (!dungeon && (S.t - (m._nav ? m._nav.at : -9) > 0.3)) updateFlow(m);
   }
 
   /** Comportement d'un monstre : rôde près de son camp, attaque à l'approche, abandonne s'il est entraîné trop loin. */
@@ -725,6 +727,78 @@ const Game = (() => {
     }
   }
 
+
+  // ============================================================ Cheminement des monstres
+  // Grille de cases de 40 px (marchable ou non), puis carte des distances au héros,
+  // recalculée quelques fois par seconde : chaque monstre descend la pente pour contourner
+  // l'eau, les arbres, les rochers et les bords des îles.
+  const NAV = 40;
+  function navGrid(m) {
+    if (m._nav) return m._nav;
+    const cols = Math.ceil(m.w / NAV) + 1, rows = Math.ceil((m.h * 2) / NAV) + 1;
+    const ok = new Uint8Array(cols * rows);
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const x = i * NAV, y = j * NAV - m.h;
+      if (!WORLD.walkable(m, x, y, 10)) continue;
+      const [cx, cy] = WORLD.collide(m, x, y, 10);
+      if (Math.hypot(cx - x, cy - y) > 2) continue;
+      ok[j * cols + i] = 1;
+    }
+    m._nav = { cols, rows, ok, dist: new Uint16Array(cols * rows), stamp: new Uint32Array(cols * rows), gen: 0, at: -1 };
+    return m._nav;
+  }
+  /** Distances (en cases) depuis le héros, dans un rayon de 50 cases. */
+  function updateFlow(m) {
+    const nav = navGrid(m), p = S.p;
+    nav.gen++;
+    const { cols, rows, ok, dist, stamp, gen } = nav;
+    const si = Math.round(p.x / NAV), sj = Math.round((p.y + m.h) / NAV);
+    if (si < 0 || sj < 0 || si >= cols || sj >= rows) return;
+    const q = [sj * cols + si];
+    stamp[q[0]] = gen; dist[q[0]] = 0;
+    for (let h = 0; h < q.length; h++) {
+      const c = q[h], d = dist[c];
+      if (d >= 50) continue;
+      const ci = c % cols, cj = (c - ci) / cols;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ni = ci + di, nj = cj + dj;
+        if (ni < 0 || nj < 0 || ni >= cols || nj >= rows) continue;
+        const n = nj * cols + ni;
+        if (!ok[n] || stamp[n] === gen) continue;
+        stamp[n] = gen; dist[n] = d + 1;
+        q.push(n);
+      }
+    }
+    nav.at = S.t;
+  }
+  /** Direction de marche d'un monstre vers le héros, en contournant les obstacles. */
+  function flowDir(e, ux, uy, dist) {
+    const m = S.world.map, nav = m._nav;
+    if (!nav || m.kind !== 'zone' || dist < 70) return [ux, uy];
+    // Ligne droite libre sur quelques cases : on fonce
+    let clear = true;
+    for (let k = 1; k <= 3 && clear; k++) {
+      const x = e.x + ux * NAV * k, y = e.y + uy * NAV * k;
+      const i = Math.round(x / NAV), j = Math.round((y + m.h) / NAV);
+      if (!nav.ok[j * nav.cols + i]) clear = false;
+    }
+    if (clear) return [ux, uy];
+    const ci = Math.round(e.x / NAV), cj = Math.round((e.y + m.h) / NAV);
+    const here = cj * nav.cols + ci;
+    let best = nav.stamp[here] === nav.gen ? nav.dist[here] : 999, bx = 0, by = 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      if (!di && !dj) continue;
+      const ni = ci + di, nj = cj + dj, n = nj * nav.cols + ni;
+      if (ni < 0 || nj < 0 || ni >= nav.cols || nj >= nav.rows || !nav.ok[n] || nav.stamp[n] !== nav.gen) continue;
+      // En diagonale, il faut que les deux cases voisines soient libres (pas de coin coupé)
+      if (di && dj && (!nav.ok[cj * nav.cols + ni] || !nav.ok[nj * nav.cols + ci])) continue;
+      const d = nav.dist[n] + (di && dj ? 0.4 : 0);
+      if (d < best) { best = d; bx = ni * NAV - e.x; by = nj * NAV - m.h - e.y; }
+    }
+    const l = Math.hypot(bx, by);
+    return l > 0.01 ? [bx / l, by / l] : [ux, uy];
+  }
+
   // ------------------------------------------------------------ Boucle
   function loop(now) {
     raf = requestAnimationFrame(loop);
@@ -925,11 +999,13 @@ const Game = (() => {
       x = S.p.x + Math.cos(a) * R; y = S.p.y + Math.sin(a) * R;
     }
     // Aventure : chaque niveau au-dessus du minimum de la zone rend le monstre plus solide
-    const lk = world ? Math.max(0, lvl - WORLD.LEVELS[S.zoneIdx][0]) : 0;
-    const hp = def.hp * z.hpMul * scale * hpMul * (1 + 0.07 * lk);
+    // Aventure : la force d'un monstre ne dépend que de son niveau (et de son espèce)
+    const L = Math.max(1, lvl || 1);
+    const hpK = world ? 1.5 * (1 + 0.05 * (L - 1)) * Math.pow(1.012, L - 1) : z.hpMul * scale;
+    const hp = def.hp * hpK * hpMul;
     const e = {
       id, def, x, y, r: def.r, hp, maxHp: hp, speed: def.speed * rand(0.9, 1.1),
-      dmg: def.dmg * z.dmgMul * (world ? 1 + 0.04 * lk : 1 + S.t / 400), xp: def.xp * (world ? (def.boss ? 1 + lvl * 0.15 : 2 + lvl * 0.6) : 1), boss: def.boss || 0, lvl,
+      dmg: def.dmg * (world ? 1 + 0.035 * (L - 1) : z.dmgMul * (1 + S.t / 400)), xp: def.xp * (world ? (def.boss ? 1 + lvl * 0.15 : 2 + lvl * 0.6) : 1), boss: def.boss || 0, lvl,
       kvx: 0, kvy: 0, slow: 0, slowT: 0, poison: 0, poisonT: 0, poisonAcc: 0, atk: 0, flash: 0,
       seed: Math.random() * 10, shot: rand(1, 2), hitT: {}, ab: 3, charge: 0, cx: 0, cy: 0,
     };
@@ -1281,8 +1357,10 @@ const Game = (() => {
           S.eprojs.push({ x: e.x, y: e.y, vx: ux * rg.speed, vy: uy * rg.speed, life: rg.range / rg.speed + 0.5, dmg: e.dmg * 0.8, color: rg.color });
         }
       }
-      e.x += ux * sp * dt + e.kvx * dt;
-      e.y += uy * sp * dt + e.kvy * dt;
+      // Aventure : on contourne les obstacles au lieu de rester coincé
+      const [mx, my] = S.mode === 'world' && sp > 0 ? flowDir(e, ux, uy, dist) : [ux, uy];
+      e.x += mx * sp * dt + e.kvx * dt;
+      e.y += my * sp * dt + e.kvy * dt;
       const decay = Math.exp(-10 * dt);
       e.kvx *= decay; e.kvy *= decay;
 

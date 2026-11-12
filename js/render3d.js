@@ -1368,23 +1368,31 @@ const Render3D = (() => {
     const free = (x, y, road = 48, pad = 12) => !!WORLD.isleAt(m, x, y, 30) && !WORLD.inWater(m, x, y, pad, false) && WORLD.roadDist(m, x, y) > road &&
       !m.houses.some((hs) => Math.hypot(hs.x - x, hs.y - y) < 120) && Math.hypot(m.zaap.x - x, m.zaap.y - y) > 120;
     const tone = GROUND_TONES[type] || GROUND_TONES.grass, z = ZONES[m.zone];
+    // Point au hasard sur une île (pondéré par la surface)
+    const areas = m.isles.map((i) => i.rx * i.ry), total = areas.reduce((a2, b2) => a2 + b2, 0);
+    const randIn = () => {
+      let k = rnd() * total, i = 0;
+      while (k > areas[i] && i < areas.length - 1) { k -= areas[i]; i++; }
+      const isl = m.isles[i], a2 = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * 0.95 * WORLD.wob(isl, a2);
+      return [isl.x + Math.cos(a2) * isl.rx * d, isl.y + Math.sin(a2) * isl.ry * d];
+    };
     const grassCols = type === 'snow' ? ['#ffffff', '#e8f0f8', '#d4e2ee'] : type === 'rock' ? ['#a89a68', '#8a8458', '#b8a878']
       : type === 'forest' ? ['#3f6a2c', '#58823a', '#2f5222'] : ['#5f9a3a', '#78b048', '#4c8030', tone.patch];
     // Touffes d'herbe en nappes (plus denses dans les taches de bruit)
     const tufts = [];
-    for (let k = 0; k < 30000 && tufts.length < 4200; k++) {
-      const x = rnd() * m.w, y = (rnd() * 2 - 1) * m.h;
+    for (let k = 0; k < 40000 && tufts.length < 11000; k++) {
+      const [x, y] = randIn();
       if (fbm(x / 400, y / 400, 31 + m.zone) < 0.42 && rnd() < 0.7) continue;
       if (!free(x, y)) continue;
       tufts.push({ x, z: y, s: (0.7 + rnd() * 0.8) * (type === 'snow' ? 0.8 : 1), ry: rnd() * 6.3, c: grassCols[(rnd() * grassCols.length) | 0] });
     }
-    scatter(group, type === 'snow' ? COVER.mound() : COVER.tuft(), type === 'snow' ? tufts.slice(0, 700).map((o) => ({ ...o, s: o.s * 0.3 })) : tufts);
-    if (type === 'snow') scatter(group, COVER.tuft(), tufts.slice(700, 2200).map((o) => ({ ...o, c: '#9ab0a0' })));
+    scatter(group, type === 'snow' ? COVER.mound() : COVER.tuft(), type === 'snow' ? tufts.slice(0, 1800).map((o) => ({ ...o, s: o.s * 0.3 })) : tufts);
+    if (type === 'snow') scatter(group, COVER.tuft(), tufts.slice(1800, 5500).map((o) => ({ ...o, c: '#9ab0a0' })));
     // Fleurs (sauf montagne et neige)
     if (type !== 'snow' && type !== 'rock') {
       const fl = [], cols = type === 'forest' ? ['#b48cff', '#ff9ad0', '#ffffff'] : ['#ffffff', '#ff9ab0', '#ffd84a', '#b48cff', '#ff7a5a'];
-      for (let k = 0; k < 14000 && fl.length < 1300; k++) {
-        const x = rnd() * m.w, y = (rnd() * 2 - 1) * m.h;
+      for (let k = 0; k < 20000 && fl.length < 3200; k++) {
+        const [x, y] = randIn();
         if (noise2(x / 260, y / 260, 55 + m.zone) < 0.55) continue;
         if (!free(x, y)) continue;
         fl.push({ x, z: y, s: 0.8 + rnd() * 0.5, ry: rnd() * 6.3, c: cols[(rnd() * cols.length) | 0] });

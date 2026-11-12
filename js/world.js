@@ -8,7 +8,8 @@ const WORLD = (() => {
   const MAP_W = 4800, MAP_H = 1300;   // carte de zone : 150 m × 81 m
   const DJ_W = 3000, DJ_H = 380;      // donjon : long couloir de 94 m × 24 m
   // Niveaux des monstres de chaque zone (min, max). Le donjon est un peu au-dessus.
-  const LEVELS = [[1, 8], [10, 18], [20, 28], [30, 38], [40, 50]];
+  // Chaque monde couvre 40 niveaux, 10 par île
+  const LEVELS = [[1, 40], [40, 80], [80, 120], [120, 160], [160, 200]];
 
   function rng(seed) {
     let t = seed >>> 0;
@@ -164,17 +165,17 @@ const WORLD = (() => {
   // Chaque monde est un archipel flottant : une île centrale (zaap, hameau, personnage)
   // et quatre îles reliées par des ponts, chacune peuplée d'une seule famille de monstres.
   const ISLES = [
-    { x: 950, y: 0, rx: 720, ry: 540 },       // 0 : île centrale
-    { x: 2450, y: -820, rx: 640, ry: 470 },   // 1
-    { x: 2450, y: 820, rx: 640, ry: 470 },    // 2
-    { x: 3900, y: 0, rx: 700, ry: 540 },      // 3 (repaire du boss intermédiaire)
-    { x: 5250, y: 0, rx: 720, ry: 580 },      // 4 (entrée du donjon)
+    { x: 1250, y: 0, rx: 900, ry: 680 },       // 0 : île centrale
+    { x: 3650, y: -1380, rx: 1250, ry: 900 },  // 1
+    { x: 3650, y: 1380, rx: 1250, ry: 900 },   // 2
+    { x: 6450, y: 0, rx: 1350, ry: 1000 },     // 3 (repaire du boss intermédiaire)
+    { x: 9150, y: 0, rx: 1350, ry: 1050 },     // 4 (entrée du donjon)
   ];
   const LINKS = [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4]];
   // Sous-zones : nom, monstres, plans d'eau
   const SUBZONES = [
-    [{ name: 'Champs d’Astrub', ids: ['tofu', 'piou'] }, { name: 'Calanque d’Astrub', ids: ['pichon'], lake: 'water' },
-     { name: 'Forêt d’Astrub', ids: ['larve_bleue', 'piou'] }, { name: 'Tainéla', ids: ['bouftou'] }],
+    [{ name: 'Calanque d’Astrub', ids: ['pichon'], lake: 'water' }, { name: 'Tainéla', ids: ['bouftou'] },
+     { name: 'Champs d’Astrub', ids: ['tofu', 'piou'] }, { name: 'Forêt d’Astrub', ids: ['larve_bleue', 'bouftou'] }],
     [{ name: 'Bois d’Amakna', ids: ['arakne'] }, { name: 'Marais d’Amakna', ids: ['moskito'], lake: 'swamp' },
      { name: 'Champs de cawottes', ids: ['prespic', 'arakne'] }, { name: 'Territoire des sangliers', ids: ['sanglier'] }],
     [{ name: 'Bois des fantômes', ids: ['fantome'] }, { name: 'Tour des archers', ids: ['chafer_archer'] },
@@ -185,7 +186,7 @@ const WORLD = (() => {
      { name: 'Forêt des sapiks', ids: ['sapik'] }, { name: 'Bois pétrifiés', ids: ['fecorce', 'sapik'] }],
   ];
   // Repaire du boss intermédiaire : île de sa famille
-  const LAIR_ISLE = [1, 3, 3, 3, 1];
+  const LAIR_ISLE = [3, 3, 3, 3, 1];
 
   /** Bord irrégulier d'une île (multiplicateur du rayon selon l'angle). */
   function wob(isl, a) { return 1 + 0.07 * Math.sin(3 * a + isl.s) + 0.045 * Math.sin(5 * a + isl.s * 2.1) + 0.03 * Math.sin(9 * a + isl.s * 0.7); }
@@ -222,13 +223,14 @@ const WORLD = (() => {
     const sub = SUBZONES[zi];
     m.isles = ISLES.map((d, k) => ({ ...d, s: r() * 6.28, k, name: k ? sub[k - 1].name : m.name, ids: k ? sub[k - 1].ids : [], lake: k ? sub[k - 1].lake : null }));
     const [l0, l1] = m.lvl, span = (l1 - l0 + 1) / 4;
-    m.isles.forEach((isl, k) => { if (k) isl.lvl = [l0 + Math.floor((k - 1) * span), Math.min(l1, l0 + Math.floor(k * span) - (k < 4 ? 1 : 0))]; });
+    // 10 niveaux par île : Astrub 1-10, 10-20, 20-30, 30-40 ; Amakna 40-50…
+    m.isles.forEach((isl, k) => { if (k) isl.lvl = [Math.max(1, zi * 40 + (k - 1) * 10), zi * 40 + k * 10]; });
     // Ponts entre les îles (d'un bord à l'autre)
     m.spans = LINKS.map(([a, b]) => {
       const A = m.isles[a], B = m.isles[b];
       const ang = Math.atan2(B.y - A.y, B.x - A.x);
       const [ax, ay] = edgePoint(A, ang, 0.9), [bx, by] = edgePoint(B, ang + Math.PI, 0.9);
-      return { ax, ay, bx, by, w: 120, a, b };
+      return { ax, ay, bx, by, w: 140, a, b };
     });
     const hub = m.isles[0];
     m.zaap = { x: hub.x - 230, y: 0 };
@@ -276,7 +278,7 @@ const WORLD = (() => {
     m.camps = [];
     for (const isl of m.isles) {
       if (!isl.k) continue;
-      for (let c = 0, t = 0; c < 7 && t < 600; t++) {
+      for (let c = 0, t = 0; c < 18 && t < 1500; t++) {
         const a = r() * 6.28, d = 0.15 + r() * 0.68;
         const x = isl.x + Math.cos(a) * isl.rx * d, y = isl.y + Math.sin(a) * isl.ry * d;
         if (isleE(isl, x, y) > 0.82 || roadDist(m, x, y) < 110 || inWater(m, x, y, 120, false)) continue;
@@ -288,7 +290,9 @@ const WORLD = (() => {
         c++;
       }
     }
-    m.w = 6100; m.h = 1450;
+    m.w = 10650; m.h = 2550;
+    const li2 = m.isles[LAIR_ISLE[zi]];
+    m.lair.lvl = li2.lvl[1] + 3;
   }
 
   /* ---------------------------------------------------------------- Décor (partagé par le moteur et les rendus) */
@@ -317,7 +321,7 @@ const WORLD = (() => {
     const pick = () => { let k = r(); for (const d of set) { if (k < d[1]) return d; k -= d[1]; } return set[0]; };
     // Éléments isolés
     for (let cx = 0; cx < m.w; cx += 150) for (let cy = -m.h; cy < m.h; cy += 150) {
-      if (r() > 0.3) continue;
+      if (r() > 0.42) continue;
       const x = cx + r() * 150, y = cy + r() * 150;
       if (blocked(x, y)) continue;
       const d = pick();
@@ -326,7 +330,7 @@ const WORLD = (() => {
     // Bosquets serrés
     const big = set[0][0], small = (set.find((d) => ['bush', 'mushroom', 'ice', 'spire', 'wheat'].includes(d[0])) || set[set.length - 1])[0];
     const kk = type === 'rock' ? 0.55 : 1;
-    for (let c = 0, t = 0; c < (type === 'forest' ? 26 : 16) && t < 400; t++) {
+    for (let c = 0, t = 0; c < (type === 'forest' ? 80 : 50) && t < 1200; t++) {
       const cx = 400 + r() * (m.w - 800), cy = (r() * 2 - 1) * (m.h - 150);
       if (avoid.some(([ax, ay, rr]) => Math.hypot(ax - cx, ay - cy) < rr + 120) || roadDist(m, cx, cy) < 200 || inWater(m, cx, cy, 160, false) || !isleAt(m, cx, cy, 150)) continue;
       c++;
@@ -405,9 +409,9 @@ const WORLD = (() => {
     genDecor(m, rng(5000 + i * 31));
     // Donjon : quatre salles de monstres puis le gardien
     const d = {
-      key: 'd' + i, kind: 'dungeon', zone: i, name: DUNGEONS[i], w: DJ_W, h: DJ_H, lvl: [l1, l1 + 3],
+      key: 'd' + i, kind: 'dungeon', zone: i, name: DUNGEONS[i], w: DJ_W, h: DJ_H, lvl: [l1 + 1, l1 + 4],
       exit: { x: 170, y: 0 },
-      boss: { id: z.boss, kind: 'boss', x: DJ_W - 330, y: 0, respawn: Infinity, lvl: l1 + 4 },
+      boss: { id: z.boss, kind: 'boss', x: DJ_W - 330, y: 0, respawn: Infinity, lvl: l1 + 5 },
       camps: [],
     };
     [700, 1150, 1600, 2050].forEach((x, k) => {
@@ -424,17 +428,17 @@ const WORLD = (() => {
   // goal : { kill: id, n } ou { boss: id }. La première quête de chaque zone se reçoit en parlant au personnage.
   const Q = (zone, title, goal, intro, done, xp, kamas) => ({ zone, title, goal, intro, done, xp, kamas });
   const QUESTS = [
-    Q(0, 'Premiers pas', { kill: 'tofu', n: 8 },
+    Q(0, 'Premiers pas', { kill: 'pichon', n: 10 },
       ['Ah, enfin quelqu’un ! Je suis Oriel, le dernier gardien des zaaps.',
        'Une brume noire monte des glaces de Frigost. Elle éteint nos zaaps un à un et rend les créatures folles.',
-       'Les tofus des Champs d’Astrub attaquent déjà les voyageurs. Montre-moi ce que tu vaux : chasse 8 tofus. Les champs sont sur l’île au nord-est, de l’autre côté du pont.'],
+       'Les pichons de la Calanque d’Astrub attaquent déjà les pêcheurs. Montre-moi ce que tu vaux : chasse 10 pichons. La calanque est l’île au nord-est, de l’autre côté du pont.'],
       ['Joli travail ! Garde l’équipement que tu trouves sur les monstres, il te sera utile.'], 60, 40),
     Q(0, 'Le roi des tofus', { boss: 'tofu_royal' },
-      ['Le Tofu Royal s’est terré dans son nid, au milieu de la plaine. Ses yeux brillent de brume.',
+      ['Le Tofu Royal s’est terré dans son nid, au cœur des Champs d’Astrub. Ses yeux brillent de brume.',
        'Va le calmer avant qu’il n’entraîne tous les tofus avec lui.'],
       ['Le Tofu Royal est retombé dans un profond sommeil. La brume recule un peu.'], 140, 80),
     Q(0, 'La Bergerie maudite', { boss: 'bouftou_royal' },
-      ['La brume vient du Bouftou Royal. Il s’est retranché au fond de sa bergerie, sur l’île de Tainéla, tout à l’est.',
+      ['La brume vient du Bouftou Royal. Il s’est retranché au fond de sa bergerie, cachée dans la Forêt d’Astrub, tout à l’est.',
        'Entre dans le donjon et bats-le : la route d’Amakna s’ouvrira.'],
       ['Le Bouftou Royal est tombé ! La route d’Amakna est ouverte. Margot, à la ferme, a besoin d’aide.'], 260, 150),
 
@@ -578,18 +582,18 @@ const WORLD = (() => {
   }
   // Talents : 1 point par niveau. Le premier sort est offert ; les suivants s'ouvrent après
   // un nombre de points dépensés dans l'arbre ; chaque rang demande un niveau minimum.
-  const SPELL_GATE = [0, 4, 10, 18];
-  const RANK_LEVEL = [0, 1, 3, 10, 20, 32];
+  const SPELL_GATE = [0, 5, 15, 30];
+  const RANK_LEVEL = [0, 1, 5, 20, 45, 80];
   const TALENT_PASSIVES = {
-    pa: { name: 'Points d’action', short: 'PA', color: '#f2c14e', desc: '−5 % de recharge des sorts', max: 5 },
-    resistance: { name: 'Résistance', short: 'RES', color: '#9aa8b8', desc: '−6 % de dégâts subis', max: 5 },
-    soin: { name: 'Récupération', short: 'REC', color: '#7dff9a', desc: '+0,6 PV par seconde', max: 5 },
-    prospection: { name: 'Ramassage', short: 'RAM', color: '#ffd84a', desc: '+30 % de rayon de ramassage', max: 5 },
-    envergure: { name: 'Envergure', short: 'ENV', color: '#ff9a5a', desc: '+8 % de taille des zones', max: 5 },
-    celerite: { name: 'Célérité', short: 'CEL', color: '#4fc3c7', desc: '+5 % de vitesse de déplacement', max: 5 },
+    pa: { name: 'Points d’action', short: 'PA', color: '#f2c14e', desc: '−3 % de recharge des sorts', max: 15 },
+    resistance: { name: 'Résistance', short: 'RES', color: '#9aa8b8', desc: '−3 % de dégâts subis', max: 15 },
+    soin: { name: 'Récupération', short: 'REC', color: '#7dff9a', desc: '+0,5 PV par seconde', max: 15 },
+    prospection: { name: 'Ramassage', short: 'RAM', color: '#ffd84a', desc: '+15 % de rayon de ramassage', max: 15 },
+    envergure: { name: 'Envergure', short: 'ENV', color: '#ff9a5a', desc: '+4 % de taille des zones', max: 15 },
+    celerite: { name: 'Célérité', short: 'CEL', color: '#4fc3c7', desc: '+2 % de vitesse de déplacement', max: 15 },
   };
   /** Niveau minimum pour entrer dans le donjon de chaque zone. */
-  const DUNGEON_LEVEL = [5, 15, 25, 35, 46];
+  const DUNGEON_LEVEL = [35, 75, 115, 155, 195];
   const CHAR = { CARACS, ELEMENTS, SPELL_ELEM, STAT_PER_LEVEL, caracCost, caracSpent, SPELL_GATE, RANK_LEVEL, TALENT_PASSIVES, DUNGEON_LEVEL };
 
   /* ---------------------------------------------------------------- Dessin de la carte */
