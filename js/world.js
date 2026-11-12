@@ -567,6 +567,19 @@ const WORLD = (() => {
     pile_ou_face: 'eau', griffe_joueuse: 'air', roulette: 'feu', bond_felin: 'terre',
     poing_enflamme: 'feu', flasque_explosive: 'feu', gueule_de_bois: 'terre', lait_bambou: 'eau',
     ronces: 'terre', poison_paralysant: 'air', ronces_agressives: 'terre', tremblement: 'terre',
+    bond: 'terre', intimidation: 'terre', couper: 'feu', puissance: 'terre',
+    fleche_glacee: 'eau', fleche_empoisonnee: 'air', tir_puissant: 'air', fleche_dispersion: 'feu',
+    attaque_nuageuse: 'air', attaque_naturelle: 'feu', glyphe_agressif: 'feu', treve: 'eau',
+    mot_drainant: 'feu', mot_stimulant: 'feu', mot_regeneration: 'feu', mot_tournoyant: 'air',
+    sournoiserie: 'air', piege_mortel: 'feu', invisibilite: 'air', peur: 'terre',
+    gelure: 'eau', rayon_obscur: 'feu', sablier: 'eau', vol_du_temps: 'feu',
+    invoc_prespic: 'terre', griffe_cinglante: 'air', cri_ours: 'terre', soin_animal: 'feu',
+    absorption: 'feu', folie_sanguinaire: 'terre', dissolution: 'terre', punition: 'terre',
+    pelle_fantomatique: 'eau', coffre_anime: 'eau', acceleration: 'eau', remblai: 'terre',
+    bombe_eau: 'eau', tornabombe: 'air', dagues_boomerang: 'air', remission: 'eau',
+    trefle: 'eau', tout_ou_rien: 'feu', langue_rapeuse: 'eau', topkaj: 'feu',
+    karcham: 'terre', chamrak: 'terre', pandatak: 'feu', ebriete: 'terre',
+    feu_de_brousse: 'feu', la_folle: 'air', ronces_multiples: 'terre', vent_empoisonne: 'air',
   };
   const STAT_PER_LEVEL = 5;
   /** Coût du prochain point dans une caractéristique déjà à la valeur v (paliers de Dofus Rétro). */
@@ -582,7 +595,9 @@ const WORLD = (() => {
   }
   // Talents : 1 point par niveau. Le premier sort est offert ; les suivants s'ouvrent après
   // un nombre de points dépensés dans l'arbre ; chaque rang demande un niveau minimum.
-  const SPELL_GATE = [0, 5, 15, 30];
+  // Niveau d'obtention de chaque sort de la classe (comme dans Dofus) ; 4 sorts sur la barre
+  const SPELL_GATE = [1, 5, 10, 20, 30, 45, 60, 80];
+  const BAR_SIZE = 4;
   const RANK_LEVEL = [0, 1, 5, 20, 45, 80];
   const TALENT_PASSIVES = {
     pa: { name: 'Points d’action', short: 'PA', color: '#f2c14e', desc: '−3 % de recharge des sorts', max: 15 },
@@ -594,7 +609,7 @@ const WORLD = (() => {
   };
   /** Niveau minimum pour entrer dans le donjon de chaque zone. */
   const DUNGEON_LEVEL = [35, 75, 115, 155, 195];
-  const CHAR = { CARACS, ELEMENTS, SPELL_ELEM, STAT_PER_LEVEL, caracCost, caracSpent, SPELL_GATE, RANK_LEVEL, TALENT_PASSIVES, DUNGEON_LEVEL };
+  const CHAR = { CARACS, ELEMENTS, SPELL_ELEM, STAT_PER_LEVEL, caracCost, caracSpent, SPELL_GATE, BAR_SIZE, RANK_LEVEL, TALENT_PASSIVES, DUNGEON_LEVEL };
 
   /* ---------------------------------------------------------------- Dessin de la carte */
   /**

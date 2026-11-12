@@ -289,7 +289,10 @@ const Game = (() => {
   function worldLevelUp() {
     const n = S.pending;
     S.pending = 0;
+    learnSpells(true);
+    syncSpells();
     recomputeStats();
+    refreshSpells();
     S.p.hp = S.p.maxHp;
     cb.onBanner(`Niveau ${S.level} !`, `+${WORLD.STAT_PER_LEVEL * n} caractéristiques · +${n} point${n > 1 ? 's' : ''} de talent`);
     if (cb.onPoints) cb.onPoints();
@@ -299,7 +302,8 @@ const Game = (() => {
   function talentSpent() {
     const T = S.talents;
     let n = 0;
-    CLASSES[S.cls].spells.forEach((id, i) => { const r = T.spells[id] || 0; n += i === 0 ? Math.max(0, r - 1) : r; });
+    // Le rang 1 de chaque sort est offert à son niveau d'obtention ; les rangs suivants coûtent 1 point
+    CLASSES[S.cls].spells.forEach((id) => { n += Math.max(0, (T.spells[id] || 0) - 1); });
     for (const k in T.passives) n += T.passives[k];
     return n;
   }
@@ -313,7 +317,7 @@ const Game = (() => {
       const idx = CLASSES[S.cls].spells.indexOf(id), r = T.spells[id] || 0;
       if (idx < 0) return 'Sort inconnu';
       if (r >= 5) return 'Rang maximum';
-      if (r === 0 && talentSpent() < WORLD.SPELL_GATE[idx]) return `Dépense ${WORLD.SPELL_GATE[idx]} points dans l’arbre`;
+      if (r === 0) return `Obtenu au niveau ${WORLD.SPELL_GATE[idx]}`;
       if (S.level < WORLD.RANK_LEVEL[r + 1]) return `Niveau ${WORLD.RANK_LEVEL[r + 1]} requis`;
     } else {
       const def = WORLD.TALENT_PASSIVES[id], r = T.passives[id] || 0;
@@ -324,13 +328,40 @@ const Game = (() => {
     return '';
   }
 
-  /** Remet la barre de sorts en accord avec les talents. */
+  /** Sorts appris au fil des niveaux (rang 1 offert) ; la barre se remplit jusqu'à 4. */
+  function learnSpells(announce) {
+    const T = S.talents;
+    T.bar = (T.bar || []).filter((id) => T.spells[id]);
+    CLASSES[S.cls].spells.forEach((id, i) => {
+      if (S.level >= WORLD.SPELL_GATE[i] && !T.spells[id]) {
+        T.spells[id] = 1;
+        if (T.bar.length < WORLD.BAR_SIZE) T.bar.push(id);
+        if (announce) cb.onBanner('Nouveau sort : ' + SPELLS[id].name, T.bar.includes(id) ? 'Ajouté à ta barre' : 'Choisis tes 4 sorts dans les talents (T)');
+      }
+    });
+    if (!T.bar.length) T.bar = CLASSES[S.cls].spells.filter((id) => T.spells[id]).slice(0, WORLD.BAR_SIZE);
+  }
+  /** Met un sort sur la barre (4 au plus) ou l'en retire. */
+  function setBar(id, on) {
+    if (!S || S.mode !== 'world') return 'Impossible';
+    const T = S.talents;
+    if (!T.spells[id]) return 'Sort pas encore appris';
+    T.bar = T.bar.filter((x) => x !== id);
+    if (on) {
+      if (T.bar.length >= WORLD.BAR_SIZE) return 'La barre est pleine (4 sorts)';
+      T.bar.push(id);
+    } else if (!T.bar.length) { T.bar.push(id); return 'Il faut au moins un sort'; }
+    syncSpells(); recomputeStats(); refreshSpells(); cb.onSave();
+    return '';
+  }
+
+  /** Remet la barre de sorts en accord avec les talents : seuls les 4 sorts choisis combattent. */
   function syncSpells() {
     const order = CLASSES[S.cls].spells, T = S.talents;
     const keep = [];
     for (const id of order) {
       const r = T.spells[id] || 0;
-      if (!r) continue;
+      if (!r || !(T.bar || []).includes(id)) continue;
       let sp = S.spells.find((q) => q.id === id);
       if (!sp) { addSpell(id); sp = S.spells[S.spells.length - 1]; }
       sp.lvl = r;
@@ -347,7 +378,7 @@ const Game = (() => {
     if (why) return why;
     const bag = kind === 'spell' ? S.talents.spells : S.talents.passives;
     bag[id] = (bag[id] || 0) + 1;
-    if (kind === 'spell') { syncSpells(); if (bag[id] === 1) cb.onBanner('Nouveau sort : ' + SPELLS[id].name, 'Il se lance tout seul'); }
+    if (kind === 'spell') syncSpells();
     recomputeStats();
     refreshSpells();
     cb.onSave();
@@ -357,7 +388,9 @@ const Game = (() => {
   /** Remise à zéro des talents (le premier sort reste au rang 1). */
   function resetTalents() {
     if (!S || S.mode !== 'world') return;
-    S.talents = { spells: { [CLASSES[S.cls].spells[0]]: 1 }, passives: {} };
+    const bar = S.talents.bar;
+    S.talents = { spells: {}, passives: {}, bar };
+    learnSpells(false);
     syncSpells();
     recomputeStats();
     refreshSpells();
@@ -391,7 +424,7 @@ const Game = (() => {
     for (const id in WORLD.TALENT_PASSIVES) checks['passive:' + id] = talentCheck('passive', id);
     return {
       cls: S.cls, level: S.level, carac: Object.assign({}, S.carac), caracTot: Object.assign({}, S.caracTot), caracPts: caracPoints(),
-      talents: { spells: Object.assign({}, S.talents.spells), passives: Object.assign({}, S.talents.passives) },
+      talents: { spells: Object.assign({}, S.talents.spells), passives: Object.assign({}, S.talents.passives), bar: S.talents.bar.slice() },
       talentPts: talentPoints(), spent: talentSpent(), checks,
       maxHp: S.p.maxHp, dodge: S.stats.dodge || 0, crit: S.stats.crit, xp: S.stats.xp, loot: S.stats.loot || 1,
       spellDmg: Object.fromEntries(S.spells.map((sp) => [sp.id, sp.s.dmg || sp.s.heal || sp.s.shield || 0])),
@@ -414,13 +447,14 @@ const Game = (() => {
     S.bag = (adv.bag || []).filter((it) => it && it.lines);
     // Caractéristiques et talents (une ancienne sauvegarde repart avec tous ses points à répartir)
     S.carac = Object.assign({}, adv.carac || {});
-    const first = CLASSES[S.cls].spells[0];
     S.talents = adv.talents
-      ? { spells: Object.assign({}, adv.talents.spells), passives: Object.assign({}, adv.talents.passives) }
-      : { spells: { [first]: 1 }, passives: {} };
-    if (!S.talents.spells[first]) S.talents.spells[first] = 1;
+      ? { spells: Object.assign({}, adv.talents.spells), passives: Object.assign({}, adv.talents.passives), bar: (adv.talents.bar || []).slice() }
+      : { spells: {}, passives: {}, bar: [] };
+    // Ancienne sauvegarde : les sorts sans barre sont remis au rang 1 (points rendus)
+    if (!adv.talents || !adv.talents.bar) for (const id in S.talents.spells) S.talents.spells[id] = 1;
+    learnSpells(false);
     if (caracPoints() < 0) S.carac = {};
-    if (talentPoints() < 0) S.talents = { spells: { [first]: 1 }, passives: {} };
+    if (talentPoints() < 0) { S.talents.spells = {}; S.talents.passives = {}; learnSpells(false); }
     recomputeStats();
     S.spells = [];
     syncSpells();
@@ -709,7 +743,7 @@ const Game = (() => {
     const pos = m.kind === 'zone' ? { x: Math.round(S.p.x), y: Math.round(S.p.y) } : { x: z.door.x - 170, y: 40 };
     return {
       cls: S.cls, level: S.level, xp: S.xp, equip: Object.assign({}, S.equip), bag: S.bag.slice(), carac: Object.assign({}, S.carac),
-      talents: { spells: Object.assign({}, S.talents.spells), passives: Object.assign({}, S.talents.passives) },
+      talents: { spells: Object.assign({}, S.talents.spells), passives: Object.assign({}, S.talents.passives), bar: S.talents.bar.slice() },
       spells: S.spells.map((sp) => ({ id: sp.id, lvl: sp.lvl })), zone: S.zoneIdx, pos,
       quest: w.quest, qProgress: w.qProgress, qAccepted: w.qAccepted, bossKilled: Object.assign({}, w.bossKilled),
       playTime: Math.round(w.playTime),
@@ -981,6 +1015,7 @@ const Game = (() => {
     updateZones(dt);
     updateGems(dt);
     updateFx(dt);
+    if (S.buffs && S.buffs.length) { for (const b of S.buffs) b.t -= dt; S.buffs = S.buffs.filter((b) => b.t > 0); }
 
     if (S.mode === 'world' && S.pending > 0) worldLevelUp();
     if (S.pending > 0 && !S.choosing && !S.over) {
@@ -1009,7 +1044,7 @@ const Game = (() => {
     if (l > 1) { mx /= l; my /= l; }
     const ox = p.x, oy = p.y;
     if (l > 0.05) {
-      const sp = CLASSES[S.cls].speed * S.stats.speed;
+      const sp = CLASSES[S.cls].speed * S.stats.speed * (1 + buffSum('speed'));
       p.x += mx * sp * dt; p.y += my * sp * dt;
       const n = Math.hypot(mx, my);
       p.dirX = mx / n; p.dirY = my / n;
@@ -1191,7 +1226,7 @@ const Game = (() => {
 
   function hitEnemy(e, base, o) {
     if (e.dead) return;
-    let d = (base * S.stats.dmg + (S.stats.flat || 0)) * (e.tough || 1);
+    let d = (base * S.stats.dmg + (S.stats.flat || 0)) * (e.tough || 1) * (1 + buffSum('pct'));
     if (o.rage) d *= 1 + (1 - S.p.hp / S.p.maxHp) * 1.5;
     if (o.gamble) d *= rand(0.3, 2.5); // Écaflip : dégâts aléatoires
     const crit = Math.random() < S.stats.crit + (o.crit || 0);
@@ -1325,7 +1360,7 @@ const Game = (() => {
             x: p.x, y: p.y - 6, vx: Math.cos(a) * s.speed, vy: Math.sin(a) * s.speed,
             life: s.range / s.speed + 0.1, size: s.size, dmg: s.dmg, pierce: Math.round(s.pierce || 0),
             explode: s.explode ? s.explode * area : 0, knock: s.knock || 0, poison: s.poison || 0,
-            poisonDur: s.poisonDur || 0, gold: s.gold, gamble: s.gamble, color: def.color, id: sp.id, hit: new Set(),
+            poisonDur: s.poisonDur || 0, gold: s.gold, gamble: s.gamble, slow: s.slow || 0, color: def.color, id: sp.id, hit: new Set(),
           });
         }
         return true;
@@ -1341,7 +1376,7 @@ const Game = (() => {
           query(p.x, p.y, range, (e) => {
             let diff = Math.atan2(e.y - p.y, e.x - p.x) - da;
             diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-            if (Math.abs(diff) <= s.arc / 2 + 0.25) hitEnemy(e, s.dmg, { knock: s.knock, crit: s.crit, rage: s.rage });
+            if (Math.abs(diff) <= s.arc / 2 + 0.25) hitEnemy(e, s.dmg, { knock: s.knock, crit: s.crit, rage: s.rage, gamble: s.gamble });
           });
           S.fx.push({ type: 'arc', x: p.x, y: p.y, a: da, arc: s.arc, r: range, t: 0, life: 0.2, color: def.color });
         }
@@ -1392,8 +1427,64 @@ const Game = (() => {
         p.shield = Math.max(p.shield, s.shield);
         S.fx.push({ type: 'ring', x: p.x, y: p.y, r: 34, t: 0, life: 0.4, color: def.color });
         return true;
+      case 'dash': {
+        // Bond : saute sur l'ennemi le plus proche et frappe autour de l'impact
+        const t = nearest(p.x, p.y, s.range, 1)[0];
+        if (!t) return false;
+        const a = Math.atan2(t.y - p.y, t.x - p.x), d = Math.max(0, Math.hypot(t.x - p.x, t.y - p.y) - t.r - p.r);
+        let nx = p.x + Math.cos(a) * d, ny = p.y + Math.sin(a) * d;
+        if (S.mode === 'world' && S.world.map.kind === 'zone' && !WORLD.walkable(S.world.map, nx, ny, p.r)) { nx = p.x; ny = p.y; }
+        S.fx.push({ type: 'dash', x: p.x, y: p.y, x2: nx, y2: ny, t: 0, life: 0.35, color: def.color });
+        p.x = nx; p.y = ny; p.inv = Math.max(p.inv, 0.3);
+        S.aim = a;
+        const r = s.radius * area;
+        query(p.x, p.y, r, (e) => hitEnemy(e, s.dmg, { knock: 60 }));
+        S.fx.push({ type: 'ring', x: p.x, y: p.y, r, t: 0, life: 0.4, color: def.color, fill: true });
+        return true;
+      }
+      case 'line': {
+        // Frappe en ligne droite vers l'ennemi le plus proche
+        const t = nearest(p.x, p.y, s.range * 1.2, 1)[0];
+        if (!t) return false;
+        const a = Math.atan2(t.y - p.y, t.x - p.x), L = s.range * area, w = s.width * area, ca = Math.cos(a), sa = Math.sin(a);
+        S.aim = a;
+        query(p.x + ca * L / 2, p.y + sa * L / 2, L / 2 + w, (e) => {
+          const dx = e.x - p.x, dy = e.y - p.y, along = dx * ca + dy * sa, across = Math.abs(-dx * sa + dy * ca);
+          if (along > -10 && along < L && across < w / 2 + e.r) hitEnemy(e, s.dmg, { knock: 30, sx: p.x, sy: p.y });
+        });
+        S.fx.push({ type: 'line', x: p.x, y: p.y, a, len: L, w, t: 0, life: 0.35, color: def.color });
+        return true;
+      }
+      case 'buff': {
+        // Renforcement temporaire (dégâts, vitesse) : ne se relance que s'il y a des ennemis proches
+        if (!nearest(p.x, p.y, 380, 1).length) return false;
+        S.buffs = (S.buffs || []).filter((b) => b.id !== sp.id);
+        S.buffs.push({ id: sp.id, pct: s.pct || 0, speed: s.speed || 0, t: s.dur, max: s.dur, color: def.color });
+        S.fx.push({ type: 'ring', x: p.x, y: p.y, r: 60, t: 0, life: 0.6, color: def.color, fill: true });
+        addText(p.x, p.y - 40, def.name, def.color, true);
+        return true;
+      }
+      case 'drain': {
+        // Vol de vie : rayon vers l'ennemi, une partie des dégâts revient en soin
+        const t = nearest(p.x, p.y, s.range, 1)[0];
+        if (!t) return false;
+        S.aim = Math.atan2(t.y - p.y, t.x - p.x);
+        const hp0 = t.hp;
+        hitEnemy(t, s.dmg, {});
+        const h = Math.max(0, Math.min(p.maxHp - p.hp, (hp0 - Math.max(0, t.hp)) * s.steal));
+        if (h > 0) { p.hp += h; addText(p.x, p.y - 30, '+' + Math.round(h), '#7dff9a'); }
+        S.fx.push({ type: 'beam', x: p.x, y: p.y, x2: t.x, y2: t.y, t: 0, life: 0.35, color: def.color });
+        return true;
+      }
     }
     return true;
+  }
+
+  /** Somme d'un effet des renforcements actifs (pct = dégâts, speed = vitesse). */
+  function buffSum(k) {
+    let v = 0;
+    for (const b of S.buffs || []) v += b[k] || 0;
+    return v;
   }
 
   function auraTick(sp) {
@@ -1542,7 +1633,7 @@ const Game = (() => {
         if (pr.life <= 0 || pr.hit.has(e)) return;
         if (pr.explode) { explodeProj(pr); return; }
         pr.hit.add(e);
-        hitEnemy(e, pr.dmg, { knock: pr.knock, poison: pr.poison, poisonDur: pr.poisonDur, gold: pr.gold, gamble: pr.gamble, sx: pr.x - pr.vx, sy: pr.y - pr.vy });
+        hitEnemy(e, pr.dmg, { knock: pr.knock, poison: pr.poison, poisonDur: pr.poisonDur, gold: pr.gold, gamble: pr.gamble, slow: pr.slow, sx: pr.x - pr.vx, sy: pr.y - pr.vy });
         if (--pr.pierce < 0) pr.life = 0;
       });
     }
@@ -1877,6 +1968,12 @@ const Game = (() => {
       ctx.beginPath(); ctx.arc(ep.x, ep.y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
 
+    for (const b of S.buffs || []) {
+      ctx.globalAlpha = 0.35 + 0.2 * Math.sin(S.t * 6);
+      ctx.strokeStyle = b.color; ctx.lineWidth = 4;
+      isoEllipse(p.x, p.y, 34 + 4 * Math.sin(S.t * 6)); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     // effets
     for (const f of S.fx) {
       const k = f.t / f.life;
@@ -1896,6 +1993,26 @@ const Game = (() => {
         ctx.globalAlpha = 1 - k;
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(f.x, f.y - 8, f.r * (0.7 + 0.3 * k), f.a - f.arc / 2, f.a + f.arc / 2); ctx.stroke();
+      } else if (f.type === 'line') {
+        // Ligne : bande lumineuse vers l'avant
+        const L = f.len * Math.min(1, k * 3);
+        ctx.save(); ctx.translate(f.x, f.y - 8); ctx.rotate(f.a);
+        ctx.fillStyle = f.color; ctx.globalAlpha = 0.5 * (1 - k); ctx.fillRect(0, -f.w / 2, L, f.w);
+        ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.8 * (1 - k); ctx.fillRect(0, -f.w / 8, L, f.w / 4);
+        ctx.restore();
+      } else if (f.type === 'beam') {
+        // Vol de vie : rayon ondulant entre le héros et la cible
+        ctx.strokeStyle = f.color; ctx.lineWidth = 6 * (1 - k) + 2;
+        ctx.beginPath(); ctx.moveTo(f.x, f.y - 20);
+        const n = 8;
+        for (let i = 1; i <= n; i++) { const t = i / n; ctx.lineTo(f.x + (f.x2 - f.x) * t, f.y - 20 + (f.y2 - f.y) * t + Math.sin(t * 9 + S.t * 30) * 6 * (1 - t)); }
+        ctx.stroke();
+        ctx.fillStyle = '#7dff9a'; const t2 = 1 - k;
+        ctx.beginPath(); ctx.arc(f.x + (f.x2 - f.x) * t2, f.y - 20 + (f.y2 - f.y) * t2, 5, 0, Math.PI * 2); ctx.fill();
+      } else if (f.type === 'dash') {
+        // Bond : traînée du saut
+        ctx.strokeStyle = f.color; ctx.lineWidth = 10 * (1 - k); ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(f.x, f.y - 10); ctx.quadraticCurveTo((f.x + f.x2) / 2, (f.y + f.y2) / 2 - 60, f.x2, f.y2 - 10); ctx.stroke();
       } else if (f.type === 'spark') {
         ctx.fillStyle = f.color;
         ctx.fillRect(f.x - 2, f.y - 2, 4, 4);
@@ -2834,5 +2951,5 @@ const Game = (() => {
   /** Mesures de fluidité (affichées avec ?fps) : images/s, coût du rendu, nombre de monstres. */
   const perf = () => ({ fps, renderMs, enemies: S ? S.enemies.length : 0 });
 
-  return { init, start, stop, setPaused, choose, reroll, banish, counts, setRenderMode, renderMode, perf, startWorld, interact, travel, worldChoice, worldSnapshot, takeLoot, equipment, inventory, equipItem, unequip, sellItem, sellRarity, addCarac, resetCarac, talentUp, resetTalents, charInfo, peek: () => S, _hit: (e, d) => hitEnemy(e, d, {}) };
+  return { init, start, stop, setPaused, choose, reroll, banish, counts, setRenderMode, renderMode, perf, startWorld, interact, travel, worldChoice, worldSnapshot, takeLoot, equipment, inventory, setBar, equipItem, unequip, sellItem, sellRarity, addCarac, resetCarac, talentUp, resetTalents, charInfo, peek: () => S, _hit: (e, d) => hitEnemy(e, d, {}) };
 })();

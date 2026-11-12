@@ -414,6 +414,11 @@ function renderChar() {
   $$('#char-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === charTab));
   $('#char-body').innerHTML = charTab === 'carac' ? caracHtml(info) : talentHtml(info);
   $$('#char-body [data-carac]').forEach((b) => b.addEventListener('click', () => { Game.addCarac(b.dataset.carac, +b.dataset.n); renderChar(); }));
+  $$('#char-body [data-bar]').forEach((b) => b.addEventListener('click', () => {
+    const why = Game.setBar(b.dataset.bar, b.dataset.on === '1');
+    if (why) onToast(why, '#ffb0a0');
+    renderChar();
+  }));
   $$('#char-body [data-talent]').forEach((b) => b.addEventListener('click', () => {
     const [kind, id] = b.dataset.talent.split(':');
     const why = Game.talentUp(kind, id);
@@ -472,17 +477,21 @@ function caracHtml(info) {
 
 function talentHtml(info) {
   const cls = CLASSES[info.cls];
+  const bar = info.talents.bar || [];
+  const TYPE_TXT = { melee: 'Mêlée', projectile: 'Distance', nova: 'Zone autour', strike: 'Frappe ciblée', glyph: 'Glyphe', aura: 'Aura', orbit: 'Orbite', summon: 'Invocation', trap: 'Piège', heal: 'Soin', shield: 'Bouclier', dash: 'Bond', line: 'Ligne', buff: 'Renforcement', drain: 'Vol de vie' };
   const spells = cls.spells.map((sid, i) => {
     const d = SPELLS[sid], el = WORLD.ELEMENTS[WORLD.SPELL_ELEM[sid]];
     const r = info.talents.spells[sid] || 0, why = info.checks['spell:' + sid];
-    const gate = WORLD.SPELL_GATE[i];
-    const label = r ? (r >= 5 ? 'Rang max' : `Rang ${r + 1}`) : 'Débloquer';
-    return `<div class="tal-node ${r ? '' : 'locked'}">
+    const gate = WORLD.SPELL_GATE[i], onBar = bar.includes(sid);
+    const up = !r ? '' : `<button class="btn small ${why ? '' : 'primary'}" data-talent="spell:${sid}" ${why ? 'disabled' : ''}>${r >= 5 ? 'Rang max' : 'Rang ' + (r + 1)}</button>`;
+    const tog = r ? `<button class="btn small ${onBar ? 'teal' : ''}" data-bar="${sid}" data-on="${onBar ? 0 : 1}" ${!onBar && bar.length >= WORLD.BAR_SIZE ? 'disabled' : ''}>${onBar ? '✓ Barre' : '+ Barre'}</button>` : '';
+    return `<div class="tal-node ${r ? '' : 'locked'} ${onBar ? 'onbar' : ''}">
       <div class="sicon" style="background:${d.color}">${d.icon}</div>
-      <div class="t-main"><b>${d.name}</b><small><i class="el" style="background:${el.color}"></i>${el.name}${gate ? ` · s’ouvre après ${gate} points` : ' · sort de départ'}</small>
-        <div class="pips">${Array.from({ length: 5 }, (_, k) => `<span class="pip ${k < r ? 'on' : ''}"></span>`).join('')}</div>
-        <small class="why">${why && r < 5 ? esc(why) : r < 5 && r ? `Rang ${r + 1} : niveau ${WORLD.RANK_LEVEL[r + 1]}` : ''}</small></div>
-      <button class="btn small ${why ? '' : 'primary'}" data-talent="spell:${sid}" ${why ? 'disabled' : ''}>${label}</button>
+      <div class="t-main"><b>${d.name}</b><small><i class="el" style="background:${el.color}"></i>${el.name} · ${TYPE_TXT[d.type] || ''} · ${r ? 'niv. ' + gate : 'obtenu au niveau ' + gate}</small>
+        <small>${esc(d.desc)}</small>
+        ${r ? `<div class="pips">${Array.from({ length: 5 }, (_, k) => `<span class="pip ${k < r ? 'on' : ''}"></span>`).join('')}</div>` : ''}
+        <small class="why">${r && r < 5 ? (why && why !== 'Plus de point de talent' ? esc(why) : `Rang ${r + 1} : ${d.up[r - 1].d}`) : ''}</small></div>
+      <div class="t-btns">${tog}${up}</div>
     </div>`;
   }).join('');
   const passives = Object.entries(WORLD.TALENT_PASSIVES).map(([id, p]) => {
@@ -496,7 +505,8 @@ function talentHtml(info) {
   }).join('');
   const cost = talentResetCost(info.level);
   return `
-    <div class="pts-line"><span>Points de talent</span><b>${info.talentPts}</b><small>1 point par niveau · ${info.spent} dépensés · chaque rang de sort demande un niveau minimum</small></div>
+    <div class="pts-line"><span>Points de talent</span><b>${info.talentPts}</b><small>1 point par niveau · ${info.spent} dépensés · les sorts s’obtiennent avec les niveaux, les points montent leurs rangs</small></div>
+    <div class="bar-line"><span>Barre de combat (${bar.length}/${WORLD.BAR_SIZE})</span>${bar.map((id) => `<div class="sicon" style="background:${SPELLS[id].color}" title="${esc(SPELLS[id].name)}">${SPELLS[id].icon}</div>`).join('')}<small>Seuls ces 4 sorts se lancent en combat</small></div>
     <div class="tal-cols">
       <div><div class="eyebrow">Voie des sorts</div>${spells}</div>
       <div><div class="eyebrow">Voie des passifs</div>${passives}</div>

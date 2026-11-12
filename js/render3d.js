@@ -83,11 +83,14 @@ const Render3D = (() => {
 
   // ---------------------------------------------------------------- Formes des projectiles et des sorts
   const PROJ_STYLE = {
+    fleche_glacee: 'arrow', fleche_empoisonnee: 'arrow', fleche_dispersion: 'arrow', gelure: 'needle', attaque_nuageuse: 'bubble',
+    pelle_fantomatique: 'dagger', dagues_boomerang: 'dagger',
     fleche_magique: 'arrow', fleche_explosive: 'arrow', fleche_recul: 'arrow', corbeau_noir: 'arrow',
     aiguille: 'needle', poison_paralysant: 'needle', poison_insidieux: 'dagger',
     mot_blessant: 'orb', lancer_pieces: 'coin', pile_ou_face: 'coin', tromblon: 'pellet', bulle: 'bubble', flasque_explosive: 'flask',
   };
-  const STRIKE_STYLE = { colere_iop: 'sword', pluie_fleches: 'arrow', frappe_xelor: 'hand', roulette: 'die', kaboom: 'bomb', ronces: 'thorn' };
+  const STRIKE_STYLE = { colere_iop: 'sword', pluie_fleches: 'arrow', frappe_xelor: 'hand', roulette: 'die', kaboom: 'bomb', ronces: 'thorn',
+    punition: 'sword', sablier: 'hand', tout_ou_rien: 'die', ronces_multiples: 'thorn' };
   const HERO_BUILD = {
     iop: 'buildModoIop', cra: 'buildModoCra', feca: 'buildModoFeca', eniripsa: 'buildModoEniripsa', sram: 'buildModoSram',
     xelor: 'buildModoXelor', osamodas: 'buildModoOsamodas', sacrieur: 'buildModoSacrieur', enutrof: 'buildModoEnutrof',
@@ -227,6 +230,9 @@ const Render3D = (() => {
   }
   const arc = () => pool('arc', () => { const m = new THREE.Mesh(arcGeo(1), glow(0.5)); m.material.side = THREE.DoubleSide; return m; });
   const slash = () => pool('slash', () => new THREE.Mesh(slashGeo(1), glow(0.9)));
+  // Nouveaux effets : bande lumineuse (ligne), rayon (vol de vie), traînée (bond)
+  const slab = () => pool('slab', () => { const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0.5, 0, 0), glow(0.6)); m.material.side = THREE.DoubleSide; return m; });
+  const beam = () => pool('beam', () => new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 8, 1, true).rotateZ(Math.PI / 2).translate(0.5, 0, 0), glow(0.7)));
 
   /** Glyphe au sol : disque, anneaux et runes qui tournent. */
   function makeGlyph() {
@@ -316,6 +322,9 @@ const Render3D = (() => {
   // Invocations et objets en orbite
   const MINION_MAKE = {
     invoc_bouftou: () => buildBouftou(1.3),
+    invoc_prespic: () => { const g = mergeModel(buildMonstrePrespic()); const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true })); const o = new THREE.Group(); m.scale.setScalar(0.55); o.add(m); return o; },
+    la_folle: () => { const g = mergeModel(buildMonstreFantome()); const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, color: 0xffb0e0 })); const o = new THREE.Group(); m.scale.setScalar(0.5); o.add(m); return o; },
+    coffre_anime: () => { const o = new THREE.Group(); const m = new THREE.Mesh(LOOT_MODELS ? mergeModel(LOOT_MODELS.chest()) : new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true })); m.scale.setScalar(0.55); o.add(m); return o; },
     invoc_tofu: () => { const g = miniTofu(); g.scale.setScalar(1.5); return g; },
     pelle_animee: () => {
       const g = new THREE.Group();
@@ -1143,7 +1152,7 @@ const Render3D = (() => {
     const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
     const clouds = [];
     for (let k = 0; k < 90; k++) {
-      clouds.push({ x: -1500 + rnd() * (m.w + 3000), z: -m.h - 1800 + rnd() * (m.h * 2 + 2600), y: -6 - rnd() * 22, s: 2.5 + rnd() * 5, sy: 0.9 + rnd(), c: '#ffffff' });
+      clouds.push({ x: -1500 + rnd() * (m.w + 3000), z: -m.h - 1800 + rnd() * (m.h * 2 + 2600), y: -12 - rnd() * 20, s: 2.5 + rnd() * 5, sy: 0.6 + rnd() * 0.5, c: '#ffffff' });
     }
     const puff = mergedWhite(() => {
       const gg = new THREE.Group();
@@ -1834,6 +1843,15 @@ const Render3D = (() => {
     beginPools();
     if (S.mode === 'world') updateWorld3D(S, dt, px, pz);
     if (hero) updateHero(S, dt);
+    // Renforcements actifs : cercle qui pulse sous le héros et étincelles montantes
+    for (const b of S.buffs || []) {
+      const g = pool('aura', makeGlyph);
+      tintGlyph(g, b.color, 0.35 + 0.25 * Math.sin(time * 6));
+      g.position.set(p.x / U, 0.05, p.y / U);
+      g.scale.set(1.3, 1, 1.3);
+      g.rotation.y = time * 2;
+      if (Math.random() < 0.5) { const a = Math.random() * Math.PI * 2; part(p.x / U + Math.cos(a) * 0.7, 0.2, p.y / U + Math.sin(a) * 0.7, b.color, { vy: 2.2, life: 0.6, s: 0.1 }); }
+    }
 
     // Monstres : un lot par type ; les monstres ordinaires ont leur modèle, les boss restent des blocs (étape 4)
     for (const b of monsters.values()) b.n = 0;
@@ -2030,6 +2048,35 @@ const Render3D = (() => {
           const aa = f.a + (Math.random() - 0.5) * f.arc, rr = (f.r / U) * (0.6 + Math.random() * 0.4);
           part(f.x / U + Math.cos(aa) * rr, 0.6 + Math.random() * 0.6, f.y / U + Math.sin(aa) * rr, Math.random() < 0.5 ? '#ffffff' : f.color, { vy: 1, life: 0.3, s: 0.08 });
         }
+      } else if (f.type === 'line') {
+        // Ligne : bande de lumière qui file vers l'avant, éclats le long du trajet
+        const grow = Math.min(1, k * 3), m2 = slab();
+        m2.material.color.set(f.color); m2.material.opacity = 0.75 * (1 - k);
+        m2.position.set(f.x / U, 0.12, f.y / U); m2.rotation.set(0, -f.a, 0);
+        m2.scale.set((f.len / U) * grow, 1, (f.w / U) * (1 - k * 0.5));
+        const core = slab();
+        core.material.color.set('#ffffff'); core.material.opacity = 0.8 * (1 - k);
+        core.position.set(f.x / U, 0.15, f.y / U); core.rotation.set(0, -f.a, 0);
+        core.scale.set((f.len / U) * grow, 1, (f.w / U) * 0.25);
+        if (k < 0.5) for (let i = 0; i < 3; i++) {
+          const d = Math.random() * f.len * grow;
+          part((f.x + Math.cos(f.a) * d) / U, 0.3 + Math.random() * 0.5, (f.y + Math.sin(f.a) * d) / U, Math.random() < 0.4 ? '#ffffff' : f.color, { vy: 1.5, life: 0.4, s: 0.12 });
+        }
+      } else if (f.type === 'beam') {
+        // Vol de vie : rayon entre le héros et la cible, perles de vie qui reviennent
+        const dx = (f.x2 - f.x) / U, dz = (f.y2 - f.y) / U, L = Math.hypot(dx, dz);
+        const b2 = beam();
+        b2.material.color.set(f.color); b2.material.opacity = 0.7 * (1 - k);
+        b2.position.set(f.x / U, 0.9, f.y / U); b2.rotation.set(0, -Math.atan2(dz, dx), 0);
+        b2.scale.set(L, 0.07 + 0.05 * Math.sin(k * 20), 0.07 + 0.05 * Math.sin(k * 20));
+        if (Math.random() < 0.8) { const t = 1 - k; part(f.x / U + dx * t, 0.9, f.y / U + dz * t, Math.random() < 0.5 ? '#7dff9a' : f.color, { vy: 0.3, life: 0.3, s: 0.12 }); }
+      } else if (f.type === 'dash') {
+        // Bond : traînée de silhouettes et poussière le long du saut
+        if (k < 0.6) for (let i = 0; i < 4; i++) {
+          const t = Math.random();
+          part((f.x + (f.x2 - f.x) * t) / U, 0.3 + Math.sin(t * Math.PI) * 1.2 + Math.random() * 0.3, (f.y + (f.y2 - f.y) * t) / U, Math.random() < 0.5 ? '#ffffff' : f.color, { vy: 0.4, life: 0.35, s: 0.16 });
+        }
+        if (!f.sw) { f.sw = 1; shockwave(f.x2 / U, f.y2 / U, 1.6, f.color); }
       } else if (f.type === 'xp') {
         // Cristal d'expérience qui file vers le héros
         const e = k * k;
