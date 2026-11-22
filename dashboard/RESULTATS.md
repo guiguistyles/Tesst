@@ -1,12 +1,12 @@
 # Arène des bots
 
-_Mis à jour le 21/11 20:30 UTC · 50 € virtuels par bot · argent fictif_
+_Mis à jour le 22/11 00:45 UTC · 50 € virtuels par bot · argent fictif_
 
 | # | Bot | Équipe | Capital | Gain | PV | Trades | Pire chute | Statut |
 |---|---|---|---:|---:|---:|---:|---:|---|
-| 1 | #76 Parier sur la baisse et garder (XRP) (témoin) | Altcoins | 62.64 € | +25.3 % | ∞ | 0 | 6.7 % | vivant |
+| 1 | #76 Parier sur la baisse et garder (XRP) (témoin) | Altcoins | 62.76 € | +25.5 % | ∞ | 0 | 6.7 % | vivant |
 | 2 | #85 Élan ↓ (NVDA) | Actions | 60.47 € | +20.9 % | 68 | 6 | 9.5 % | vivant |
-| 3 | #69 Parier sur la baisse et garder (BTC) (témoin) | Cryptos principales | 60.25 € | +20.5 % | ∞ | 0 | 5.0 % | vivant |
+| 3 | #69 Parier sur la baisse et garder (BTC) (témoin) | Cryptos principales | 60.40 € | +20.8 % | ∞ | 0 | 5.0 % | vivant |
 | 4 | #87 Croisement EMA ↕ (TSLA) | Actions | 58.65 € | +17.3 % | 93 | 6 | 7.7 % | vivant |
 | 5 | #71 Élan ↓ (BTC) | Cryptos principales | 58.29 € | +16.6 % | 160 | 4 | 7.6 % | vivant |
 | 6 | #90 Parier sur la baisse et garder (WTI) (témoin) | Matières premières | 56.00 € | +12.0 % | ∞ | 0 | 5.1 % | vivant |
@@ -39,41 +39,41 @@ _Mis à jour le 21/11 20:30 UTC · 50 € virtuels par bot · argent fictif_
 | 33 | #222 Croisement EMA ↕ (TSLA) | Actions | 50.61 € | +1.2 % | 100 | 0 | 0.4 % | vivant |
 | 34 | #188 Cassure de plus haut ↓ (LINK) | Altcoins | 50.55 € | +1.1 % | 81 | 3 | 4.9 % | vivant |
 | 35 | #194 Cassure de plus haut ↓ (WTI) | Matières premières | 50.42 € | +0.8 % | 95 | 3 | 3.5 % | vivant |
-| 36 | #223 Cassure de plus haut 🎓 (AVAX) | Altcoins | 50.35 € | +0.7 % | 100 | 0 | 1.2 % | vivant |
-| 37 | #169 Croisement EMA ↓ (OR) | Matières premières | 50.06 € | +0.1 % | 75 | 8 | 3.8 % | vivant |
-| 38 | #207 Croisement EMA 🎓 (SOL) | Cryptos principales | 50.03 € | +0.1 % | 71 | 2 | 3.4 % | vivant |
-| 39 | #44 Tendance + RSI (NVDA) | Actions | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
-| 40 | #174 Lecteur d'actus (BTC) | Cryptos principales | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
-| 41 | #203 Lecteur d'actus (XRP) | Altcoins | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
-| 42 | #217 Actus + tendance (ETH) | Cryptos principales | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
-| 43 | #218 Cassure de plus haut 🎓 (TSLA) | Actions | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
-| 44 | #219 Cassure de plus haut ↓ (WTI) | Matières premières | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
-| 45 | #145 Cassure de plus haut ↓ (WTI) | Matières premières | 49.99 € | -0.0 % | 73 | 6 | 6.7 % | vivant |
-| 46 | #173 Cassure de plus haut ↓ (LINK) | Altcoins | 49.96 € | -0.1 % | 64 | 6 | 8.1 % | vivant |
-| 47 | #210 Cassure de plus haut ↓ (ETH) | Cryptos principales | 49.91 € | -0.2 % | 81 | 3 | 5.3 % | vivant |
-| 48 | #181 Élan ↓ 🎓 (ETH) | Cryptos principales | 49.90 € | -0.2 % | 71 | 3 | 8.0 % | vivant |
-| 49 | #158 Cassure de plus haut ↓ (WTI) | Matières premières | 49.80 € | -0.4 % | 79 | 4 | 3.5 % | vivant |
-| 50 | #206 Cassure de plus haut ↓ (ETH) | Cryptos principales | 49.67 € | -0.7 % | 77 | 3 | 5.3 % | vivant |
-| 51 | #79 Cassure de plus haut ↓ (LINK) | Altcoins | 49.66 € | -0.7 % | 34 | 13 | 8.6 % | vivant |
-| 52 | #153 Cassure de plus haut ↓ (LINK) | Altcoins | 49.61 € | -0.8 % | 48 | 8 | 8.0 % | vivant |
-| 53 | #167 Cassure de plus haut ↓ (BTC) | Cryptos principales | 49.54 € | -0.9 % | 66 | 7 | 10.7 % | vivant |
-| 54 | #187 Chasseur RSI ↕ (ADA) | Altcoins | 49.53 € | -0.9 % | 83 | 15 | 7.3 % | vivant |
+| 36 | #169 Croisement EMA ↓ (OR) | Matières premières | 50.06 € | +0.1 % | 75 | 8 | 3.8 % | vivant |
+| 37 | #44 Tendance + RSI (NVDA) | Actions | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
+| 38 | #174 Lecteur d'actus (BTC) | Cryptos principales | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
+| 39 | #203 Lecteur d'actus (XRP) | Altcoins | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
+| 40 | #217 Actus + tendance (ETH) | Cryptos principales | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
+| 41 | #218 Cassure de plus haut 🎓 (TSLA) | Actions | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
+| 42 | #219 Cassure de plus haut ↓ (WTI) | Matières premières | 50.00 € | +0.0 % | 100 | 0 | 0.0 % | vivant |
+| 43 | #145 Cassure de plus haut ↓ (WTI) | Matières premières | 49.99 € | -0.0 % | 73 | 6 | 6.7 % | vivant |
+| 44 | #173 Cassure de plus haut ↓ (LINK) | Altcoins | 49.96 € | -0.1 % | 64 | 6 | 8.1 % | vivant |
+| 45 | #210 Cassure de plus haut ↓ (ETH) | Cryptos principales | 49.91 € | -0.2 % | 81 | 3 | 5.3 % | vivant |
+| 46 | #181 Élan ↓ 🎓 (ETH) | Cryptos principales | 49.90 € | -0.2 % | 71 | 3 | 8.0 % | vivant |
+| 47 | #158 Cassure de plus haut ↓ (WTI) | Matières premières | 49.80 € | -0.4 % | 79 | 4 | 3.5 % | vivant |
+| 48 | #187 Chasseur RSI ↕ (ADA) | Altcoins | 49.67 € | -0.7 % | 83 | 15 | 7.3 % | vivant |
+| 49 | #206 Cassure de plus haut ↓ (ETH) | Cryptos principales | 49.67 € | -0.7 % | 77 | 3 | 5.3 % | vivant |
+| 50 | #79 Cassure de plus haut ↓ (LINK) | Altcoins | 49.66 € | -0.7 % | 34 | 13 | 8.6 % | vivant |
+| 51 | #153 Cassure de plus haut ↓ (LINK) | Altcoins | 49.61 € | -0.8 % | 48 | 8 | 8.0 % | vivant |
+| 52 | #207 Croisement EMA 🎓 (SOL) | Cryptos principales | 49.60 € | -0.8 % | 81 | 3 | 3.4 % | vivant |
+| 53 | #223 Cassure de plus haut 🎓 (AVAX) | Altcoins | 49.54 € | -0.9 % | 91 | 1 | 2.3 % | vivant |
+| 54 | #167 Cassure de plus haut ↓ (BTC) | Cryptos principales | 49.54 € | -0.9 % | 66 | 7 | 10.7 % | vivant |
 | 55 | #202 Cassure de plus haut ↓ (LINK) | Altcoins | 49.48 € | -1.0 % | 65 | 3 | 7.3 % | vivant |
 | 56 | #86 Cassure de plus haut ↓ (MSFT) | Actions | 49.38 € | -1.2 % | 62 | 3 | 4.7 % | vivant |
 | 57 | #166 Élan ↓ 🎓 (ETH) | Cryptos principales | 49.37 € | -1.3 % | 65 | 5 | 11.4 % | vivant |
-| 58 | #184 Tendance + RSI (BTC) | Cryptos principales | 49.30 € | -1.4 % | 86 | 1 | 1.4 % | vivant |
-| 59 | #136 Cassure de plus haut ↓ (LINK) | Altcoins | 49.29 € | -1.4 % | 40 | 11 | 9.8 % | vivant |
-| 60 | #182 Cassure de plus haut ↓ (BTC) | Cryptos principales | 49.25 € | -1.5 % | 61 | 5 | 7.7 % | vivant |
+| 58 | #136 Cassure de plus haut ↓ (LINK) | Altcoins | 49.29 € | -1.4 % | 40 | 11 | 9.8 % | vivant |
+| 59 | #182 Cassure de plus haut ↓ (BTC) | Cryptos principales | 49.25 € | -1.5 % | 61 | 5 | 7.7 % | vivant |
+| 60 | #135 MACD ↕ 🎓 (BTC) | Cryptos principales | 49.18 € | -1.6 % | 79 | 3 | 4.4 % | vivant |
 | 61 | #212 Élan ↓ (BRENT) | Matières premières | 49.14 € | -1.7 % | 83 | 1 | 2.2 % | vivant |
 | 62 | #125 Croisement EMA 🎓 (OR) | Matières premières | 49.12 € | -1.8 % | 82 | 1 | 1.8 % | vivant |
 | 63 | #147 Croisement EMA 🎓 (OR) | Matières premières | 49.12 € | -1.8 % | 82 | 1 | 1.8 % | vivant |
 | 64 | #216 Croisement EMA 🎓 (OR) | Matières premières | 49.12 € | -1.8 % | 82 | 1 | 1.8 % | vivant |
-| 65 | #135 MACD ↕ 🎓 (BTC) | Cryptos principales | 49.00 € | -2.0 % | 79 | 3 | 4.4 % | vivant |
+| 65 | #184 Tendance + RSI (BTC) | Cryptos principales | 49.05 € | -1.9 % | 86 | 1 | 1.9 % | vivant |
 | 66 | #129 MACD ↕ 🎓 (OR) | Matières premières | 48.96 € | -2.1 % | 77 | 3 | 2.9 % | vivant |
 | 67 | #161 MACD ↕ 🎓 (OR) | Matières premières | 48.96 € | -2.1 % | 77 | 3 | 2.9 % | vivant |
-| 68 | #122 Cassure de plus haut 🎓 (TSLA) | Actions | 48.85 € | -2.3 % | 67 | 2 | 7.2 % | vivant |
-| 69 | #199 Élan ↓ 🎓 (ETH) | Cryptos principales | 48.77 € | -2.5 % | 45 | 5 | 7.3 % | vivant |
-| 70 | #111 MACD ↕ 🎓 (BTC) | Cryptos principales | 48.73 € | -2.5 % | 73 | 3 | 4.8 % | vivant |
+| 68 | #111 MACD ↕ 🎓 (BTC) | Cryptos principales | 48.90 € | -2.2 % | 73 | 3 | 4.8 % | vivant |
+| 69 | #122 Cassure de plus haut 🎓 (TSLA) | Actions | 48.85 € | -2.3 % | 67 | 2 | 7.2 % | vivant |
+| 70 | #199 Élan ↓ 🎓 (ETH) | Cryptos principales | 48.77 € | -2.5 % | 45 | 5 | 7.3 % | vivant |
 | 71 | #160 Cassure de plus haut ↓ (LINK) | Altcoins | 48.68 € | -2.6 % | 40 | 7 | 9.5 % | vivant |
 | 72 | #191 Cassure de plus haut ↓ (LINK) | Altcoins | 48.68 € | -2.6 % | 58 | 4 | 6.7 % | vivant |
 | 73 | #84 Croisement EMA ↓ (AAPL) | Actions | 48.67 € | -2.7 % | 48 | 4 | 6.9 % | vivant |
@@ -96,13 +96,13 @@ _Mis à jour le 21/11 20:30 UTC · 50 € virtuels par bot · argent fictif_
 | 90 | #48 Actus + tendance (QQQ) | Actions | 47.29 € | -5.4 % | 36 | 4 | 7.5 % | vivant |
 | 91 | #88 MACD ↕ (SPY) | Actions | 47.25 € | -5.5 % | 1 | 16 | 10.7 % | vivant |
 | 92 | #40 Cassure de plus haut (TSLA) | Actions | 47.16 € | -5.7 % | 33 | 3 | 7.2 % | vivant |
-| 93 | #108 Élan 🎓 (BTC) | Cryptos principales | 46.96 € | -6.1 % | 7 | 3 | 10.8 % | vivant |
+| 93 | #108 Élan 🎓 (BTC) | Cryptos principales | 46.79 € | -6.4 % | 7 | 3 | 10.8 % | vivant |
 | 94 | #42 Élan (QQQ) | Actions | 46.69 € | -6.6 % | 32 | 4 | 7.5 % | vivant |
 | 95 | #45 Écart statistique (MSFT) | Actions | 46.60 € | -6.8 % | 40 | 4 | 8.0 % | vivant |
 | 96 | #183 Cassure de plus haut ↓ (LINK) | Altcoins | 46.56 € | -6.9 % | 26 | 5 | 7.6 % | vivant |
-| 97 | #12 Tendance + RSI (BTC) | Cryptos principales | 46.39 € | -7.2 % | 16 | 8 | 7.4 % | vivant |
-| 98 | #47 Lecteur d'actus (SPY) | Actions | 46.35 € | -7.3 % | 27 | 3 | 7.8 % | vivant |
-| 99 | #60 Tendance + RSI (BRENT) | Matières premières | 46.24 € | -7.5 % | 20 | 9 | 8.7 % | vivant |
+| 97 | #47 Lecteur d'actus (SPY) | Actions | 46.35 € | -7.3 % | 27 | 3 | 7.8 % | vivant |
+| 98 | #60 Tendance + RSI (BRENT) | Matières premières | 46.24 € | -7.5 % | 20 | 9 | 8.7 % | vivant |
+| 99 | #12 Tendance + RSI (BTC) | Cryptos principales | 46.16 € | -7.7 % | 16 | 8 | 7.9 % | vivant |
 | 100 | #128 Cassure de plus haut 🎓 (BRENT) | Matières premières | 45.95 € | -8.1 % | 16 | 5 | 9.9 % | vivant |
 | 101 | #150 Écart statistique (MSFT) | Actions | 45.93 € | -8.1 % | 40 | 3 | 9.2 % | vivant |
 | 102 | #186 Cassure de plus haut ↓ (LINK) | Altcoins | 45.73 € | -8.5 % | 3 | 6 | 8.5 % | vivant |
@@ -115,11 +115,11 @@ _Mis à jour le 21/11 20:30 UTC · 50 € virtuels par bot · argent fictif_
 | 109 | #33 Acheter et garder (SPY) (témoin) | Actions | 45.16 € | -9.7 % | ∞ | 0 | 10.3 % | vivant |
 | 110 | #34 Pile ou face (QQQ) (témoin) | Actions | 42.62 € | -14.8 % | ∞ | 10 | 15.7 % | vivant |
 | 111 | #49 Acheter et garder (WTI) (témoin) | Matières premières | 40.65 € | -18.7 % | ∞ | 0 | 21.3 % | vivant |
-| 112 | #01 Acheter et garder (BTC) (témoin) | Cryptos principales | 39.43 € | -21.1 % | ∞ | 0 | 29.4 % | vivant |
-| 113 | #17 Acheter et garder (XRP) (témoin) | Altcoins | 37.82 € | -24.4 % | ∞ | 0 | 33.4 % | vivant |
+| 112 | #01 Acheter et garder (BTC) (témoin) | Cryptos principales | 39.29 € | -21.4 % | ∞ | 0 | 29.4 % | vivant |
+| 113 | #17 Acheter et garder (XRP) (témoin) | Altcoins | 37.69 € | -24.6 % | ∞ | 0 | 33.4 % | vivant |
 | 114 | #50 Pile ou face (BRENT) (témoin) | Matières premières | 34.95 € | -30.1 % | ∞ | 28 | 30.4 % | vivant |
 | 115 | #02 Pile ou face (ETH) (témoin) | Cryptos principales | 28.61 € | -42.8 % | ∞ | 43 | 42.8 % | vivant |
-| 116 | #18 Pile ou face (ADA) (témoin) | Altcoins | 28.16 € | -43.7 % | ∞ | 47 | 46.1 % | vivant |
+| 116 | #18 Pile ou face (ADA) (témoin) | Altcoins | 27.94 € | -44.1 % | ∞ | 48 | 46.1 % | vivant |
 | 117 | #77 Croisement EMA ↓ (DOGE) | Altcoins | 49.18 € | -1.6 % | 0 | 21 | 11.4 % | ☠ points de vie à zéro |
 | 118 | #94 Croisement EMA ↕ (BRENT) | Matières premières | 48.33 € | -3.3 % | 0 | 17 | 13.6 % | ☠ points de vie à zéro |
 | 119 | #143 Croisement EMA ↓ (DOGE) | Altcoins | 47.93 € | -4.1 % | 0 | 16 | 13.7 % | ☠ points de vie à zéro |
